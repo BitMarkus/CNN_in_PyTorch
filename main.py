@@ -4,21 +4,8 @@ import functions as fn
 from model import CNN_Model
 from dataset import Dataset
 from train import Train
-
-#############
-# CONSTANTS #
-#############
-
-# Paths
-# Directory for training  images
-data_path = 'data/'
-# Directory for saved checkpoints
-checkpoint_path = 'checkpoints/'
-# Directory for saved plots
-plot_path = 'plots/'
-# Directory for images to predict
-prediction_path = 'prediction/'
-prediction_weights = '2024-07-30-16-54_checkpoint_e28_vacc84.model'
+# Own modules
+from settings import setting
 
 ###########
 # OBJECTS #
@@ -113,7 +100,7 @@ def main():
                 history = train.train()
                 print("Training finished!")
                 # Show/save training plots
-                train.plot_metrics(history, plot_path, show_plot=True, save_plot=True)
+                train.plot_metrics(history, setting["pth_plots"], show_plot=True, save_plot=True)
 
         ################
         # Load Weights #
@@ -127,9 +114,9 @@ def main():
             else:
                 # Load model and weights for inference
                 # https://stackoverflow.com/questions/49941426/attributeerror-collections-ordereddict-object-has-no-attribute-eval
-                model.load_state_dict(torch.load(checkpoint_path + prediction_weights))
+                model.load_state_dict(torch.load(setting["pth_checkpoint"] + setting["chckpt_weights"]))
                 model.to(device)
-                print(f'Weights from checkpoint {prediction_weights} successfully loaded.')
+                print(f'Weights from checkpoint {setting["chckpt_weights"]} successfully loaded.')
 
         ############################
         # Predict images in folder #  
