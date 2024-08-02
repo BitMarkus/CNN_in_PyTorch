@@ -3,16 +3,11 @@
 #############
 
 import sys
-import pathlib
+from pathlib import Path
 from tqdm import tqdm
-import numpy as np
-from datetime import datetime
-import matplotlib.pyplot as plt
 import torch
-from torchvision.transforms import transforms
-from torch.utils.data import DataLoader
-import torchvision
-from torch.utils.data.sampler import SubsetRandomSampler
+# Own modules
+from settings import setting
 
 # Function to show if CUDA is working and software versions
 def show_cuda_and_versions():
@@ -71,6 +66,15 @@ def predict(model, dataset):
 
     model.train()
     return num_correct / num_samples 
+
+# Function creates all working folders in the root directory of the program
+# If they do not exist yet!
+def create_prg_folders():
+    # https://kodify.net/python/pathlib-path-mkdir-method/
+    Path(setting["pth_data"]).mkdir(parents=True, exist_ok=True)
+    Path(setting["pth_checkpoint"]).mkdir(parents=True, exist_ok=True)
+    Path(setting["pth_plots"]).mkdir(parents=True, exist_ok=True)
+    Path(setting["pth_prediction"]).mkdir(parents=True, exist_ok=True)
 
 
 

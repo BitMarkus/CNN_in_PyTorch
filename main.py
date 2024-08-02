@@ -37,6 +37,8 @@ def main():
 
     # Show system information and select device (cpu or gpu)
     device = fn.show_cuda_and_versions()
+    # Create program folders if they don't exist already
+    fn.create_prg_folders()
 
     #############
     # Main Menu #
