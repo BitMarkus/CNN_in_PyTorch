@@ -4,6 +4,9 @@ import functions as fn
 from model import CNN_Model
 from dataset import Dataset
 from train import Train
+from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
+import matplotlib.pyplot as plt
+import numpy as np
 # Own modules
 from settings import setting
 
@@ -131,8 +134,20 @@ def main():
                 prediction_ds = ds.load_prediction_dataset()
                 print('Prediction dataset successfully loaded.')
                 print('Starting prediction...')
-                pred_acc = fn.predict(model, prediction_ds)
-                print(f"Accuracy: {pred_acc:.2f}")                
+                pred_acc, cm = fn.predict(model, prediction_ds)
+                print(f"Accuracy: {pred_acc:.2f}")  
+
+                # # Print confusion matrix 
+                # https://scikit-learn.org/stable/modules/model_evaluation.html#confusion-matrix
+                # https://scikit-learn.org/stable/auto_examples/model_selection/plot_confusion_matrix.html#sphx-glr-auto-examples-model-selection-plot-confusion-matrix-py
+                ConfusionMatrixDisplay.from_predictions(
+                    cm["y"], 
+                    cm["y_hat"], 
+                    display_labels=cnn.get_class_list(), 
+                    cmap='Blues', 
+                    normalize='all',
+                )
+                plt.show()          
 
         ################
         # Exit Program #

@@ -13,7 +13,7 @@ setting = {
     # Number of epochs
     "train_num_epochs": 3,  
     # Initial learning rate (later determined by lr scheduler)
-    "train_init_lr": 0.0001, 
+    "train_init_lr": 0.001,    # ADAM: 0.0001. SGD: 0.001
     # Learning rate scheduler:
     # No of steps after which he lr is multiplied by the lr multiplier
     "train_lr_step_size": 10, 

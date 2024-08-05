@@ -18,6 +18,7 @@ def show_cuda_and_versions():
     print("Python: ", sys.version, "")
     print("Pytorch:", torch.__version__)
     print("CUDA:", torch.version.cuda)
+    print("cuDNN:", torch.backends.cudnn.version())
     return device
 
 # Creates an input with prompt
@@ -47,7 +48,9 @@ def predict(model, dataset):
     # Load dataset
     num_correct = 0
     num_samples = 0
-
+    # Parameters for confusion matrix
+    cm = {"y": [], "y_hat": []}
+    # Set model to evaluation mode
     model.eval()
     # No need to keep track of gradients
     with torch.no_grad():
@@ -63,9 +66,13 @@ def predict(model, dataset):
             num_correct += (predictions == labels).sum()
             # Keep track of number of samples
             num_samples += predictions.size(0)
-
+            # Confusion matrix data
+            cm["y"].append(labels.item())
+            cm["y_hat"].append(predictions.item())
+    # Set model back to training mode
+    acc = num_correct / num_samples 
     model.train()
-    return num_correct / num_samples 
+    return acc, cm
 
 # Function creates all working folders in the root directory of the program
 # If they do not exist yet!
