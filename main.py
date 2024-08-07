@@ -4,20 +4,16 @@ import functions as fn
 from model import CNN_Model
 from dataset import Dataset
 from train import Train
-from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
-import matplotlib.pyplot as plt
-import numpy as np
-# Own modules
 from settings import setting
 
 ###########
 # OBJECTS #
 ###########
 
-# Create a model object
-cnn = CNN_Model()
 # Create a dataset object
 ds = Dataset()
+# Create a model object
+cnn = CNN_Model()
 
 ########
 # MAIN #
@@ -55,12 +51,15 @@ def main():
             if(cnn.model_loaded):
                 print("A network was already loaded!")
             else:
-                # Print class information
-                cnn.print_class_list()
-                # Load model
-                print(f"Creating new {cnn.model_name} network...")  
-                model = cnn.load_model(device)  
-                print("New network was successfully created.")            
+                if(cnn):
+                    # Print class information
+                    cnn.print_class_list()
+                    # Load model
+                    print(f"Creating new {cnn.cnn_type} network...")  
+                    model = cnn.load_model(device)  
+                    print("New network was successfully created.")   
+                else:
+                    print("Unable to load the requesten cnn architecture!")          
 
         ########################
         # Show Network Summary #  
@@ -112,8 +111,8 @@ def main():
         elif(menu1 == 5):
             # Load checkpoint weights
             print("\n:LOAD WEIGHTS:") 
-            if('model' not in globals() and 'model' not in locals()):
-                print('No network generated yet!')
+            if not (cnn.model_loaded):
+                print('No CNN generated yet!')
             else:
                 # Load model and weights for inference
                 # https://stackoverflow.com/questions/49941426/attributeerror-collections-ordereddict-object-has-no-attribute-eval
@@ -127,8 +126,8 @@ def main():
 
         elif(menu1 == 6):  
             print("\n:PREDICT IMAGES IN FOLDER:") 
-            if('model' not in globals() and 'model' not in locals()):
-                print('No network generated yet!')
+            if not (cnn.model_loaded):
+                print('No CNN generated yet!')
             else:
                 print('Load prediction dataset...')
                 prediction_ds = ds.load_prediction_dataset()
@@ -137,17 +136,9 @@ def main():
                 pred_acc, cm = fn.predict(model, prediction_ds)
                 print(f"Accuracy: {pred_acc:.2f}")  
 
-                # # Print confusion matrix 
-                # https://scikit-learn.org/stable/modules/model_evaluation.html#confusion-matrix
-                # https://scikit-learn.org/stable/auto_examples/model_selection/plot_confusion_matrix.html#sphx-glr-auto-examples-model-selection-plot-confusion-matrix-py
-                ConfusionMatrixDisplay.from_predictions(
-                    cm["y"], 
-                    cm["y_hat"], 
-                    display_labels=cnn.get_class_list(), 
-                    cmap='Blues', 
-                    normalize='all',
-                )
-                plt.show()          
+                # Plot confusion matrix
+                class_list = cnn.get_class_list()
+                fn.plot_confusion_matrix(cm, class_list, setting["pth_plots"], show_plot=True, save_plot=True)
 
         ################
         # Exit Program #

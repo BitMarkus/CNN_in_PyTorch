@@ -11,6 +11,7 @@ from datetime import datetime
 import matplotlib.pyplot as plt
 # Own modules
 from settings import setting
+import functions as fn
 
 class Train():
 
@@ -194,16 +195,8 @@ class Train():
         plt.tight_layout()
         # Save plot
         if(save_plot):
-            self.save_metrics_plot(plot_path)
+            fn.save_plot_to_drive(plot_path, "train_metrics")
         # Show and save plot
         if(show_plot):
             plt.show()
 
-    # Function to save the acc/loss plot
-    def save_metrics_plot(self, plot_path):
-        # Datetime for saved files
-        current_datetime = datetime.now().strftime("%Y-%m-%d-%H-%M")
-        # Generate filename
-        filename = f'{current_datetime}_training_metrics.png'
-        # Save plot
-        plt.savefig(str(plot_path) + '/' + filename, bbox_inches='tight')
