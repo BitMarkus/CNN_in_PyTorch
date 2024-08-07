@@ -41,7 +41,7 @@ setting = {
     # Name of the model architecture
     # The choice is:
     # ResNet: ResNet-18, -34, -50, -101, -152
-    "cnn_type": "ResNet-152",     
+    "cnn_type": "ResNet-50",     
 
     ##########
     # IMAGES #

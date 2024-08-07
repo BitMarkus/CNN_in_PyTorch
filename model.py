@@ -2,9 +2,8 @@
 # Model architecture #
 ######################
 
-# import torchvision.models as models
+import torchvision.models as models
 import pathlib
-import torch
 from torch import nn
 # Own modules
 from settings import setting
@@ -36,36 +35,40 @@ class CNN_Model():
         num_classes = len(class_list)
 
         if(self.cnn_type == "ResNet-18"):
-            self.model = torch.hub.load('pytorch/vision:v0.10.0', 'resnet18', weights=None)
+            self.model = models.resnet18(weights=None)
             # Set number of input channels
             self.model.conv1 = nn.Conv2d(self.input_channels, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False)
             # Set number of output nodes
             # https://discuss.pytorch.org/t/how-to-modify-the-final-fc-layer-based-on-the-torch-model/766/23
             self.model.fc = nn.Linear(512, num_classes)
 
+        ##########
+        # ResNet #
+        ##########
+
         elif(self.cnn_type == "ResNet-34"):
-            self.model = torch.hub.load('pytorch/vision:v0.10.0', 'resnet34', weights=None)
+            self.model = models.resnet34(weights=None)
             # Set number of input channels
             self.model.conv1 = nn.Conv2d(self.input_channels, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False)
             # Set number of output nodes
             self.model.fc = nn.Linear(512, num_classes)
 
         elif(self.cnn_type == "ResNet-50"):
-            self.model = torch.hub.load('pytorch/vision:v0.10.0', 'resnet50', weights=None)
+            self.model = models.resnet50(weights=None)
             # Set number of input channels
             self.model.conv1 = nn.Conv2d(self.input_channels, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False)
             # Set number of output nodes
             self.model.fc = nn.Linear(2048, num_classes) 
 
         elif(self.cnn_type == "ResNet-101"):
-            self.model = torch.hub.load('pytorch/vision:v0.10.0', 'resnet101', weights=None)
+            self.model = models.resnet101(weights=None)
             # Set number of input channels
             self.model.conv1 = nn.Conv2d(self.input_channels, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False)
             # Set number of output nodes
             self.model.fc = nn.Linear(2048, num_classes) 
 
         elif(self.cnn_type == "ResNet-152"):
-            self.model = torch.hub.load('pytorch/vision:v0.10.0', 'resnet152', weights=None)
+            self.model = models.resnet152(weights=None)
             # Set number of input channels
             self.model.conv1 = nn.Conv2d(self.input_channels, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False)
             # Set number of output nodes
