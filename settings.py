@@ -28,7 +28,7 @@ setting = {
     # Shuffle seed
     "ds_shuffle_seed": 123,
     # Batch size for training and validation datasets
-    "ds_batch_size": 24, 
+    "ds_batch_size": 12, 
     # Batch size for prediction dataset
     "ds_batch_size_pred": 1, 
     # Fraction of images which go into the validation dataset 
@@ -41,7 +41,9 @@ setting = {
     # Name of the model architecture
     # The choice is:
     # ResNet: ResNet-18, -34, -50, -101, -152
-    "cnn_type": "ResNet-50",     
+    # AlexNet
+    # VGG: VGG-11, -13, -16, -19 (models with batch normalization)
+    "cnn_type": "AlexNet",     
 
     ##########
     # IMAGES #

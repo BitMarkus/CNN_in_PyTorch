@@ -34,6 +34,10 @@ class CNN_Model():
         class_list = self.get_class_list()   
         num_classes = len(class_list)
 
+        ##########
+        # ResNet #
+        ##########        
+
         if(self.cnn_type == "ResNet-18"):
             self.model = models.resnet18(weights=None)
             # Set number of input channels
@@ -41,10 +45,6 @@ class CNN_Model():
             # Set number of output nodes
             # https://discuss.pytorch.org/t/how-to-modify-the-final-fc-layer-based-on-the-torch-model/766/23
             self.model.fc = nn.Linear(512, num_classes)
-
-        ##########
-        # ResNet #
-        ##########
 
         elif(self.cnn_type == "ResNet-34"):
             self.model = models.resnet34(weights=None)
@@ -67,12 +67,62 @@ class CNN_Model():
             # Set number of output nodes
             self.model.fc = nn.Linear(2048, num_classes) 
 
-        elif(self.cnn_type == "ResNet-152"):
+        elif(self.cnn_type == "AlexNet"):
             self.model = models.resnet152(weights=None)
             # Set number of input channels
             self.model.conv1 = nn.Conv2d(self.input_channels, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False)
             # Set number of output nodes
             self.model.fc = nn.Linear(2048, num_classes) 
+
+        ###########
+        # Alexnet #
+        ###########
+
+        elif(self.cnn_type == "ResNet-152"):
+            self.model = models.alexnet(weights=None)
+            # https://discuss.pytorch.org/t/how-to-modify-the-final-fc-layer-based-on-the-torch-model/766/11
+            # Set number of input channels
+            self.model.features._modules['0'] = nn.Conv2d(self.input_channels, 64, kernel_size=(11, 11), stride=(4, 4), padding=(2, 2))
+            # Set number of output nodes
+            self.model.classifier._modules['6'] = nn.Linear(4096, num_classes)   
+
+        #######
+        # VGG #
+        #######  
+
+        elif(self.cnn_type == "VGG-11"):
+            self.model = models.vgg11_bn(weights=None)
+            # https://discuss.pytorch.org/t/how-to-modify-the-final-fc-layer-based-on-the-torch-model/766/11
+            # Set number of input channels
+            self.model.features._modules['0'] = nn.Conv2d(self.input_channels, 64, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+            # Set number of output nodes
+            self.model.classifier._modules['6'] = nn.Linear(4096, num_classes, bias=True)  
+
+        elif(self.cnn_type == "VGG-13"):
+            self.model = models.vgg13_bn(weights=None)
+            # https://discuss.pytorch.org/t/how-to-modify-the-final-fc-layer-based-on-the-torch-model/766/11
+            # Set number of input channels
+            self.model.features._modules['0'] = nn.Conv2d(self.input_channels, 64, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+            # Set number of output nodes
+            self.model.classifier._modules['6'] = nn.Linear(4096, num_classes, bias=True)  
+
+        elif(self.cnn_type == "VGG-16"):
+            self.model = models.vgg16_bn(weights=None)
+            # https://discuss.pytorch.org/t/how-to-modify-the-final-fc-layer-based-on-the-torch-model/766/11
+            # Set number of input channels
+            self.model.features._modules['0'] = nn.Conv2d(self.input_channels, 64, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+            # Set number of output nodes
+            self.model.classifier._modules['6'] = nn.Linear(4096, num_classes, bias=True)    
+
+        elif(self.cnn_type == "VGG-19"):
+            self.model = models.vgg19_bn(weights=None)
+            # https://discuss.pytorch.org/t/how-to-modify-the-final-fc-layer-based-on-the-torch-model/766/11
+            # Set number of input channels
+            self.model.features._modules['0'] = nn.Conv2d(self.input_channels, 64, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+            # Set number of output nodes
+            self.model.classifier._modules['6'] = nn.Linear(4096, num_classes, bias=True)    
+
+
         
         # Send model to gpu or cpu
         self.model.to(device) 

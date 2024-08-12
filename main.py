@@ -100,7 +100,7 @@ def main():
                 train = Train(model, ds)
                 # Train network
                 history = train.train()
-                print("Training finished!")
+                print("\nTraining finished!")
                 # Show/save training plots
                 train.plot_metrics(history, setting["pth_plots"], show_plot=True, save_plot=True)
 

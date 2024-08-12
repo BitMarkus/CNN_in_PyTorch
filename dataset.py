@@ -62,6 +62,13 @@ class Dataset():
                 transforms.ToTensor(), 
                 # Normalization for ResNet
                 transforms.Grayscale(num_output_channels=1), # <- Grayscale
+                # Further augmentations:
+                # transforms.ToPILImage()
+                # transforms.RandomHorizontalFlip(p=0.5)
+                # transforms.ColorJitter(brightness=0.5, contrast=0, saturation=0, hue=0)
+                # transforms.RandomCrop((224,224))
+                # transforms.RandomRotation(degrees=45)
+                # transforms.RandomGrayScale(p=0.2)
             ])
             return transformer
 
