@@ -44,8 +44,8 @@ class Train():
         self.pth_checkpoint = setting["pth_checkpoint"]
 
         # Optmizer, learning rate scheduler and loss function
-        self.optimizer = Adam(model.parameters(), lr=self.init_lr, weight_decay=self.weight_decay)
-        # optimizer = SGD(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
+        # self.optimizer = Adam(model.parameters(), lr=self.init_lr, weight_decay=self.weight_decay)
+        self.optimizer = SGD(model.parameters(), lr=self.init_lr, weight_decay=self.weight_decay)
         self.loss_function = nn.CrossEntropyLoss()
         # This lr scheduler takes the initial lr for the optimizer
         # and multiplies it with gamma (default = 0.1) every step_size
@@ -109,7 +109,7 @@ class Train():
                 train_loss = train_loss / self.num_train_img
                 lr = self.scheduler.get_last_lr()[0]
 
-                print(f"> train_loss={train_loss:.5f}, train_acc={train_accuracy:.2f}, lr={lr:.6f}")
+                print(f"> train_loss: {train_loss:.5f}, train_acc: {train_accuracy:.2f}, lr: {lr:.6f}")
 
                 # Save train loss, accuracy and learning rate
                 history["train_loss"].append(train_loss)
@@ -130,7 +130,7 @@ class Train():
             # for i, (images,labels) in enumerate(tqdm(self.ds_val)):
             with tqdm(self.ds_val, unit="batch") as tepoch:
                 for images, labels in tepoch:
-                    tepoch.set_description("Valid:")
+                    tepoch.set_description("Valid")
 
                     # Send images and labels to gpu or cpu
                     if torch.cuda.is_available():
@@ -145,7 +145,7 @@ class Train():
             validation_accuracy = validation_accuracy / self.num_val_img
             validation_loss = validation_loss / self.num_val_img
 
-            print(f"> val_loss={validation_loss:.5f}, val_acc={validation_accuracy:.2f}")
+            print(f"> val_loss: {validation_loss:.5f}, val_acc: {validation_accuracy:.2f}")
 
             # Save validation loss and accuracy
             history["val_loss"].append(validation_loss)
@@ -209,111 +209,3 @@ class Train():
         # Show and save plot
         if(show_plot):
             plt.show()
-
-"""
-    def train(self):
-
-        # Save best accuracy for model saving
-        best_accuracy = 0.0
-        # Track train and validation accuracy, train and accuracy loss and learning rate every epoch
-        history = {"train_acc": [], "train_loss": [], "val_acc": [], "val_loss": [], "lr": []}
-
-        # Iterate over epochs
-        for epoch in range(self.num_epochs):
-
-            #################
-            # Training loop #
-            #################        
-
-            # Switch model to train mode
-            self.model.train()
-            # Set variables for train accuracy and loss
-            train_accuracy = 0.0
-            train_loss = 0.0
-            
-            # Iterate over batches
-            for i, (images, labels) in enumerate(tqdm(self.ds_train)):
-
-                # Send images and labels to gpu or cpu
-                if torch.cuda.is_available():
-                    images, labels = images.cuda(), labels.cuda()
-                
-                # Clear gradients
-                self.optimizer.zero_grad() 
-                # Forward          
-                outputs = self.model(images)
-                loss = self.loss_function(outputs, labels)
-                # Backward
-                loss.backward()
-                self.optimizer.step()            
-                train_loss += loss.cpu().data * images.size(0)
-                _, prediction = torch.max(outputs.data, 1)           
-                train_accuracy += int(torch.sum(prediction==labels.data))
-
-            # Set learning rate scheduler
-            self.scheduler.step()
-
-            # Calculate train loss and accuracy   
-            train_accuracy = train_accuracy / self.num_train_img
-            train_loss = train_loss / self.num_train_img
-            lr = self.scheduler.get_last_lr()[0]
-            print(f"Epoch [{epoch+1}/{self.num_epochs}]: train loss={train_loss:.5f}, train acc={train_accuracy:.2f}, lr={lr:.6f}")
-
-            # Save train loss, accuracy and learning rate
-            history["train_loss"].append(train_loss)
-            history["train_acc"].append(train_accuracy)
-            history["lr"].append(lr)
-
-            ###################
-            # Evaluation loop #
-            ###################
-
-            # Switch model to evaluation mode
-            self.model.eval()
-            # Set variables for validation accuracy and loss
-            validation_accuracy = 0.0
-            validation_loss = 0.0
-
-            # Iterate over batches
-            for i, (images,labels) in enumerate(tqdm(self.ds_val)):
-
-                # Send images and labels to gpu or cpu
-                if torch.cuda.is_available():
-                    images, labels = images.cuda(), labels.cuda()
-                    
-                outputs = self.model(images)
-                loss = self.loss_function(outputs, labels)
-                validation_loss += loss.cpu().data * images.size(0)
-                _,prediction = torch.max(outputs.data, 1)
-                validation_accuracy += int(torch.sum(prediction==labels.data))
-            
-            validation_accuracy = validation_accuracy / self.num_val_img
-            validation_loss = validation_loss / self.num_val_img
-            print(f"Epoch [{epoch+1}/{self.num_epochs}]: val loss={validation_loss:.5f}, val acc={validation_accuracy:.2f}")
-
-            # Save validation loss and accuracy
-            history["val_loss"].append(validation_loss)
-            history["val_acc"].append(validation_accuracy)
-
-            ###################
-            # Save best model #
-            ###################
-
-            # Save checkpoint if the accuracy has improved AND
-            # if it is higher than a predefined percentage (min_acc_for_saving) AND
-            # if models should be saved at all
-            if(validation_accuracy > best_accuracy and 
-                validation_accuracy > self.checkpoint_min_acc and
-                self.save_checkpoint):
-                # Datetime for saved files
-                current_datetime = datetime.now().strftime("%Y-%m-%d-%H-%M")
-                print(f"Model with test accuracy {validation_accuracy:.2f} saved!")
-                # Add datetime, epoch and validation accuracy to the filename and save model
-                filename = f'{self.pth_checkpoint}{current_datetime}_checkpoint_e{epoch+1}_vacc{validation_accuracy*100:.0f}.model'
-                torch.save(self.model.state_dict(), filename)
-
-                # Update best accuracy
-                best_accuracy = validation_accuracy    
-
-        return history
-"""
