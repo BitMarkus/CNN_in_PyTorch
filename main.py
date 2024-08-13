@@ -97,7 +97,7 @@ def main():
             else:
                 print("Start training...")
                 # Create a training object
-                train = Train(model, ds)
+                train = Train(cnn, ds)
                 # Train network
                 history = train.train()
                 print("\nTraining finished!")
@@ -115,10 +115,7 @@ def main():
                 print('No CNN generated yet!')
             else:
                 # Load model and weights for inference
-                # https://stackoverflow.com/questions/49941426/attributeerror-collections-ordereddict-object-has-no-attribute-eval
-                model.load_state_dict(torch.load(setting["pth_checkpoint"] + setting["chckpt_weights"]))
-                model.to(device)
-                print(f'Weights from checkpoint {setting["chckpt_weights"]} successfully loaded.')
+                cnn.load_weights(device)
 
         ############################
         # Predict images in folder #  
@@ -133,7 +130,7 @@ def main():
                 prediction_ds = ds.load_prediction_dataset()
                 print('Prediction dataset successfully loaded.')
                 print('Starting prediction...')
-                pred_acc, cm = fn.predict(model, prediction_ds)
+                pred_acc, cm = cnn.predict(prediction_ds)
                 print(f"Accuracy: {pred_acc:.2f}")  
 
                 # Plot confusion matrix

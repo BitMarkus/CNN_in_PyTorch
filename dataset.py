@@ -28,7 +28,8 @@ class Dataset():
         # Batch size for training and validation datasets (for 512x512 -> 24)
         self.batch_size = setting["ds_batch_size"]
         # Batch size for prediction dataset
-        self.batch_size_pred = setting["ds_batch_size_pred"]
+        # Always needs to be 1! Or calculation of confusion matrix parameters are more complicated
+        self.batch_size_pred = 1
         # Fraction of images which go into the validation dataset 
         self.val_split = setting["ds_val_split"]
         # Number of channels of training images 

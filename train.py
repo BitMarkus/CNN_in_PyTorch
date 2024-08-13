@@ -7,7 +7,6 @@ from torch.optim.lr_scheduler import StepLR
 from torch import nn
 from tqdm import tqdm
 import torch
-from datetime import datetime
 import matplotlib.pyplot as plt
 # Own modules
 from settings import setting
@@ -18,9 +17,11 @@ class Train():
     #############################################################################################################
     # CONSTRUCTOR:
     
-    def __init__(self, model, dataset):
+    def __init__(self, cnn, dataset):
+        # CNN object for methods
+        self.cnn = cnn
         # Model
-        self.model = model
+        self.model = cnn.model
         # Datasets
         self.ds_train = dataset.ds_train
         self.ds_val = dataset.ds_val
@@ -39,13 +40,15 @@ class Train():
         # Weight decay
         self.weight_decay = setting["train_weight_decay"] 
         # Checkpoint saving options
-        self.save_checkpoint = setting["chckpt_save"] 
-        self.checkpoint_min_acc = setting["chckpt_min_acc"] 
-        self.pth_checkpoint = setting["pth_checkpoint"]
+        # self.chckpt_min_acc = setting["chckpt_min_acc"] 
+        # self.chckpt_save = setting["chckpt_save"]
+        # self.chckpt_pth = setting["pth_checkpoint"]
+        # Variable for model architecture name
+        # self.cnn_type = setting["cnn_type"] 
 
         # Optmizer, learning rate scheduler and loss function
         # self.optimizer = Adam(model.parameters(), lr=self.init_lr, weight_decay=self.weight_decay)
-        self.optimizer = SGD(model.parameters(), lr=self.init_lr, weight_decay=self.weight_decay)
+        self.optimizer = SGD(self.model.parameters(), lr=self.init_lr, weight_decay=self.weight_decay)
         self.loss_function = nn.CrossEntropyLoss()
         # This lr scheduler takes the initial lr for the optimizer
         # and multiplies it with gamma (default = 0.1) every step_size
@@ -155,21 +158,7 @@ class Train():
             # Save best model #
             ###################
 
-            # Save checkpoint if the accuracy has improved AND
-            # if it is higher than a predefined percentage (min_acc_for_saving) AND
-            # if models should be saved at all
-            if(validation_accuracy > best_accuracy and 
-                validation_accuracy > self.checkpoint_min_acc and
-                self.save_checkpoint):
-                # Datetime for saved files
-                current_datetime = datetime.now().strftime("%Y-%m-%d-%H-%M")
-                print(f"Model with test accuracy {validation_accuracy:.2f} saved!")
-                # Add datetime, epoch and validation accuracy to the filename and save model
-                filename = f'{self.pth_checkpoint}{current_datetime}_checkpoint_e{epoch+1}_vacc{validation_accuracy*100:.0f}.model'
-                torch.save(self.model.state_dict(), filename)
-
-                # Update best accuracy
-                best_accuracy = validation_accuracy    
+            best_accuracy = self.cnn.save_weights(validation_accuracy, best_accuracy, epoch)
 
         return history
     

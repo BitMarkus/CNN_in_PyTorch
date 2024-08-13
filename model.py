@@ -5,6 +5,9 @@
 import torchvision.models as models
 import pathlib
 from torch import nn
+import torch
+from datetime import datetime
+from tqdm import tqdm
 # Own modules
 from settings import setting
 
@@ -24,6 +27,12 @@ class CNN_Model():
         self.model_loaded = False   
         # Model
         self.model = None
+        # Checkpoint saving options
+        self.chckpt_min_acc = setting["chckpt_min_acc"] 
+        self.chckpt_save = setting["chckpt_save"]
+        self.chckpt_pth = setting["pth_checkpoint"]
+        # heckpoint loading options
+        self.chckpt_weights_file = setting["chckpt_weights_file"] 
 
     #############################################################################################################
     # METHODS:
@@ -151,8 +160,7 @@ class CNN_Model():
             # Set number of output nodes
             self.model.classifier = nn.Linear(1920, num_classes, bias=True) 
             # print(self.model.classifier)
-
-        
+       
         # Send model to gpu or cpu
         self.model.to(device) 
         # Set model to loaded
@@ -171,3 +179,63 @@ class CNN_Model():
         print("Number of classes:", len(class_list))
         print("Classes: ", end="")
         print(', '.join(class_list))
+
+    # Saves a checkpoint/weights
+    def save_weights(self, val_acc, best_acc, epoch):
+        # Save checkpoint if the accuracy has improved AND
+        # if it is higher than a predefined percentage (min_acc_for_saving) AND
+        # if models should be saved at all
+        if(val_acc > best_acc and 
+            val_acc > self.chckpt_min_acc and
+            self.chckpt_save):
+            # Datetime for saved files
+            current_datetime = datetime.now().strftime("%Y-%m-%d-%H-%M")
+            print(f"Model with test accuracy {val_acc:.2f} saved!")
+            # Add datetime, epoch and validation accuracy to the filename and save model
+            filename = f'{self.chckpt_pth}{current_datetime}_checkpoint_{self.cnn_type}_e{epoch+1}_vacc{val_acc*100:.0f}.model'
+            torch.save(self.model.state_dict(), filename)
+            # Update best accuracy
+            best_acc = val_acc 
+
+        return best_acc
+    
+    # Load a checkpoint/weights
+    def load_weights(self, device):
+        # https://stackoverflow.com/questions/49941426/attributeerror-collections-ordereddict-object-has-no-attribute-eval
+        self.model.load_state_dict(torch.load(self.chckpt_pth + self.chckpt_weights_file))
+        self.model.to(device)
+        print(f'Weights from checkpoint {self.chckpt_weights_file} successfully loaded.')
+
+    # Function for Prediction
+    def predict(self, dataset):
+
+        # Load dataset
+        num_correct = 0
+        num_samples = 0
+        # Parameters for confusion matrix
+        cm = {"y": [], "y_hat": []}
+        # Set model to evaluation mode
+        self.model.eval()
+
+        # No need to keep track of gradients
+        with torch.no_grad():
+            # Loop through the data
+            for i, (images, labels) in enumerate(tqdm(dataset)):
+                # Send images and labels to gpu
+                if torch.cuda.is_available():
+                    images, labels = images.cuda(), labels.cuda()
+                # Forward pass
+                scores = self.model(images)
+                _, predictions = scores.max(1)
+                # Check how many we got correct
+                num_correct += (predictions == labels).sum()
+                # Keep track of number of samples
+                num_samples += predictions.size(0)
+                # Confusion matrix data
+                cm["y"].append(labels.item())
+                cm["y_hat"].append(predictions.item())
+
+        acc = num_correct / num_samples 
+        # Set model back to training mode
+        self.model.train()
+        return acc, cm
