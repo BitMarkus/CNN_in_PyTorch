@@ -67,13 +67,14 @@ def plot_confusion_matrix(cm, class_list, plot_path, show_plot=True, save_plot=T
     # # Print confusion matrix 
     # https://scikit-learn.org/stable/modules/model_evaluation.html#confusion-matrix
     # https://scikit-learn.org/stable/auto_examples/model_selection/plot_confusion_matrix.html#sphx-glr-auto-examples-model-selection-plot-confusion-matrix-py
+    # https://scikit-learn.org/stable/modules/generated/sklearn.metrics.ConfusionMatrixDisplay.html#sklearn.metrics.ConfusionMatrixDisplay.from_predictions
     ConfusionMatrixDisplay.from_predictions(
         cm["y"], 
         cm["y_hat"], 
         display_labels=class_list, 
         cmap='Blues', 
-        # normalize='pred',
-        normalize='true',
+        # normalize='pred', # the confusion matrix is normalized over the predicted conditions (e.g. columns)
+        normalize='true', # the confusion matrix is normalized over the true conditions (e.g. rows)
     )
     plt.tight_layout()
     # Save plot

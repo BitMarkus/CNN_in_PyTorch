@@ -11,7 +11,7 @@ setting = {
     # Weight decay
     "train_weight_decay": 0.0,  
     # Number of epochs
-    "train_num_epochs": 5,  
+    "train_num_epochs": 50,  
     # Initial learning rate (later determined by lr scheduler)
     "train_init_lr": 0.001,    # ADAM: 0.0001. SGD: 0.001
     # Learning rate scheduler:
@@ -36,13 +36,12 @@ setting = {
     # MODEL #
     #########
 
-    # Name of the model architecture
-    # The choice is:
+    # Name of the model architecture:
     # ResNet: ResNet-18, -34, -50, -101, -152
     # AlexNet
     # VGG: VGG-11, -13, -16, -19 (models with batch normalization)
     # DenseNet-121, -161, -169, -201
-    "cnn_type": "ResNet-18",     
+    "cnn_type": "ResNet-152",     
 
     ##########
     # IMAGES #
