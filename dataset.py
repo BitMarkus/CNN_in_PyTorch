@@ -42,12 +42,14 @@ class Dataset():
         # Number of training and validation images in each dataset
         self.num_train_img = 0
         self.num_val_img = 0
+        self.num_pred_img = 0
         # Number of training and validation batches in each dataset
         self.num_train_batches = 0
         self.num_val_batches = 0
         # Datasets
         self.ds_train = None
         self.ds_val = None
+        self.ds_pred = None
 
     #############################################################################################################
     # METHODS:
@@ -146,7 +148,10 @@ class Dataset():
                 dataset, 
                 batch_size=self.batch_size_pred, 
             )
-            return prediction_loader    
+            # Get number of images in test dataset
+            self.num_pred_img = len(prediction_loader)
+            self.ds_pred = prediction_loader  
+            return True  
         else:
             print("Loading of dataset failed! Input images must have either one (grayscale) or three (RGB) channels.")
             return False

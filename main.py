@@ -37,7 +37,7 @@ def main():
         print("3) Load Training Data")
         print("4) Train Network")
         print("5) Load Weights")
-        print("6) Predict Images in Predict Folder")
+        print("6) Predict Images in Prediction Folder")
         print("7) Exit Program")
         menu1 = int(fn.input_int("Please choose: "))
 
@@ -80,7 +80,7 @@ def main():
             print("\n:LOAD TRAINING DATA:") 
             ds.load_training_dataset()
             if(ds.ds_loaded):
-                print("Training and validation datasets successfully loaded!")
+                print("Training and validation datasets successfully loaded.")
                 print(f"Number training images/batches: {ds.num_train_img}/{ds.num_train_batches}")
                 print(f"Number validation images/batches: {ds.num_val_img}/{ds.num_val_batches}") 
 
@@ -127,10 +127,11 @@ def main():
                 print('No CNN generated yet!')
             else:
                 print('Load prediction dataset...')
-                prediction_ds = ds.load_prediction_dataset()
+                ds.load_prediction_dataset()
                 print('Prediction dataset successfully loaded.')
+                print(f"Number training images/batches: {ds.num_pred_img}/1")
                 print('Starting prediction...')
-                pred_acc, cm = cnn.predict(prediction_ds)
+                pred_acc, cm = cnn.predict(ds.ds_pred)
                 print(f"Accuracy: {pred_acc:.2f}")  
 
                 # Plot confusion matrix
