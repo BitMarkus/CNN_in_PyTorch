@@ -2,6 +2,7 @@ import torch
 # Own modules
 import functions as fn
 from model import CNN_Model
+from custom_model import Custom_CNN_Model
 from dataset import Dataset
 from train import Train
 from settings import setting
@@ -55,11 +56,17 @@ def main():
                     # Print class information
                     cnn.print_class_list()
                     # Load model
-                    print(f"Creating new {cnn.cnn_type} network...")  
-                    model = cnn.load_model(device)  
+                    print(f"Creating new {cnn.cnn_type} network...")
+                    if(setting["cnn_type"]):
+                        cnn.model = Custom_CNN_Model()
+                        # print(model)
+                        cnn.model.to(device) 
+                        cnn.model_loaded = True  
+                    else:
+                        cnn.model = cnn.load_model(device)  
                     print("New network was successfully created.")   
                 else:
-                    print("Unable to load the requesten cnn architecture!")          
+                    print("Unable to load the requested cnn architecture!")          
 
         ########################
         # Show Network Summary #  
@@ -68,7 +75,7 @@ def main():
         elif(menu1 == 2):        
             print("\n:SHOW NETWORK SUMMARY:")   
             if(cnn.model_loaded):
-                print(model)   
+                print(cnn.model)   
             else:
                 print("No network was generated yet!") 
 
@@ -129,7 +136,7 @@ def main():
                 print('Load prediction dataset...')
                 ds.load_prediction_dataset()
                 print('Prediction dataset successfully loaded.')
-                print(f"Number training images/batches: {ds.num_pred_img}/1")
+                print(f"Number test images/batches: {ds.num_pred_img}/1")
                 print('Starting prediction...')
                 pred_acc, cm = cnn.predict(ds.ds_pred)
                 print(f"Accuracy: {pred_acc:.2f}")  

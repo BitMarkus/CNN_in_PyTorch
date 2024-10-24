@@ -1,6 +1,6 @@
-######################
-# Model architecture #
-######################
+##################################
+# Predefined model architectures #
+##################################
 
 import torchvision.models as models
 import pathlib
@@ -33,19 +33,20 @@ class CNN_Model():
         self.chckpt_pth = setting["pth_checkpoint"]
         # heckpoint loading options
         self.chckpt_weights_file = setting["chckpt_weights_file"] 
+        # Get number of classes = number of output nodes
+        self.class_list = self.get_class_list()   
+        self.num_classes = len(self.class_list)
 
     #############################################################################################################
     # METHODS:
 
     # Load model: Pretrained or custom trained
+    # https://pytorch.org/vision/0.9/models.html  
     def load_model(self, device):
-        # Get number of classes = number of output nodes
-        class_list = self.get_class_list()   
-        num_classes = len(class_list)
 
         ##########
         # ResNet #
-        ##########        
+        ##########      
 
         if(self.cnn_type == "ResNet-18"):
             self.model = models.resnet18(weights=None)
@@ -53,35 +54,35 @@ class CNN_Model():
             self.model.conv1 = nn.Conv2d(self.input_channels, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False)
             # Set number of output nodes
             # https://discuss.pytorch.org/t/how-to-modify-the-final-fc-layer-based-on-the-torch-model/766/23
-            self.model.fc = nn.Linear(512, num_classes)
+            self.model.fc = nn.Linear(512, self.num_classes)
 
         elif(self.cnn_type == "ResNet-34"):
             self.model = models.resnet34(weights=None)
             # Set number of input channels
             self.model.conv1 = nn.Conv2d(self.input_channels, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False)
             # Set number of output nodes
-            self.model.fc = nn.Linear(512, num_classes)
+            self.model.fc = nn.Linear(512, self.num_classes)
 
         elif(self.cnn_type == "ResNet-50"):
             self.model = models.resnet50(weights=None)
             # Set number of input channels
             self.model.conv1 = nn.Conv2d(self.input_channels, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False)
             # Set number of output nodes
-            self.model.fc = nn.Linear(2048, num_classes) 
+            self.model.fc = nn.Linear(2048, self.num_classes) 
 
         elif(self.cnn_type == "ResNet-101"):
             self.model = models.resnet101(weights=None)
             # Set number of input channels
             self.model.conv1 = nn.Conv2d(self.input_channels, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False)
             # Set number of output nodes
-            self.model.fc = nn.Linear(2048, num_classes) 
+            self.model.fc = nn.Linear(2048, self.num_classes) 
 
         elif(self.cnn_type == "ResNet-152"):
             self.model = models.resnet152(weights=None)
             # Set number of input channels
             self.model.conv1 = nn.Conv2d(self.input_channels, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False)
             # Set number of output nodes
-            self.model.fc = nn.Linear(2048, num_classes) 
+            self.model.fc = nn.Linear(2048, self.num_classes) 
 
         ###########
         # Alexnet #
@@ -93,7 +94,7 @@ class CNN_Model():
             # Set number of input channels
             self.model.features._modules['0'] = nn.Conv2d(self.input_channels, 64, kernel_size=(11, 11), stride=(4, 4), padding=(2, 2))
             # Set number of output nodes
-            self.model.classifier._modules['6'] = nn.Linear(4096, num_classes)   
+            self.model.classifier._modules['6'] = nn.Linear(4096, self.num_classes)   
 
         #######
         # VGG #
@@ -105,28 +106,28 @@ class CNN_Model():
             # Set number of input channels
             self.model.features._modules['0'] = nn.Conv2d(self.input_channels, 64, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
             # Set number of output nodes
-            self.model.classifier._modules['6'] = nn.Linear(4096, num_classes, bias=True)  
+            self.model.classifier._modules['6'] = nn.Linear(4096, self.num_classes, bias=True)  
 
         elif(self.cnn_type == "VGG-13"):
             self.model = models.vgg13_bn(weights=None)
             # Set number of input channels
             self.model.features._modules['0'] = nn.Conv2d(self.input_channels, 64, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
             # Set number of output nodes
-            self.model.classifier._modules['6'] = nn.Linear(4096, num_classes, bias=True)  
+            self.model.classifier._modules['6'] = nn.Linear(4096, self.num_classes, bias=True)  
 
         elif(self.cnn_type == "VGG-16"):
             self.model = models.vgg16_bn(weights=None)
             # Set number of input channels
             self.model.features._modules['0'] = nn.Conv2d(self.input_channels, 64, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
             # Set number of output nodes
-            self.model.classifier._modules['6'] = nn.Linear(4096, num_classes, bias=True)    
+            self.model.classifier._modules['6'] = nn.Linear(4096, self.num_classes, bias=True)    
 
         elif(self.cnn_type == "VGG-19"):
             self.model = models.vgg19_bn(weights=None)
             # Set number of input channels
             self.model.features._modules['0'] = nn.Conv2d(self.input_channels, 64, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
             # Set number of output nodes
-            self.model.classifier._modules['6'] = nn.Linear(4096, num_classes, bias=True)  
+            self.model.classifier._modules['6'] = nn.Linear(4096, self.num_classes, bias=True)  
 
         ############
         # DenseNet #  
@@ -137,34 +138,35 @@ class CNN_Model():
             # Set number of input channels
             self.model.features._modules['conv0'] = nn.Conv2d(self.input_channels, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False)
             # Set number of output nodes
-            self.model.classifier = nn.Linear(1024, num_classes, bias=True) 
+            self.model.classifier = nn.Linear(1024, self.num_classes, bias=True) 
 
         elif(self.cnn_type == "DenseNet-161"):
             self.model = models.densenet161(weights=None)
             # Set number of input channels
             self.model.features._modules['conv0'] = nn.Conv2d(self.input_channels, 96, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False)
             # Set number of output nodes
-            self.model.classifier = nn.Linear(1024, num_classes, bias=True) 
+            self.model.classifier = nn.Linear(1024, self.num_classes, bias=True) 
 
         elif(self.cnn_type == "DenseNet-169"):
             self.model = models.densenet169(weights=None)
             # Set number of input channels
             self.model.features._modules['conv0'] = nn.Conv2d(self.input_channels, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False)
             # Set number of output nodes
-            self.model.classifier = nn.Linear(1664, num_classes, bias=True) 
+            self.model.classifier = nn.Linear(1664, self.num_classes, bias=True) 
 
         elif(self.cnn_type == "DenseNet-201"):
             self.model = models.densenet201(weights=None)
             # Set number of input channels
             self.model.features._modules['conv0'] = nn.Conv2d(self.input_channels, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False)
             # Set number of output nodes
-            self.model.classifier = nn.Linear(1920, num_classes, bias=True) 
+            self.model.classifier = nn.Linear(1920, self.num_classes, bias=True) 
             # print(self.model.classifier)
        
         # Send model to gpu or cpu
         self.model.to(device) 
         # Set model to loaded
         self.model_loaded = True  
+        
         return self.model       
 
     # Read classes from training data directory (subfolder names) and returns a list
@@ -175,10 +177,9 @@ class CNN_Model():
     
     # Prints all classes
     def print_class_list(self):
-        class_list = self.get_class_list()
-        print("Number of classes:", len(class_list))
+        print("Number of classes:", self.num_classes)
         print("Classes: ", end="")
-        print(', '.join(class_list))
+        print(', '.join(self.class_list))
 
     # Saves a checkpoint/weights
     def save_weights(self, val_acc, best_acc, epoch):
