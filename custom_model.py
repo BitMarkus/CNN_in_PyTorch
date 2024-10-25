@@ -50,7 +50,8 @@ class Custom_CNN_Model(nn.Module, CNN_Model):
         self.conv_block_6 = self._cnn_block(512, 512, first_cnn_block=False)
         
         # Define decoder
-        self.decoder = self._decoder(in_features=32768, out_features=self.num_classes)
+        # self.decoder = self._decoder_1(in_features=32768, out_features=self.num_classes)
+        self.decoder = self._decoder_2(in_features=512, out_features=self.num_classes)
    
 
     #############################################################################################################
@@ -72,7 +73,7 @@ class Custom_CNN_Model(nn.Module, CNN_Model):
             nn.MaxPool2d(kernel_size=(2, 2))
         )
 
-    def _decoder(self, in_features, out_features):  
+    def _decoder_1(self, in_features, out_features):  
         
         return nn.Sequential(
             nn.Flatten(),
@@ -84,6 +85,17 @@ class Custom_CNN_Model(nn.Module, CNN_Model):
             nn.Dropout(self.dropout),
             # Classifier
             nn.Linear(in_features=512, out_features=out_features),
+        )  
+    
+    def _decoder_2(self, in_features, out_features):  
+        
+        return nn.Sequential(
+            # 1x1 convolution to reduce feature maps to number of classes
+            nn.Conv2d(in_features, out_features, 1, 1, 0, bias=False),
+            # https://discuss.pytorch.org/t/global-average-pooling-in-pytorch/6721/4
+            # https://blog.paperspace.com/global-pooling-in-convolutional-neural-networks/
+            # Global average pooling: 8 as the size of the last feature maps is 8x8 
+            nn.AvgPool2d(8),
         )  
 
     #############################################################################################################
@@ -141,7 +153,16 @@ class Custom_CNN_Model(nn.Module, CNN_Model):
                 x.shape[3] == 8)
         
         # DECODER
-        x = self.decoder(x)  
+        x = self.decoder(x) 
+        # print(x.shape)
+        #######################################################################################################
+        # Line specific for decoder_2
+        # Reshapes the tensor from the global average pooling layer [batch_size, 2, 1, 1]
+        # to the desired output tensor [batch size, 2]
+        x = x.view(-1, 2 * 1 * 1)
+        #######################################################################################################
+        # print(x.shape)
+
         assert (x.shape[0] <= self.batch_size and 
                 x.shape[1] == self.num_classes)
 
