@@ -11,7 +11,7 @@ setting = {
     # Weight decay
     "train_weight_decay": 0.0,  
     # Number of epochs
-    "train_num_epochs": 60,  
+    "train_num_epochs": 20,  
     # Initial learning rate (later determined by lr scheduler)
     "train_init_lr": 0.01,    # ADAM: 0.0001. SGD: 0.001
     # Learning rate scheduler:
@@ -28,7 +28,7 @@ setting = {
     # Shuffle seed
     "ds_shuffle_seed": 123,
     # Batch size for training and validation datasets
-    "ds_batch_size": 1, 
+    "ds_batch_size": 24, 
     # Fraction of images which go into the validation dataset 
     "ds_val_split": 0.1, 
 
@@ -42,7 +42,7 @@ setting = {
     # VGG: VGG-11, -13, -16, -19 (models with batch normalization)
     # DenseNet-121, -161, -169, -201
     # "cnn_type": "ResNet-152",  
-    # Custom CNN architecture
+    # Custom CNN architecture: custom
     "cnn_type": "custom", 
 
     ################
@@ -66,7 +66,7 @@ setting = {
     ###############
 
     # Name of the checkpoint file to load weights for predictions
-    "chckpt_weights_file": "2024-09-19-14-26_checkpoint_ResNet-152_e23_vacc82.model",  
+    "chckpt_weights_file": "2024-10-24-21-03_checkpoint_custom_e11_vacc80.model",  
     # Set to True, if checkpoints shall be saved during training
     "chckpt_save": True,  
     # Mininmun validation accuracy from which on checkpoints are saved

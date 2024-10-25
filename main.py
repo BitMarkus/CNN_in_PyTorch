@@ -57,10 +57,8 @@ def main():
                     cnn.print_class_list()
                     # Load model
                     print(f"Creating new {cnn.cnn_type} network...")
-                    if(setting["cnn_type"]):
-                        cnn.model = Custom_CNN_Model()
-                        # print(model)
-                        cnn.model.to(device) 
+                    if(setting["cnn_type"] == "custom"):
+                        cnn.model = Custom_CNN_Model().to(device)
                         cnn.model_loaded = True  
                     else:
                         cnn.model = cnn.load_model(device)  
