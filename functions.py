@@ -30,7 +30,7 @@ def input_int(prompt):
     while(True):
         nr = input(prompt)
         if not(check_int(nr)):
-            print("Input is not an integer number! Try again:")
+            print("Input is not an integer number! Try again...")
         else:
             return int(nr)  
         

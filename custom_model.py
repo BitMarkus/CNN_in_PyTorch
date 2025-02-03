@@ -103,8 +103,7 @@ class Custom_CNN_Model(nn.Module, CNN_Model):
 
     def forward(self, x):
         # print(x.shape)
-        assert (x.shape[0] <= self.batch_size and 
-                x.shape[1] == self.input_channels and 
+        assert (x.shape[1] == self.input_channels and 
                 x.shape[2] == self.img_height and 
                 x.shape[3] == self.img_width)
         
@@ -112,43 +111,37 @@ class Custom_CNN_Model(nn.Module, CNN_Model):
         # Conv block 1:
         # 512x512 -> 256x256
         x = self.conv_block_1(x)
-        assert (x.shape[0] <= self.batch_size and 
-                x.shape[1] == 64 and 
+        assert (x.shape[1] == 64 and 
                 x.shape[2] == 256 and 
                 x.shape[3] == 256)
         # Conv block 2:
         # 256x256 -> 128x128
         x = self.conv_block_2(x)
-        assert (x.shape[0] <= self.batch_size and 
-                x.shape[1] == 128 and 
+        assert (x.shape[1] == 128 and 
                 x.shape[2] == 128 and 
                 x.shape[3] == 128)
         # Conv block 3:
         # 128x128 -> 64x64
         x = self.conv_block_3(x)
-        assert (x.shape[0] <= self.batch_size and 
-                x.shape[1] == 256 and 
+        assert (x.shape[1] == 256 and 
                 x.shape[2] == 64 and 
                 x.shape[3] == 64)
         # Conv block 4:
         # 64x64 -> 32x32
         x = self.conv_block_4(x)
-        assert (x.shape[0] <= self.batch_size and 
-                x.shape[1] == 512 and 
+        assert (x.shape[1] == 512 and 
                 x.shape[2] == 32 and 
                 x.shape[3] == 32)
         # Conv block 5:
         # 32x32 -> 16x16
         x = self.conv_block_5(x)
-        assert (x.shape[0] <= self.batch_size and 
-                x.shape[1] == 512 and 
+        assert (x.shape[1] == 512 and 
                 x.shape[2] == 16 and 
                 x.shape[3] == 16)
         # Conv block 6:
         # 16x16 -> 8x8
         x = self.conv_block_6(x) 
-        assert (x.shape[0] <= self.batch_size and 
-                x.shape[1] == 512 and 
+        assert (x.shape[1] == 512 and 
                 x.shape[2] == 8 and 
                 x.shape[3] == 8)
         
@@ -163,8 +156,7 @@ class Custom_CNN_Model(nn.Module, CNN_Model):
         #######################################################################################################
         # print(x.shape)
 
-        assert (x.shape[0] <= self.batch_size and 
-                x.shape[1] == self.num_classes)
+        assert (x.shape[1] == self.num_classes)
 
         return x
     

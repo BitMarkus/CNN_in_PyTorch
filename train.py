@@ -49,6 +49,7 @@ class Train():
         # Optmizer, learning rate scheduler and loss function
         # self.optimizer = Adam(model.parameters(), lr=self.init_lr, weight_decay=self.weight_decay)
         self.optimizer = SGD(self.model.parameters(), lr=self.init_lr, weight_decay=self.weight_decay)
+        # This loss function combines nn.LogSoftmax() and nn.NLLLoss() in one single class
         self.loss_function = nn.CrossEntropyLoss()
         # This lr scheduler takes the initial lr for the optimizer
         # and multiplies it with gamma (default = 0.1) every step_size

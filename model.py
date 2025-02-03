@@ -8,6 +8,11 @@ from torch import nn
 import torch
 from datetime import datetime
 from tqdm import tqdm
+
+from PIL import Image
+from captum.attr import IntegratedGradients
+import matplotlib.pyplot as plt
+from captum.attr import visualization as viz
 # Own modules
 from settings import setting
 
@@ -204,7 +209,7 @@ class CNN_Model():
     def load_weights(self, device):
         # https://stackoverflow.com/questions/49941426/attributeerror-collections-ordereddict-object-has-no-attribute-eval
         self.model.load_state_dict(torch.load(self.chckpt_pth + self.chckpt_weights_file))
-        self.model.to(device)
+        # self.model.to(device)
         print(f'Weights from checkpoint {self.chckpt_weights_file} successfully loaded.')
 
     # Function for Prediction
@@ -227,6 +232,7 @@ class CNN_Model():
                     images, labels = images.cuda(), labels.cuda()
                 # Forward pass
                 scores = self.model(images)
+                # print(scores)         
                 _, predictions = scores.max(1)
                 # Check how many we got correct
                 num_correct += (predictions == labels).sum()
@@ -234,9 +240,57 @@ class CNN_Model():
                 num_samples += predictions.size(0)
                 # Confusion matrix data
                 cm["y"].append(labels.item())
+                # print(labels.item())
                 cm["y_hat"].append(predictions.item())
+                # print(predictions.item())
 
         acc = num_correct / num_samples 
         # Set model back to training mode
         self.model.train()
         return acc, cm
+    
+    def predict_single(self, dataset):
+        # Set model to evaluation mode
+        self.model.eval()
+        # No need to keep track of gradients
+        with torch.no_grad():
+            # Loop through the data
+            for i, (images, labels) in enumerate(dataset):
+                # Send images and labels to gpu
+                if torch.cuda.is_available():
+                    images, labels = images.cuda(), labels.cuda()
+
+                for i, img in enumerate(images):
+                    img = img.unsqueeze(0)  # Add batch dimension
+                    # print(img.shape)
+                    score = self.model(img)
+                    probability = torch.softmax(score, dim=1)
+
+                    # Initialize Integrated Gradients
+                    ig = IntegratedGradients(self.model) 
+                    # Read target class (e.g., class 1)
+                    # ko = 0, wt = 1  
+                    tar_class = labels[i].item()
+                    # Compute attributions
+                    attributions = ig.attribute(img, target=tar_class) 
+                    print("Target class:", tar_class)
+                    print("Probability:", probability)
+
+                    # Convert the input image and attributions to a format suitable for visualization
+                    image_np = img.squeeze(0).permute(1, 2, 0).cpu().numpy()
+                    # print(image_np.shape)
+                    attributions_np = attributions.squeeze(0).permute(1, 2, 0).cpu().numpy()     
+
+                    # Visualize the attributions
+                    fig, ax = viz.visualize_image_attr(
+                        attributions_np,  # Attributions
+                        original_image=image_np,  # Original image
+                        method="blended_heat_map",  # Visualization method # blended_heat_map, heat_map or masked_image
+                        sign="positive",  # Show positive and negative attributions # all
+                        cmap="inferno",
+                        show_colorbar=True,  # Show color bar
+                        title=f"Feature Attribution for Class {tar_class}",
+                        fig_size=(12,12)
+                    )                       
+                    plt.show() 
+

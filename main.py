@@ -1,4 +1,9 @@
 import torch
+from PIL import Image
+from captum.attr import IntegratedGradients
+import matplotlib.pyplot as plt
+from captum.attr import visualization as viz
+import os
 # Own modules
 import functions as fn
 from model import CNN_Model
@@ -14,7 +19,7 @@ from settings import setting
 # Create a dataset object
 ds = Dataset()
 # Create a model object
-cnn = CNN_Model()
+cnn = Custom_CNN_Model()
 
 ########
 # MAIN #
@@ -39,7 +44,8 @@ def main():
         print("4) Train Network")
         print("5) Load Weights")
         print("6) Predict Images in Prediction Folder")
-        print("7) Exit Program")
+        print("7) Captum Test")
+        print("8) Exit Program")
         menu1 = int(fn.input_int("Please choose: "))
 
         ######################
@@ -143,11 +149,25 @@ def main():
                 class_list = cnn.get_class_list()
                 fn.plot_confusion_matrix(cm, class_list, setting["pth_plots"], show_plot=True, save_plot=True)
 
+        ###############
+        # Captum Test #  
+        ###############
+
+        elif(menu1 == 7):  
+            print("\n:CAPTUM:") 
+
+            # ds.load_prediction_dataset()
+            cnn.model = Custom_CNN_Model().to(device)
+            ds.load_training_dataset()
+            cnn.load_weights(device)
+
+            cnn.predict_single(ds.ds_train)
+
         ################
         # Exit Program #
         ################
 
-        elif(menu1 == 7):
+        elif(menu1 == 8):
             print("\nExit program...")
             break
         

@@ -11,9 +11,9 @@ setting = {
     # Weight decay
     "train_weight_decay": 0.0,  
     # Number of epochs
-    "train_num_epochs": 20,  
+    "train_num_epochs": 50,  
     # Initial learning rate (later determined by lr scheduler)
-    "train_init_lr": 0.01,    # ADAM: 0.0001. SGD: 0.001
+    "train_init_lr": 0.001,    # ADAM: 0.0001. SGD: 0.001
     # Learning rate scheduler:
     # No of steps after which he lr is multiplied by the lr multiplier
     "train_lr_step_size": 10, 
@@ -66,7 +66,7 @@ setting = {
     ###############
 
     # Name of the checkpoint file to load weights for predictions
-    "chckpt_weights_file": "2024-10-24-21-03_checkpoint_custom_e11_vacc80.model",  
+    "chckpt_weights_file": "2025-01-31-11-33_checkpoint_custom_e50_vacc84.model",  
     # Set to True, if checkpoints shall be saved during training
     "chckpt_save": True,  
     # Mininmun validation accuracy from which on checkpoints are saved
