@@ -8,16 +8,23 @@ setting = {
     # TRAINING #
     ############
  
-    # Weight decay
-    "train_weight_decay": 0.0,  
+    # Optimizer:
+    # Weight decay = L2 regularization
+    "train_weight_decay": 1e-4, # ADAM and SGD: 1e-4  
+    # Momentum
+    "train_momentum": 0.9,      # SGD: 0.9  
+    # Initial learning rate (later determined by lr scheduler)
+    "train_init_lr": 0.001,      # ADAM: 0.0001-0.0003 (3e-4), SGD: 0.01-0.001
     # Number of epochs
     "train_num_epochs": 50,  
-    # Initial learning rate (later determined by lr scheduler)
-    "train_init_lr": 0.001,    # ADAM: 0.0001. SGD: 0.001
+
     # Learning rate scheduler:
     # No of steps after which he lr is multiplied by the lr multiplier
+    # Linear StepLR:
     "train_lr_step_size": 10, 
-    "train_lr_multiplier": 0.5,   
+    "train_lr_multiplier": 0.5, 
+    # CosineAnnealingLR 
+    "train_lr_eta_min": 1e-5,
 
     ###########
     # DATASET #
@@ -28,7 +35,7 @@ setting = {
     # Shuffle seed
     "ds_shuffle_seed": 123,
     # Batch size for training and validation datasets
-    "ds_batch_size": 24, 
+    "ds_batch_size": 64, 
     # Fraction of images which go into the validation dataset 
     "ds_val_split": 0.1, 
 
@@ -41,9 +48,9 @@ setting = {
     # AlexNet
     # VGG: VGG-11, -13, -16, -19 (models with batch normalization)
     # DenseNet-121, -161, -169, -201
-    # "cnn_type": "ResNet-152",  
+    "cnn_type": "ResNet-18",  
     # Custom CNN architecture: custom
-    "cnn_type": "custom", 
+    # "cnn_type": "custom", 
 
     ################
     # CUSTOM MODEL #
@@ -66,11 +73,11 @@ setting = {
     ###############
 
     # Name of the checkpoint file to load weights for predictions
-    "chckpt_weights_file": "2025-01-31-11-33_checkpoint_custom_e50_vacc84.model",  
+    "chckpt_weights_file": ".model",  
     # Set to True, if checkpoints shall be saved during training
     "chckpt_save": True,  
     # Mininmun validation accuracy from which on checkpoints are saved
-    "chckpt_min_acc": 0.7,  
+    "chckpt_min_acc": 0.65,  
 
     #########
     # PATHS #

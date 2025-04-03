@@ -37,26 +37,35 @@ class Train():
         self.init_lr = setting["train_init_lr"]
         self.lr_step_size = setting["train_lr_step_size"] 
         self.lr_multiplier = setting["train_lr_multiplier"]  
+        self.lr_eta_min = setting["train_lr_eta_min"] 
         # Weight decay
         self.weight_decay = setting["train_weight_decay"] 
-        # Checkpoint saving options
-        # self.chckpt_min_acc = setting["chckpt_min_acc"] 
-        # self.chckpt_save = setting["chckpt_save"]
-        # self.chckpt_pth = setting["pth_checkpoint"]
-        # Variable for model architecture name
-        # self.cnn_type = setting["cnn_type"] 
+        # Optimizer momentum
+        self.train_momentum = setting["train_momentum"] 
 
         # Optmizer, learning rate scheduler and loss function
+        # ADAM:
         # self.optimizer = Adam(model.parameters(), lr=self.init_lr, weight_decay=self.weight_decay)
-        self.optimizer = SGD(self.model.parameters(), lr=self.init_lr, weight_decay=self.weight_decay)
+        # SGD:
+        self.optimizer = SGD(
+            self.model.parameters(), 
+            lr=self.init_lr, 
+            momentum=self.train_momentum,
+            weight_decay=self.weight_decay
+        )
         # This loss function combines nn.LogSoftmax() and nn.NLLLoss() in one single class
         self.loss_function = nn.CrossEntropyLoss()
+
+        # Learning rate scheduler:
+        # Linear StepLR:
         # This lr scheduler takes the initial lr for the optimizer
         # and multiplies it with gamma (default = 0.1) every step_size
         # When last_epoch=-1, sets initial lr as lr
         # https://pytorch.org/docs/stable/optim.html
         # https://pytorch.org/docs/stable/generated/torch.optim.lr_scheduler.StepLR.html#torch.optim.lr_scheduler.StepLR
-        self.scheduler = StepLR(self.optimizer, step_size=self.lr_step_size, gamma=self.lr_multiplier) 
+        # self.scheduler = StepLR(self.optimizer, step_size=self.lr_step_size, gamma=self.lr_multiplier) 
+        # CosineAnnealingLR:
+        self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(self.optimizer, T_max=self.num_epochs, eta_min=self.lr_eta_min)
 
     #############################################################################################################
     # METHODS:
