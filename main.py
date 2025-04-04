@@ -157,7 +157,7 @@ def main():
             print("\n:CAPTUM:") 
 
             # ds.load_prediction_dataset()
-            cnn.model = Custom_CNN_Model().to(device)
+            # cnn.model = Custom_CNN_Model().to(device)
             ds.load_training_dataset()
             cnn.load_weights(device)
 

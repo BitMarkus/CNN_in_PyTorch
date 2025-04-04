@@ -330,7 +330,7 @@ class CNN_Model():
                     fig, ax = viz.visualize_image_attr(
                         attributions_np,  # Attributions
                         original_image=image_np,  # Original image
-                        method="blended_heat_map",  # Visualization method # blended_heat_map, heat_map or masked_image
+                        method="heat_map",  # Visualization method # blended_heat_map, heat_map or masked_image
                         sign="positive",  # Show positive and negative attributions # all
                         cmap="inferno",
                         show_colorbar=True,  # Show color bar
