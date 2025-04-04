@@ -7,16 +7,22 @@ setting = {
     ############
     # TRAINING #
     ############
- 
-    # Optimizer:
-    # Weight decay = L2 regularization
-    "train_weight_decay": 1e-4, # ADAM and SGD: 1e-4  
-    # Momentum
-    "train_momentum": 0.9,      # SGD: 0.9  
-    # Initial learning rate (later determined by lr scheduler)
-    "train_init_lr": 0.001,      # ADAM: 0.0001-0.0003 (3e-4), SGD: 0.01-0.001
+
     # Number of epochs
-    "train_num_epochs": 50,  
+    "train_num_epochs": 30,  
+    # Batch size for training and validation datasets
+    "ds_batch_size": 26, 
+
+    # Optimizer:
+    # Initial learning rate (later determined by lr scheduler)
+     # ADAM: 0.0001-0.0003 (3e-4), SGD: 0.01-0.001
+    "train_init_lr": 0.001,    
+    # Weight decay = L2 regularization
+    # ADAM and SGD: 1e-4 
+    "train_weight_decay": 1e-4,  
+    # Momentum
+    # SGD: 0.9 
+    "train_momentum": 0.9,       
 
     # Learning rate scheduler:
     # No of steps after which he lr is multiplied by the lr multiplier
@@ -34,8 +40,6 @@ setting = {
     "ds_shuffle": True,
     # Shuffle seed
     "ds_shuffle_seed": 123,
-    # Batch size for training and validation datasets
-    "ds_batch_size": 64, 
     # Fraction of images which go into the validation dataset 
     "ds_val_split": 0.1, 
 
@@ -48,7 +52,7 @@ setting = {
     # AlexNet
     # VGG: VGG-11, -13, -16, -19 (models with batch normalization)
     # DenseNet-121, -161, -169, -201
-    "cnn_type": "ResNet-18",  
+    "cnn_type": "EfficientNet-B0",  
     # Custom CNN architecture: custom
     # "cnn_type": "custom", 
 
@@ -77,7 +81,7 @@ setting = {
     # Set to True, if checkpoints shall be saved during training
     "chckpt_save": True,  
     # Mininmun validation accuracy from which on checkpoints are saved
-    "chckpt_min_acc": 0.65,  
+    "chckpt_min_acc": 0.7,  
 
     #########
     # PATHS #

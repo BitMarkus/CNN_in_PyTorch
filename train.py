@@ -195,7 +195,7 @@ class Train():
         # Learning rate plot:
         plt.subplot(1, 3, 3)
         # convert y-axis to Logarithmic scale
-        plt.yscale("log")
+        # plt.yscale("log")
         plt.plot(epochs_range, history["lr"], label='Learning Rate', color='blue')
         plt.legend(loc='upper right')
         plt.title('Learning Rate')

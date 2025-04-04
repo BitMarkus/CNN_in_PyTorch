@@ -49,6 +49,8 @@ class CNN_Model():
     # https://pytorch.org/vision/0.9/models.html  
     def load_model(self, device):
 
+        # Use weights="DEFAULT" for pretrained weights
+
         ##########
         # ResNet #
         ##########      
@@ -88,6 +90,13 @@ class CNN_Model():
             self.model.conv1 = nn.Conv2d(self.input_channels, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False)
             # Set number of output nodes
             self.model.fc = nn.Linear(2048, self.num_classes) 
+
+        elif(self.cnn_type == "ResNeXt-101"):
+            self.model = models.resnext101_32x8d(weights=None)
+            # Set number of input channels
+            self.model.conv1 = nn.Conv2d(self.input_channels, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False)
+            # Set number of output nodes
+            self.model.fc = nn.Linear(self.model.fc.in_features, self.num_classes)
 
         ###########
         # Alexnet #
@@ -166,6 +175,42 @@ class CNN_Model():
             # Set number of output nodes
             self.model.classifier = nn.Linear(1920, self.num_classes, bias=True) 
             # print(self.model.classifier)
+
+        ################
+        # EfficientNet #
+        ################
+
+        elif(self.cnn_type == "EfficientNet-B7"):
+            # Load EfficientNet-B7
+            self.model = models.efficientnet_b7(weights=None)
+            # Set number of input channels
+            first_conv = self.model.features[0][0]
+            self.model.features[0][0] = nn.Conv2d(
+                self.input_channels,
+                first_conv.out_channels,
+                kernel_size=first_conv.kernel_size,
+                stride=first_conv.stride,
+                padding=first_conv.padding,
+                bias=False
+            )
+            # Set number of output nodes
+            self.model.classifier[1] = nn.Linear(self.model.classifier[1].in_features, self.num_classes)
+
+        elif(self.cnn_type == "EfficientNet-B0"):
+            # Load EfficientNet-B0
+            self.model = models.efficientnet_b0(weights=None)
+            # Set number of input channels
+            first_conv = self.model.features[0][0]
+            self.model.features[0][0] = nn.Conv2d(
+                self.input_channels,
+                first_conv.out_channels,
+                kernel_size=first_conv.kernel_size,
+                stride=first_conv.stride,
+                padding=first_conv.padding,
+                bias=False
+            )
+            # Set number of output nodes
+            self.model.classifier[1] = nn.Linear(self.model.classifier[1].in_features, self.num_classes)
        
         # Send model to gpu or cpu
         self.model.to(device) 
