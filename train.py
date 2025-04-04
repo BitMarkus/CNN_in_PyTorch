@@ -36,8 +36,7 @@ class Train():
         self.num_epochs = setting["train_num_epochs"] 
         # Initial learning rate and scheduler
         self.init_lr = setting["train_init_lr"]
-        self.lr_step_size = setting["train_lr_step_size"] 
-        self.lr_multiplier = setting["train_lr_multiplier"]  
+        self.warmup_epochs = setting["train_lr_warmup_epochs"] 
         self.lr_eta_min = setting["train_lr_eta_min"] 
         # Weight decay
         self.weight_decay = setting["train_weight_decay"] 
@@ -58,21 +57,27 @@ class Train():
         self.loss_function = nn.CrossEntropyLoss()
 
         # Learning rate scheduler:
-        # Linear StepLR:
-        # This lr scheduler takes the initial lr for the optimizer
-        # and multiplies it with gamma (default = 0.1) every step_size
-        # When last_epoch=-1, sets initial lr as lr
-        # https://pytorch.org/docs/stable/optim.html
-        # https://pytorch.org/docs/stable/generated/torch.optim.lr_scheduler.StepLR.html#torch.optim.lr_scheduler.StepLR
-        # self.scheduler = StepLR(self.optimizer, step_size=self.lr_step_size, gamma=self.lr_multiplier) 
         # CosineAnnealingLR:
-        self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+        self.scheduler_CA = torch.optim.lr_scheduler.CosineAnnealingLR(
             self.optimizer, 
-            T_max=self.num_epochs, 
+            T_max=self.num_epochs - self.warmup_epochs, # Adjust for warmup
             eta_min=self.lr_eta_min
+        )
+        # Warmup scheduler
+        self.warmup_scheduler = torch.optim.lr_scheduler.LinearLR(
+            self.optimizer, 
+            start_factor=0.01,  # Start at 1% of target LR
+            total_iters=self.warmup_epochs       # Ramp over 5 epochs
+        )
+        # Then chain with your CosineAnnealingLR
+        self.scheduler = torch.optim.lr_scheduler.SequentialLR(
+            self.optimizer,
+            schedulers=[self.warmup_scheduler, self.scheduler_CA],
+            milestones=[self.warmup_epochs]
         )
 
         # Add gradient scaler for mixed precision training
+        # Initialize once before training
         self.scaler = GradScaler()
 
     #############################################################################################################
@@ -117,9 +122,11 @@ class Train():
                         # Forward          
                         outputs = self.model(images)
                         loss = self.loss_function(outputs, labels)
-                    # Backward with scaling
+                    # Scales loss and backprops scaled gradients
                     self.scaler.scale(loss).backward()
+                    # Unscales gradients + optimizer step (skips if gradients are inf/NaN)
                     self.scaler.step(self.optimizer)
+                    # Updates scale for next iteration
                     self.scaler.update()
                     
                     train_loss += loss.cpu().data * images.size(0)
