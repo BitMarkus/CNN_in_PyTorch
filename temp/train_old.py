@@ -8,7 +8,6 @@ from torch import nn
 from tqdm import tqdm
 import torch
 import matplotlib.pyplot as plt
-from torch.cuda.amp import GradScaler, autocast 
 # Own modules
 from settings import setting
 import functions as fn
@@ -66,14 +65,7 @@ class Train():
         # https://pytorch.org/docs/stable/generated/torch.optim.lr_scheduler.StepLR.html#torch.optim.lr_scheduler.StepLR
         # self.scheduler = StepLR(self.optimizer, step_size=self.lr_step_size, gamma=self.lr_multiplier) 
         # CosineAnnealingLR:
-        self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-            self.optimizer, 
-            T_max=self.num_epochs, 
-            eta_min=self.lr_eta_min
-        )
-
-        # Add gradient scaler for mixed precision training
-        self.scaler = GradScaler()
+        self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(self.optimizer, T_max=self.num_epochs, eta_min=self.lr_eta_min)
 
     #############################################################################################################
     # METHODS:
@@ -112,16 +104,12 @@ class Train():
                     
                     # Clear gradients
                     self.optimizer.zero_grad() 
-                    # Enable mixed precision
-                    with autocast():
-                        # Forward          
-                        outputs = self.model(images)
-                        loss = self.loss_function(outputs, labels)
-                    # Backward with scaling
-                    self.scaler.scale(loss).backward()
-                    self.scaler.step(self.optimizer)
-                    self.scaler.update()
-                    
+                    # Forward          
+                    outputs = self.model(images)
+                    loss = self.loss_function(outputs, labels)
+                    # Backward
+                    loss.backward()
+                    self.optimizer.step()            
                     train_loss += loss.cpu().data * images.size(0)
                     _, prediction = torch.max(outputs.data, 1)           
                     train_accuracy += int(torch.sum(prediction==labels.data))
@@ -151,27 +139,21 @@ class Train():
             validation_accuracy = 0.0
             validation_loss = 0.0
 
-            # Clear cache before validation to save V-RAM
-            torch.cuda.empty_cache()
-
             # Iterate over batches
-            # torch.inference_mode(): More efficient than no_grad()
-            with torch.inference_mode():
-                with tqdm(self.ds_val, unit="batch") as tepoch:
-                    for images, labels in tepoch:
-                        tepoch.set_description("Valid")
+            # for i, (images,labels) in enumerate(tqdm(self.ds_val)):
+            with tqdm(self.ds_val, unit="batch") as tepoch:
+                for images, labels in tepoch:
+                    tepoch.set_description("Valid")
 
-                        # Send images and labels to gpu or cpu
-                        if torch.cuda.is_available():
-                            images, labels = images.cuda(), labels.cuda()
+                    # Send images and labels to gpu or cpu
+                    if torch.cuda.is_available():
+                        images, labels = images.cuda(), labels.cuda()
                         
-                        # Explicit FP32 validation (no autocast)
-                        outputs = self.model(images) # Let PyTorch handle dtype automatically
-                        loss = self.loss_function(outputs, labels)
-                        
-                        validation_loss += loss.cpu().data * images.size(0)
-                        _, prediction = torch.max(outputs.data, 1)
-                        validation_accuracy += int(torch.sum(prediction==labels.data))
+                    outputs = self.model(images)
+                    loss = self.loss_function(outputs, labels)
+                    validation_loss += loss.cpu().data * images.size(0)
+                    _,prediction = torch.max(outputs.data, 1)
+                    validation_accuracy += int(torch.sum(prediction==labels.data))
             
             validation_accuracy = validation_accuracy / self.num_val_img
             validation_loss = validation_loss / self.num_val_img

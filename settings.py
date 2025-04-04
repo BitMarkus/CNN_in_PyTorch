@@ -11,7 +11,8 @@ setting = {
     # Number of epochs
     "train_num_epochs": 30,  
     # Batch size for training and validation datasets
-    "ds_batch_size": 26, 
+    # EfficientNet-B0: max. 26
+    "ds_batch_size": 64, 
 
     # Optimizer:
     # Initial learning rate (later determined by lr scheduler)
