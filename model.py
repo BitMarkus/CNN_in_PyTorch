@@ -5,6 +5,7 @@
 import torchvision.models as models
 import pathlib
 from torch import nn
+import torch.nn.init as init
 import torch
 from datetime import datetime
 from tqdm import tqdm
@@ -70,12 +71,42 @@ class CNN_Model():
             # Set number of output nodes
             self.model.fc = nn.Linear(512, self.num_classes)
 
+            """
         elif(self.cnn_type == "ResNet-50"):
             self.model = models.resnet50(weights=None)
             # Set number of input channels
             self.model.conv1 = nn.Conv2d(self.input_channels, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False)
             # Set number of output nodes
             self.model.fc = nn.Linear(2048, self.num_classes) 
+            """
+        elif(self.cnn_type == "ResNet-50"):
+            # Load pretrained ResNet-50 (trained on ImageNet)
+            self.model = models.resnet50(weights="DEFAULT")  # "DEFAULT" loads the best available weights (e.g., IMAGENET1K_V2)      
+            # Adjust the first convolutional layer for your input channels
+            if self.input_channels != 3:
+                # Replace conv1 while preserving pretrained weights by averaging/summing channels
+                original_conv1 = self.model.conv1
+                new_conv1 = nn.Conv2d(
+                    self.input_channels, 
+                    64, 
+                    kernel_size=(7, 7), 
+                    stride=(2, 2), 
+                    padding=(3, 3), 
+                    bias=False
+                )              
+                # Initialize new conv1 layer weights (optional strategies below)
+                if self.input_channels == 1:
+                    # Grayscale to RGB: Copy mean of pretrained weights across all input channels
+                    new_conv1.weight.data = original_conv1.weight.data.mean(dim=1, keepdim=True)
+                else:
+                    # For >3 channels: Repeat pretrained weights or use custom initialization
+                    new_conv1.weight.data = original_conv1.weight.data.repeat(1, self.input_channels // 3, 1, 1)
+                    # Add random initialization for remaining channels (if not divisible by 3)
+                    if self.input_channels % 3 != 0:
+                        new_conv1.weight.data[:, -(self.input_channels % 3):, :, :].normal_(0, 0.02)             
+                self.model.conv1 = new_conv1  
+            # Replace the final fully connected layer for your task
+            self.model.fc = nn.Linear(2048, self.num_classes)
 
         elif(self.cnn_type == "ResNet-101"):
             self.model = models.resnet101(weights=None)
@@ -212,12 +243,28 @@ class CNN_Model():
             # Set number of output nodes
             self.model.classifier[1] = nn.Linear(self.model.classifier[1].in_features, self.num_classes)
        
+        # Weight initialization for non-pretrained Networks
+        # self.initialize_weights(self.model) 
         # Send model to gpu or cpu
         self.model.to(device) 
         # Set model to loaded
         self.model_loaded = True  
-        
-        return self.model       
+
+        return self.model   
+
+    # Weight initialization for non-pretrained Networks
+    def initialize_weights(self,model):
+        for m in model.modules():
+            if isinstance(m, nn.Conv2d):
+                init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+                if m.bias is not None:
+                    init.constant_(m.bias, 0)
+            elif isinstance(m, nn.BatchNorm2d):
+                init.constant_(m.weight, 1)
+                init.constant_(m.bias, 0)
+            elif isinstance(m, nn.Linear):
+                init.normal_(m.weight, 0, 0.01)  # Smaller scale for linear layers
+                init.constant_(m.bias, 0)    
 
     # Read classes from training data directory (subfolder names) and returns a list
     def get_class_list(self):
