@@ -77,7 +77,7 @@ setting = {
     ###############
 
     # Name of the checkpoint file to load weights for predictions
-    "chckpt_weights_file": "2025-04-07-12-17_checkpoint_EfficientNet-B0_e19_vacc77.model",  
+    "chckpt_weights_file": "2025-04-07-13-14_checkpoint_pretrained_ResNet-50_e12_vacc89.model",  
     # Set to True, if checkpoints shall be saved during training
     "chckpt_save": True,  
     # Mininmun validation accuracy from which on checkpoints are saved

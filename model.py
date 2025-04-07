@@ -253,6 +253,8 @@ class CNN_Model():
         return self.model   
 
     # Weight initialization for non-pretrained Networks
+    # If model uses non-ReLU activations (e.g., Swish in EfficientNet), adjust nonlinearity in kaiming_normal_:
+    # init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='leaky_relu')
     def initialize_weights(self,model):
         for m in model.modules():
             if isinstance(m, nn.Conv2d):
