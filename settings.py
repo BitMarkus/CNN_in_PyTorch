@@ -15,7 +15,8 @@ setting = {
 
     # Optimizer:
     # Initial learning rate (later determined by lr scheduler)
-     # ADAM: 0.0001-0.0003 (3e-4), SGD: 0.01-0.001
+    # ADAM: 0.0001-0.0003 (3e-4), 
+    # SGD: 0.01-0.001, 0.0001 for pretrained weights!
     "train_init_lr": 0.001,    
     # Weight decay = L2 regularization
     # ADAM and SGD: 1e-4 
@@ -47,14 +48,24 @@ setting = {
     #########
 
     # Name of the model architecture:
-    # ResNet: ResNet-18, -34, -50, -101, -152, ResNeXt-101
-    # AlexNet
-    # VGG: VGG-11, -13, -16, -19 (models with batch normalization)
-    # DenseNet-121, -161, -169, -201
-    # EfficientNet-B0
-    "cnn_type": "ResNet-50",  
+    # ResNet: resnet18, resnet34, resnet50, resnet101, resnet152
+    # ResNeXt variants: resnext101_32x8d, resnext101_64x4d
+    # AlexNet: alexnet
+    # VGG (without batch norm): vgg11, vgg13", vgg16, vgg19
+    # VGG (with batch norm): vgg11_bn, vgg13_bn, vgg16_bn, vgg19_bn
+    # DenseNet: densenet121, densenet169, densenet201"
+    # EfficientNet: efficientnet_b0, efficientnet_b7"
     # Custom CNN architecture: custom
-    # "cnn_type": "custom", 
+    "cnn_type": "resnet50",  
+    # Pretrained or initialized weights
+    "cnn_is_pretrained": True,  
+    # Initialization type for non-pretrained cnns
+    # Options: kaiming and xavier
+    # Kaiming: Designed for ReLU-like activations (ReLU, LeakyReLU, GELU),
+    # Default for modern CNNs (ResNet, EfficientNet, etc.) with ReLU/LeakyReLU.
+    # Xavier: Designed for Sigmoid, Tanh, and linear activations.
+    # Older architectures like AlexNet (originally used Tanh), Output layers with Sigmoid (e.g., binary classification)
+    "cnn_initialization": "kaiming",  
 
     ################
     # CUSTOM MODEL #
@@ -77,7 +88,7 @@ setting = {
     ###############
 
     # Name of the checkpoint file to load weights for predictions
-    "chckpt_weights_file": "2025-04-07-13-14_checkpoint_pretrained_ResNet-50_e12_vacc89.model",  
+    "chckpt_weights_file": "2025-04-08-09-54_pretrained_checkpoint_ResNet-50_e18_vacc88.model",  
     # Set to True, if checkpoints shall be saved during training
     "chckpt_save": True,  
     # Mininmun validation accuracy from which on checkpoints are saved

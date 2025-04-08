@@ -33,6 +33,10 @@ class CNN_Model():
         self.model_loaded = False   
         # Model
         self.model = None
+        # Pretrained
+        self.is_pretrained = setting["cnn_is_pretrained"] 
+        # Initialization type for non-pretrained cnns
+        self.initialization = setting["cnn_initialization"] 
         # Checkpoint saving options
         self.chckpt_min_acc = setting["chckpt_min_acc"] 
         self.chckpt_save = setting["chckpt_save"]
@@ -46,227 +50,167 @@ class CNN_Model():
     #############################################################################################################
     # METHODS:
 
-    # Load model: Pretrained or custom trained
-    # https://pytorch.org/vision/0.9/models.html  
     def load_model(self, device):
-
-        # Use weights="DEFAULT" for pretrained weights
-
-        ##########
-        # ResNet #
-        ##########      
-
-        if(self.cnn_type == "ResNet-18"):
-            self.model = models.resnet18(weights=None)
-            # Set number of input channels
-            self.model.conv1 = nn.Conv2d(self.input_channels, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False)
-            # Set number of output nodes
-            # https://discuss.pytorch.org/t/how-to-modify-the-final-fc-layer-based-on-the-torch-model/766/23
-            self.model.fc = nn.Linear(512, self.num_classes)
-
-        elif(self.cnn_type == "ResNet-34"):
-            self.model = models.resnet34(weights=None)
-            # Set number of input channels
-            self.model.conv1 = nn.Conv2d(self.input_channels, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False)
-            # Set number of output nodes
-            self.model.fc = nn.Linear(512, self.num_classes)
-
-            """
-        elif(self.cnn_type == "ResNet-50"):
-            self.model = models.resnet50(weights=None)
-            # Set number of input channels
-            self.model.conv1 = nn.Conv2d(self.input_channels, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False)
-            # Set number of output nodes
-            self.model.fc = nn.Linear(2048, self.num_classes) 
-            """
-        elif(self.cnn_type == "ResNet-50"):
-            # Load pretrained ResNet-50 (trained on ImageNet)
-            self.model = models.resnet50(weights="DEFAULT")  # "DEFAULT" loads the best available weights (e.g., IMAGENET1K_V2)      
-            # Adjust the first convolutional layer for your input channels
-            if self.input_channels != 3:
-                # Replace conv1 while preserving pretrained weights by averaging/summing channels
-                original_conv1 = self.model.conv1
-                new_conv1 = nn.Conv2d(
-                    self.input_channels, 
-                    64, 
-                    kernel_size=(7, 7), 
-                    stride=(2, 2), 
-                    padding=(3, 3), 
-                    bias=False
-                )              
-                # Initialize new conv1 layer weights (optional strategies below)
-                if self.input_channels == 1:
-                    # Grayscale to RGB: Copy mean of pretrained weights across all input channels
-                    new_conv1.weight.data = original_conv1.weight.data.mean(dim=1, keepdim=True)
-                else:
-                    # For >3 channels: Repeat pretrained weights or use custom initialization
-                    new_conv1.weight.data = original_conv1.weight.data.repeat(1, self.input_channels // 3, 1, 1)
-                    # Add random initialization for remaining channels (if not divisible by 3)
-                    if self.input_channels % 3 != 0:
-                        new_conv1.weight.data[:, -(self.input_channels % 3):, :, :].normal_(0, 0.02)             
-                self.model.conv1 = new_conv1  
-            # Replace the final fully connected layer for your task
-            self.model.fc = nn.Linear(2048, self.num_classes)
-
-        elif(self.cnn_type == "ResNet-101"):
-            self.model = models.resnet101(weights=None)
-            # Set number of input channels
-            self.model.conv1 = nn.Conv2d(self.input_channels, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False)
-            # Set number of output nodes
-            self.model.fc = nn.Linear(2048, self.num_classes) 
-
-        elif(self.cnn_type == "ResNet-152"):
-            self.model = models.resnet152(weights=None)
-            # Set number of input channels
-            self.model.conv1 = nn.Conv2d(self.input_channels, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False)
-            # Set number of output nodes
-            self.model.fc = nn.Linear(2048, self.num_classes) 
-
-        elif(self.cnn_type == "ResNeXt-101"):
-            self.model = models.resnext101_32x8d(weights=None)
-            # Set number of input channels
-            self.model.conv1 = nn.Conv2d(self.input_channels, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False)
-            # Set number of output nodes
-            self.model.fc = nn.Linear(self.model.fc.in_features, self.num_classes)
-
-        ###########
-        # Alexnet #
-        ###########
-
-        elif(self.cnn_type == "AlexNet"):
-            self.model = models.alexnet(weights=None)
-            # https://discuss.pytorch.org/t/how-to-modify-the-final-fc-layer-based-on-the-torch-model/766/11
-            # Set number of input channels
-            self.model.features._modules['0'] = nn.Conv2d(self.input_channels, 64, kernel_size=(11, 11), stride=(4, 4), padding=(2, 2))
-            # Set number of output nodes
-            self.model.classifier._modules['6'] = nn.Linear(4096, self.num_classes)   
-
-        #######
-        # VGG #
-        #######  
-
-        elif(self.cnn_type == "VGG-11"):
-            self.model = models.vgg11_bn(weights=None)
-            # https://discuss.pytorch.org/t/how-to-modify-the-final-fc-layer-based-on-the-torch-model/766/11
-            # Set number of input channels
-            self.model.features._modules['0'] = nn.Conv2d(self.input_channels, 64, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
-            # Set number of output nodes
-            self.model.classifier._modules['6'] = nn.Linear(4096, self.num_classes, bias=True)  
-
-        elif(self.cnn_type == "VGG-13"):
-            self.model = models.vgg13_bn(weights=None)
-            # Set number of input channels
-            self.model.features._modules['0'] = nn.Conv2d(self.input_channels, 64, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
-            # Set number of output nodes
-            self.model.classifier._modules['6'] = nn.Linear(4096, self.num_classes, bias=True)  
-
-        elif(self.cnn_type == "VGG-16"):
-            self.model = models.vgg16_bn(weights=None)
-            # Set number of input channels
-            self.model.features._modules['0'] = nn.Conv2d(self.input_channels, 64, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
-            # Set number of output nodes
-            self.model.classifier._modules['6'] = nn.Linear(4096, self.num_classes, bias=True)    
-
-        elif(self.cnn_type == "VGG-19"):
-            self.model = models.vgg19_bn(weights=None)
-            # Set number of input channels
-            self.model.features._modules['0'] = nn.Conv2d(self.input_channels, 64, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
-            # Set number of output nodes
-            self.model.classifier._modules['6'] = nn.Linear(4096, self.num_classes, bias=True)  
-
-        ############
-        # DenseNet #  
-        ############
-
-        elif(self.cnn_type == "DenseNet-121"):
-            self.model = models.densenet121(weights=None)
-            # Set number of input channels
-            self.model.features._modules['conv0'] = nn.Conv2d(self.input_channels, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False)
-            # Set number of output nodes
-            self.model.classifier = nn.Linear(1024, self.num_classes, bias=True) 
-
-        elif(self.cnn_type == "DenseNet-161"):
-            self.model = models.densenet161(weights=None)
-            # Set number of input channels
-            self.model.features._modules['conv0'] = nn.Conv2d(self.input_channels, 96, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False)
-            # Set number of output nodes
-            self.model.classifier = nn.Linear(1024, self.num_classes, bias=True) 
-
-        elif(self.cnn_type == "DenseNet-169"):
-            self.model = models.densenet169(weights=None)
-            # Set number of input channels
-            self.model.features._modules['conv0'] = nn.Conv2d(self.input_channels, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False)
-            # Set number of output nodes
-            self.model.classifier = nn.Linear(1664, self.num_classes, bias=True) 
-
-        elif(self.cnn_type == "DenseNet-201"):
-            self.model = models.densenet201(weights=None)
-            # Set number of input channels
-            self.model.features._modules['conv0'] = nn.Conv2d(self.input_channels, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False)
-            # Set number of output nodes
-            self.model.classifier = nn.Linear(1920, self.num_classes, bias=True) 
-            # print(self.model.classifier)
-
-        ################
-        # EfficientNet #
-        ################
-
-        elif(self.cnn_type == "EfficientNet-B7"):
-            # Load EfficientNet-B7
-            self.model = models.efficientnet_b7(weights=None)
-            # Set number of input channels
-            first_conv = self.model.features[0][0]
-            self.model.features[0][0] = nn.Conv2d(
-                self.input_channels,
-                first_conv.out_channels,
-                kernel_size=first_conv.kernel_size,
-                stride=first_conv.stride,
-                padding=first_conv.padding,
-                bias=False
-            )
-            # Set number of output nodes
-            self.model.classifier[1] = nn.Linear(self.model.classifier[1].in_features, self.num_classes)
-
-        elif(self.cnn_type == "EfficientNet-B0"):
-            # Load EfficientNet-B0
-            self.model = models.efficientnet_b0(weights=None)
-            # Set number of input channels
-            first_conv = self.model.features[0][0]
-            self.model.features[0][0] = nn.Conv2d(
-                self.input_channels,
-                first_conv.out_channels,
-                kernel_size=first_conv.kernel_size,
-                stride=first_conv.stride,
-                padding=first_conv.padding,
-                bias=False
-            )
-            # Set number of output nodes
-            self.model.classifier[1] = nn.Linear(self.model.classifier[1].in_features, self.num_classes)
-       
-        # Weight initialization for non-pretrained Networks
-        # self.initialize_weights(self.model) 
+        """
+        Universal CNN loader for:
+        - ResNet (18/34/50/101/152)
+        - ResNeXt-101 (32x8d/64x4d)
+        - AlexNet
+        - VGG (11/13/16/19, with/without BN)
+        - DenseNet (121/169/201/264)
+        - EfficientNet (B0-B7)
+        """
+        # Supported models and their constructors
+        model_dict = {
+            # ResNet variants
+            "resnet18": models.resnet18,
+            "resnet34": models.resnet34,
+            "resnet50": models.resnet50,
+            "resnet101": models.resnet101,
+            "resnet152": models.resnet152,
+            # ResNeXt variants
+            "resnext101_32x8d": models.resnext101_32x8d,
+            "resnext101_64x4d": models.resnext101_64x4d,
+            # AlexNet
+            "alexnet": models.alexnet,
+            # VGG variants
+            "vgg11": models.vgg11,
+            "vgg13": models.vgg13,
+            "vgg16": models.vgg16,
+            "vgg19": models.vgg19,
+            "vgg11_bn": models.vgg11_bn,
+            "vgg13_bn": models.vgg13_bn,
+            "vgg16_bn": models.vgg16_bn,
+            "vgg19_bn": models.vgg19_bn,
+            # DenseNet variants
+            "densenet121": models.densenet121,
+            "densenet169": models.densenet169,
+            "densenet201": models.densenet201,
+            # EfficientNet variants
+            "efficientnet_b0": models.efficientnet_b0,
+            "efficientnet_b7": models.efficientnet_b7
+        }
+        
+        # Load model
+        if self.is_pretrained:
+            self.model = model_dict[self.cnn_type](weights="DEFAULT")
+        else:
+            self.model = model_dict[self.cnn_type](weights=None)
+        
+        # Adapt input for one channel (grayscale)
+        if self.input_channels == 1:
+            original_conv = self._adapt_first_conv(self.model, self.input_channels)
+            if self.is_pretrained and original_conv:
+                # Handle all architecture cases:
+                if hasattr(self.model, 'conv1'):  # ResNet/ResNeXt/AlexNet
+                    self.model.conv1.weight.data = original_conv.weight.data.mean(dim=1, keepdim=True)
+                elif hasattr(self.model.features, '0') and isinstance(self.model.features[0], nn.Conv2d):  # VGG
+                    self.model.features[0].weight.data = original_conv.weight.data.mean(dim=1, keepdim=True)
+                elif hasattr(self.model.features, 'conv0'):  # DenseNet
+                    self.model.features.conv0.weight.data = original_conv.weight.data.mean(dim=1, keepdim=True)
+                elif hasattr(self.model.features[0], '0'):  # EfficientNet
+                    self.model.features[0][0].weight.data = original_conv.weight.data.mean(dim=1, keepdim=True)
+        elif(self.input_channels == 2 or self.input_channels > 3):
+            print("The input images must either have one (grayscale) or three (RGB) channels!")
+            return False
+        
+        # Modify last layer to match number of classes
+        # ResNet/ResNeXt/AlexNet:
+        if hasattr(self.model, 'fc'):  
+            in_features = self.model.fc.in_features
+            self.model.fc = nn.Linear(in_features, self.num_classes)
+        # VGG/DenseNet:
+        elif hasattr(self.model, 'classifier') and isinstance(self.model.classifier, nn.Sequential):  
+            in_features = self.model.classifier[-1].in_features
+            self.model.classifier[-1] = nn.Linear(in_features, self.num_classes)
+        # EfficientNet:
+        elif hasattr(self.model, 'classifier'):  
+            if isinstance(self.model.classifier, nn.Sequential):
+                in_features = self.model.classifier[-1].in_features
+                self.model.classifier[-1] = nn.Linear(in_features, self.num_classes)
+            else:
+                in_features = self.model.classifier.in_features
+                self.model.classifier = nn.Linear(in_features, self.num_classes)
+        
+        # Initialize non-pretrained models
+        if not self.is_pretrained:         
+            self.model.apply(self._init_weights)
+        
         # Send model to gpu or cpu
         self.model.to(device) 
         # Set model to loaded
         self.model_loaded = True  
 
         return self.model   
-
-    # Weight initialization for non-pretrained Networks
-    # If model uses non-ReLU activations (e.g., Swish in EfficientNet), adjust nonlinearity in kaiming_normal_:
-    # init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='leaky_relu')
-    def initialize_weights(self,model):
-        for m in model.modules():
-            if isinstance(m, nn.Conv2d):
+    
+    # Weight initialization for non-pretrained cnns
+    def _init_weights(self, m):
+        if isinstance(m, nn.Conv2d):
+            if self.initialization == "kaiming":
                 init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
-                if m.bias is not None:
-                    init.constant_(m.bias, 0)
-            elif isinstance(m, nn.BatchNorm2d):
-                init.constant_(m.weight, 1)
-                init.constant_(m.bias, 0)
-            elif isinstance(m, nn.Linear):
-                init.normal_(m.weight, 0, 0.01)  # Smaller scale for linear layers
-                init.constant_(m.bias, 0)    
+            elif self.initialization == "xavier":
+                init.xavier_normal_(m.weight)
+        elif isinstance(m, nn.BatchNorm2d):
+            init.constant_(m.weight, 1)
+            init.constant_(m.bias, 0)
+        elif isinstance(m, nn.Linear):
+            init.normal_(m.weight, 0, 0.01)
+            init.constant_(m.bias, 0)
+
+    # Modify first layer to match image channels
+    def _adapt_first_conv(self, model, input_channels):
+        # ResNet/ResNeXt/AlexNet:
+        if hasattr(model, 'conv1'):  
+            original_conv = model.conv1
+            model.conv1 = nn.Conv2d(
+                input_channels, 
+                original_conv.out_channels,
+                kernel_size=original_conv.kernel_size,
+                stride=original_conv.stride,
+                padding=original_conv.padding,
+                bias=False
+            )
+            return original_conv
+        # VGG:
+        elif hasattr(model, 'features') and isinstance(model.features[0], nn.Conv2d):
+            original_conv = model.features[0]
+            model.features[0] = nn.Conv2d(
+                input_channels,
+                original_conv.out_channels,
+                kernel_size=original_conv.kernel_size,
+                stride=original_conv.stride,
+                padding=original_conv.padding,
+                bias=False
+            )
+            return original_conv
+        # DenseNet:
+        elif hasattr(model, 'features') and hasattr(model.features, 'conv0'):
+            original_conv = model.features.conv0
+            model.features.conv0 = nn.Conv2d(
+                input_channels,
+                original_conv.out_channels,
+                kernel_size=original_conv.kernel_size,
+                stride=original_conv.stride,
+                padding=original_conv.padding,
+                bias=False
+            )
+            return original_conv
+        # EfficientNet:
+        elif hasattr(model, 'features') and hasattr(model.features[0], '0'):
+            original_conv_block = model.features[0]
+            original_conv = original_conv_block[0]  # Access Conv2d inside the block
+            new_conv = nn.Conv2d(
+                input_channels,
+                original_conv.out_channels,
+                kernel_size=original_conv.kernel_size,
+                stride=original_conv.stride,
+                padding=original_conv.padding,
+                bias=False
+            )
+            # Replace the entire block while preserving BN/activation
+            model.features[0][0] = new_conv
+            return original_conv
+        return None
 
     # Read classes from training data directory (subfolder names) and returns a list
     def get_class_list(self):
