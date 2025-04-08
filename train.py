@@ -23,6 +23,8 @@ class Train():
         self.cnn = cnn
         # Model
         self.model = cnn.model
+        # Pretrained
+        self.is_pretrained = setting["cnn_is_pretrained"] 
         # Datasets
         self.ds_train = dataset.ds_train
         self.ds_val = dataset.ds_val
@@ -82,6 +84,43 @@ class Train():
 
     #############################################################################################################
     # METHODS:
+
+    # Plots accuracy, loss, and learning rate after training
+    def plot_metrics(self, history, plot_path, show_plot=True, save_plot=True):
+        # Number of epochs
+        epochs_range = range(1, len(history["train_loss"]) + 1)
+        # Draw plots
+        plt.figure(figsize=(15, 5))
+        # Accuracy plot:
+        plt.subplot(1, 3, 1)
+        plt.plot(epochs_range, history["train_acc"], label='Training Accuracy', color='green')
+        plt.plot(epochs_range, history["val_acc"], label='Validation Accuracy', color='red')
+        plt.legend(loc='lower right')
+        plt.title('Training and Validation Accuracy')
+        # Loss plot:
+        plt.subplot(1, 3, 2)
+        # Set the range of y-axis
+        plt.ylim(0, 5)
+        plt.plot(epochs_range, history["train_loss"], label='Training Loss', color='green')
+        plt.plot(epochs_range, history["val_loss"], label='Validation Loss', color='red')
+        plt.legend(loc='upper right')
+        plt.title('Training and Validation Loss')
+        # Learning rate plot:
+        plt.subplot(1, 3, 3)
+        # convert y-axis to Logarithmic scale
+        # plt.yscale("log")
+        plt.plot(epochs_range, history["lr"], label='Learning Rate', color='blue')
+        plt.legend(loc='upper right')
+        plt.title('Learning Rate')
+        # Reduce unnecessary whitespaces around the plots
+        # https://stackoverflow.com/questions/4042192/reduce-left-and-right-margins-in-matplotlib-plot
+        plt.tight_layout()
+        # Save plot
+        if(save_plot):
+            fn.save_plot_to_drive(plot_path, "train_metrics")
+        # Show and save plot
+        if(show_plot):
+            plt.show()
 
     def train(self):
 
@@ -196,40 +235,3 @@ class Train():
             best_accuracy = self.cnn.save_weights(validation_accuracy, best_accuracy, epoch)
 
         return history
-    
-    # Plots accuracy, loss, and learning rate after training
-    def plot_metrics(self, history, plot_path, show_plot=True, save_plot=True):
-        # Number of epochs
-        epochs_range = range(1, len(history["train_loss"]) + 1)
-        # Draw plots
-        plt.figure(figsize=(15, 5))
-        # Accuracy plot:
-        plt.subplot(1, 3, 1)
-        plt.plot(epochs_range, history["train_acc"], label='Training Accuracy', color='green')
-        plt.plot(epochs_range, history["val_acc"], label='Validation Accuracy', color='red')
-        plt.legend(loc='lower right')
-        plt.title('Training and Validation Accuracy')
-        # Loss plot:
-        plt.subplot(1, 3, 2)
-        # Set the range of y-axis
-        plt.ylim(0, 5)
-        plt.plot(epochs_range, history["train_loss"], label='Training Loss', color='green')
-        plt.plot(epochs_range, history["val_loss"], label='Validation Loss', color='red')
-        plt.legend(loc='upper right')
-        plt.title('Training and Validation Loss')
-        # Learning rate plot:
-        plt.subplot(1, 3, 3)
-        # convert y-axis to Logarithmic scale
-        # plt.yscale("log")
-        plt.plot(epochs_range, history["lr"], label='Learning Rate', color='blue')
-        plt.legend(loc='upper right')
-        plt.title('Learning Rate')
-        # Reduce unnecessary whitespaces around the plots
-        # https://stackoverflow.com/questions/4042192/reduce-left-and-right-margins-in-matplotlib-plot
-        plt.tight_layout()
-        # Save plot
-        if(save_plot):
-            fn.save_plot_to_drive(plot_path, "train_metrics")
-        # Show and save plot
-        if(show_plot):
-            plt.show()

@@ -88,7 +88,7 @@ class CNN_Model():
             "densenet201": models.densenet201,
             # EfficientNet variants
             "efficientnet_b0": models.efficientnet_b0,
-            "efficientnet_b7": models.efficientnet_b7
+            "efficientnet_b7": models.efficientnet_b7,
         }
         
         # Load model
@@ -210,6 +210,7 @@ class CNN_Model():
             # Replace the entire block while preserving BN/activation
             model.features[0][0] = new_conv
             return original_conv
+
         return None
 
     # Read classes from training data directory (subfolder names) and returns a list
@@ -236,7 +237,11 @@ class CNN_Model():
             current_datetime = datetime.now().strftime("%Y-%m-%d-%H-%M")
             print(f"Model with test accuracy {val_acc:.2f} saved!")
             # Add datetime, epoch and validation accuracy to the filename and save model
-            filename = f'{self.chckpt_pth}{current_datetime}_checkpoint_{self.cnn_type}_e{epoch+1}_vacc{val_acc*100:.0f}.model'
+            if(self.is_pretrained):
+                pretr = "_pretrained"
+            else:
+                pretr = ""
+            filename = f'{self.chckpt_pth}{current_datetime}_checkpoint{pretr}_{self.cnn_type}_e{epoch+1}_vacc{val_acc*100:.0f}.model'
             torch.save(self.model.state_dict(), filename)
             # Update best accuracy
             best_acc = val_acc 

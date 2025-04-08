@@ -17,7 +17,7 @@ setting = {
     # Initial learning rate (later determined by lr scheduler)
     # ADAM: 0.0001-0.0003 (3e-4), 
     # SGD: 0.01-0.001, 0.0001 for pretrained weights!
-    "train_init_lr": 0.001,    
+    "train_init_lr": 0.0001,    
     # Weight decay = L2 regularization
     # ADAM and SGD: 1e-4 
     "train_weight_decay": 1e-4,  
@@ -53,10 +53,10 @@ setting = {
     # AlexNet: alexnet
     # VGG (without batch norm): vgg11, vgg13", vgg16, vgg19
     # VGG (with batch norm): vgg11_bn, vgg13_bn, vgg16_bn, vgg19_bn
-    # DenseNet: densenet121, densenet169, densenet201"
-    # EfficientNet: efficientnet_b0, efficientnet_b7"
+    # DenseNet: densenet121, densenet169, densenet201
+    # EfficientNet: efficientnet_b0, efficientnet_b7
     # Custom CNN architecture: custom
-    "cnn_type": "resnet50",  
+    "cnn_type": "resnet18",  
     # Pretrained or initialized weights
     "cnn_is_pretrained": True,  
     # Initialization type for non-pretrained cnns
