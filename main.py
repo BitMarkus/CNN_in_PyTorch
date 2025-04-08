@@ -69,6 +69,7 @@ def main():
                     else:
                         cnn.model = cnn.load_model(device)  
                     print("New network was successfully created.")   
+                    cnn.print_model_size()  
                 else:
                     print("Unable to load the requested cnn architecture!")          
 

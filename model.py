@@ -337,3 +337,7 @@ class CNN_Model():
                     )                       
                     plt.show() 
 
+    def print_model_size(self):
+        total_params = sum(p.numel() for p in self.model.parameters())
+        print(f"Model parameters: {total_params / 1e6:.1f}M")
+

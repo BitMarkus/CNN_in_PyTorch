@@ -9,7 +9,7 @@ setting = {
     ############
 
     # Number of epochs
-    "train_num_epochs": 35,  
+    "train_num_epochs": 25,  
     # Batch size for training and validation datasets
     "ds_batch_size": 32, 
 
@@ -56,7 +56,7 @@ setting = {
     # DenseNet: densenet121, densenet169, densenet201
     # EfficientNet: efficientnet_b0, efficientnet_b7
     # Custom CNN architecture: custom
-    "cnn_type": "resnet18",  
+    "cnn_type": "densenet121",  
     # Pretrained or initialized weights
     "cnn_is_pretrained": True,  
     # Initialization type for non-pretrained cnns
