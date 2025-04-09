@@ -149,7 +149,7 @@ def main():
                 print('Load prediction dataset...')
                 ds.load_prediction_dataset()
                 print('Prediction dataset successfully loaded.')
-                print(f"Number test images/batches: {ds.num_pred_img}/1")
+                print(f"Number test images/batch size: {ds.num_pred_img}/1")
                 print('Starting prediction...')
                 pred_acc, cm = cnn.predict(ds.ds_pred)
                 print(f"Accuracy: {pred_acc:.2f}")  

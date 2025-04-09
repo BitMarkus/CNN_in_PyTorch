@@ -9,7 +9,7 @@ setting = {
     ############
 
     # Number of epochs
-    "train_num_epochs": 25,  
+    "train_num_epochs": 30,  
     # Batch size for training and validation datasets
     "ds_batch_size": 32, 
 
@@ -87,12 +87,10 @@ setting = {
     # CHECKPOINTS #
     ###############
 
-    # Name of the checkpoint file to load weights for predictions
-    "chckpt_weights_file": "2025-04-08-15-34_checkpoint_pretrained_densenet121_e7_vacc78.model",  
     # Set to True, if checkpoints shall be saved during training
     "chckpt_save": True,  
     # Mininmun validation accuracy from which on checkpoints are saved
-    "chckpt_min_acc": 0.7,  
+    "chckpt_min_acc": 0.75,  
 
     #########
     # PATHS #
