@@ -155,4 +155,5 @@ class Dataset():
         else:
             print("Loading of dataset failed! Input images must have either one (grayscale) or three (RGB) channels.")
             return False
+    
         

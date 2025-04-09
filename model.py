@@ -14,7 +14,9 @@ from PIL import Image
 from captum.attr import IntegratedGradients
 import matplotlib.pyplot as plt
 from captum.attr import visualization as viz
+import os
 # Own modules
+import functions as fn
 from settings import setting
 
 class CNN_Model():
@@ -25,6 +27,8 @@ class CNN_Model():
     def __init__(self):
         # Path to training images
         self.pth_data = setting["pth_data"]
+        # Path to checkpoints
+        self.pth_checkpoint = setting["pth_checkpoint"]
         # Input shape data
         self.input_channels = setting["img_channels"]
         self.batch_size = setting["ds_batch_size"]
@@ -46,7 +50,7 @@ class CNN_Model():
         self.chckpt_save = setting["chckpt_save"]
         self.chckpt_pth = setting["pth_checkpoint"]
         # heckpoint loading options
-        self.chckpt_weights_file = setting["chckpt_weights_file"] 
+        # self.chckpt_weights_file = setting["chckpt_weights_file"] 
         # Get number of classes = number of output nodes
         self.class_list = self.get_class_list()   
         self.num_classes = len(self.class_list)
@@ -252,12 +256,40 @@ class CNN_Model():
 
         return best_acc
     
+    def print_checkpoints_table(self):
+        # List of all model files in the checkpoint directory with the .model extension
+        checkpoints = [file for file in os.listdir(self.pth_checkpoint) if file.endswith('.model')]
+        # Create a tuple from list with indices (no idea how to do that in one line)
+        checkpoints = list(enumerate(checkpoints))
+        # print(checkpoints)
+        table = PrettyTable(["ID", "Checkpoint"])
+        for id, name in checkpoints:
+            table.add_row([id+1, name])
+        print()
+        print(table)
+        # print(f"Number of checkpoints: {len(checkpoints)}")
+        return checkpoints
+    
+    def select_checkpoint(self, checkpoints, prompt):
+        # Check input
+        max_id = len(checkpoints)
+        while(True):
+            nr = input(prompt)
+            if not(fn.check_int(nr)):
+                print("Input is not an integer number! Try again...")
+            else:
+                nr = int(nr)
+                if not(fn.check_int_range(nr, 1, max_id)):
+                    print("Index out of range! Try again...")
+                else:
+                        return checkpoints[nr-1][1] 
+    
     # Load a checkpoint/weights
-    def load_weights(self, device):
+    def load_weights(self, chckpt_file):
         # https://stackoverflow.com/questions/49941426/attributeerror-collections-ordereddict-object-has-no-attribute-eval
-        self.model.load_state_dict(torch.load(self.chckpt_pth + self.chckpt_weights_file))
+        self.model.load_state_dict(torch.load(self.chckpt_pth + chckpt_file))
         # self.model.to(device)
-        print(f'Weights from checkpoint {self.chckpt_weights_file} successfully loaded.')
+        print(f'Weights from checkpoint {chckpt_file} successfully loaded.')
 
     # Function for Prediction
     def predict(self, dataset):

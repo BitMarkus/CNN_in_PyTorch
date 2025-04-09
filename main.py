@@ -126,8 +126,15 @@ def main():
             if not (cnn.model_loaded):
                 print('No CNN generated yet!')
             else:
-                # Load model and weights for inference
-                cnn.load_weights(device)
+                # Select checkpoint
+                checkpoints = cnn.print_checkpoints_table()
+                if(checkpoints):
+                    checkpoint_file = cnn.select_checkpoint(checkpoints, "Select a checkpoint: ")
+                    # Load weights into the generator network
+                    cnn.load_weights(checkpoint_file)
+
+                else:
+                    print("The checkpoint folder is empty!")  
 
         ############################
         # Predict images in folder #  
@@ -138,6 +145,7 @@ def main():
             if not (cnn.model_loaded):
                 print('No CNN generated yet!')
             else:
+                # Load prediction dataset
                 print('Load prediction dataset...')
                 ds.load_prediction_dataset()
                 print('Prediction dataset successfully loaded.')

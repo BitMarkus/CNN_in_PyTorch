@@ -43,6 +43,13 @@ def check_int(var):
         return True
     except ValueError:
         return False
+       
+# Checks if int parameters are within a certain range
+def check_int_range(var, min, max):
+    if(var >= min and var <= max):
+        return True
+    else:
+        return False
 
 # Function creates all working folders in the root directory of the program
 # If they do not exist yet!
