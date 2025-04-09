@@ -9,7 +9,7 @@ import torch.nn.init as init
 import torch
 from datetime import datetime
 from tqdm import tqdm
-
+from prettytable import PrettyTable
 from PIL import Image
 from captum.attr import IntegratedGradients
 import matplotlib.pyplot as plt
@@ -25,8 +25,12 @@ class CNN_Model():
     def __init__(self):
         # Path to training images
         self.pth_data = setting["pth_data"]
-        # Number of channels of training images 
+        # Input shape data
         self.input_channels = setting["img_channels"]
+        self.batch_size = setting["ds_batch_size"]
+        self.img_width = setting["img_width"]
+        self.img_height = setting["img_height"]
+        self.input_size = (self.batch_size, self.input_channels, self.img_height, self.img_width)
         # Variable for model architecture name
         self.cnn_type = setting["cnn_type"] 
         # Variable to save if a model was alread loaded or not
@@ -293,6 +297,7 @@ class CNN_Model():
         return acc, cm
     
     def predict_single(self, dataset):
+
         # Set model to evaluation mode
         self.model.eval()
         # No need to keep track of gradients
@@ -337,7 +342,83 @@ class CNN_Model():
                     )                       
                     plt.show() 
 
+    # Prints number of model parameters
     def print_model_size(self):
         total_params = sum(p.numel() for p in self.model.parameters())
-        print(f"Model parameters (without classifier): {total_params / 1e6:.1f}M")
+        print(f"Trainable parameters: {total_params:,}")
 
+    # Captures output shapes of all layers through forward hooks.
+    # Returns: 
+    #    - layer_info: Dictionary with unique layer data
+    #    - hooks: List of hook references for cleanup
+    def get_layer_info(self, device):
+        layer_info = {}
+        hooks = []
+
+        def hook_fn(module, input, output):
+            # Only process if not already seen
+            if id(module) not in layer_info:
+                params = 0
+                # Only count parameters for leaf modules (no children)
+                if not list(module.children()):
+                    params = sum(p.numel() for p in module.parameters())
+                
+                layer_info[id(module)] = {
+                    'name': module.__class__.__name__,
+                    'output': list(output.shape),
+                    'params': params,
+                    'trainable': any(p.requires_grad for p in module.parameters())
+                }
+
+        # Register hooks only for leaf modules
+        for name, module in self.model.named_modules():
+            if not list(module.children()):  # Only leaf nodes
+                hooks.append(module.register_forward_hook(hook_fn))
+
+        # Forward pass
+        dummy_input = torch.rand(*self.input_size).to(device)
+        self.model.to(device).eval()
+        with torch.no_grad():
+            self.model(dummy_input)
+
+        return layer_info, hooks
+    
+    # Generates accurate model summary without double-counting parameters
+    # Skips layers without trainable parameters
+    def model_summary(self, device, show_non_trainable=False):
+
+        # Get layer information
+        layer_info, hooks = self.get_layer_info(device)
+
+        # Initialize table
+        table = PrettyTable()
+        table.field_names = ["Layer (type)", "Output Shape", "Param #", "Trainable"]
+        table.align = "l"
+
+        # Calculate totals
+        total_params = sum(p.numel() for p in self.model.parameters())
+        trainable_params = sum(p.numel() for p in self.model.parameters() if p.requires_grad)
+
+        # Populate table (skip zero-param layers)
+        for module_id, info in layer_info.items():
+            if not show_non_trainable:
+                if info['params'] == 0 and not info['trainable']:
+                    continue
+                
+            table.add_row([
+                info['name'],
+                str(info['output']),
+                f"{info['params']:,}",
+                str(info['trainable'])
+            ])
+
+        # Clean up hooks
+        for hook in hooks:
+            hook.remove()
+
+        # Print results
+        print(table)
+        print(f"\nInput: {list(self.input_size)} (Device: {device})")
+        print(f"Total params: {total_params:,} (ground truth)")
+        print(f"Trainable params: {trainable_params:,}")
+        print(f"Non-trainable params: {total_params - trainable_params:,}")

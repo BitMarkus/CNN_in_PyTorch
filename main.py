@@ -80,7 +80,7 @@ def main():
         elif(menu1 == 2):        
             print("\n:SHOW NETWORK SUMMARY:")   
             if(cnn.model_loaded):
-                print(cnn.model)   
+                cnn.model_summary(device) # print(cnn.model)   
             else:
                 print("No network was generated yet!") 
 
