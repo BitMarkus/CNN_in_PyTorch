@@ -11,7 +11,7 @@ setting = {
     # Number of epochs
     "train_num_epochs": 30,  
     # Batch size for training and validation datasets
-    "ds_batch_size": 32, 
+    "ds_batch_size": 50, 
 
     # Optimizer:
     # Initial learning rate (later determined by lr scheduler)
@@ -42,6 +42,9 @@ setting = {
     "ds_shuffle_seed": 123,
     # Fraction of images which go into the validation dataset 
     "ds_val_split": 0.1, 
+    # Define cell lines (for dataset generator)
+    "wt_lines": ["WT_1618-02", "WT_JG", "WT_JT", "WT_KM", "WT_MS"],
+    "ko_lines": ["KO_1096-01", "KO_1618-01", "KO_BR2986", "KO_BR3075"],
 
     #########
     # MODEL #
@@ -100,5 +103,8 @@ setting = {
     "pth_checkpoint": "checkpoints/",
     "pth_plots": "plots/",
     "pth_prediction": "prediction/",
+    # Dataset generator
+    "pth_ds_gen_input": "dataset_gen/input/",
+    "pth_ds_gen_output": "dataset_gen/output/",   
  
 }

@@ -59,6 +59,8 @@ def create_prg_folders():
     Path(setting["pth_checkpoint"]).mkdir(parents=True, exist_ok=True)
     Path(setting["pth_plots"]).mkdir(parents=True, exist_ok=True)
     Path(setting["pth_prediction"]).mkdir(parents=True, exist_ok=True)
+    Path(setting["pth_ds_gen_input"]).mkdir(parents=True, exist_ok=True)
+    Path(setting["pth_ds_gen_output"]).mkdir(parents=True, exist_ok=True)
 
 # Function to save plots
 def save_plot_to_drive(plot_path, file_name):

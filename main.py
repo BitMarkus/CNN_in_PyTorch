@@ -8,6 +8,7 @@ import os
 import functions as fn
 from model import CNN_Model
 from custom_model import Custom_CNN_Model
+from dataset_gen import DatasetGenerator
 from dataset import Dataset
 from train import Train
 from settings import setting
@@ -44,8 +45,9 @@ def main():
         print("4) Train Network")
         print("5) Load Weights")
         print("6) Predict Images in Prediction Folder")
-        print("7) Captum Test")
-        print("8) Exit Program")
+        print("7) Dataset Generator")
+        print("8) Captum Test")
+        print("9) Exit Program")
         menu1 = int(fn.input_int("Please choose: "))
 
         ######################
@@ -158,11 +160,24 @@ def main():
                 class_list = cnn.get_class_list()
                 fn.plot_confusion_matrix(cm, class_list, setting["pth_plots"], show_plot=True, save_plot=True)
 
+        #####################
+        # Dataset Generator #  
+        #####################
+
+        elif(menu1 == 7):  
+            print("\n:DATASET GENERATOR FOR CROSS VALIDATION:")  
+            # Create a dataset generation object
+            ds_gen = DatasetGenerator()
+            print('Generation of datasets is starting...')
+            # Create datasets for cross validation
+            ds_gen.generate_datasets()
+            print(f"Datasets successfully created and saved to {setting['pth_ds_output']}!")
+
         ###############
         # Captum Test #  
         ###############
 
-        elif(menu1 == 7):  
+        elif(menu1 == 8):  
             print("\n:CAPTUM:") 
 
             # ds.load_prediction_dataset()
@@ -176,7 +191,7 @@ def main():
         # Exit Program #
         ################
 
-        elif(menu1 == 8):
+        elif(menu1 == 9):
             print("\nExit program...")
             break
         
