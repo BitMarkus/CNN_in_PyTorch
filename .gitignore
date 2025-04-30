@@ -1,7 +1,8 @@
 /__pycache__
 /.vscode
 /checkpoints
-/data
+/data/train
+/data/test
 /plots
-/prediction
-/dataset_gen
+/dataset_gen/input
+/dataset_gen/output
