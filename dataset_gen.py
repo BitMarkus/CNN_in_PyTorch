@@ -13,12 +13,18 @@ class DatasetGenerator():
     #############################################################################################################
     # CONSTRUCTOR:
     
-    def __init__(self):
+    def __init__(self, mode):
+
+        # Passed parameters
+        self.mode = mode
+
         # Settings parameters
         self.input_dir = setting['pth_ds_gen_input']
         self.output_dir = setting['pth_ds_gen_output']
         self.wt_lines = setting['wt_lines']
         self.ko_lines = setting['ko_lines']
+        self.train_dir = setting['pth_train']
+        self.test_dir = setting['pth_test']
 
     #############################################################################################################
     # METHODS:
@@ -26,8 +32,19 @@ class DatasetGenerator():
     # Create train/test/result folders and WT/KO subdirectories
     def _create_folder_structure(self, dataset_path):
 
-        train_dir = os.path.join(dataset_path, "train")
-        test_dir = os.path.join(dataset_path, "test")
+        # Folder for training and test images
+        # if mode = train, training and test images go to the data folder for training
+        # if mode = gen, training and test images go to the dataset folder
+        if(self.mode == "train"):
+            train_dir = self.train_dir
+            test_dir = self.test_dir
+        elif(self.mode == "gen"):
+            train_dir = os.path.join(dataset_path, "train")
+            test_dir = os.path.join(dataset_path, "test")
+        else:
+            return False
+
+        # Folder for dataset and training results
         result_dir = os.path.join(dataset_path, "result")
         
         os.makedirs(os.path.join(train_dir, "WT"), exist_ok=True)
@@ -67,6 +84,7 @@ class DatasetGenerator():
             f.write('\n'.join(metadata_lines))
 
     # Generate a single dataset for a specific (test_wt, test_ko) pair
+    # Here, test and train folder go directly to the data folder for training
     def generate_dataset(self, test_wt, test_ko, dataset_idx):
 
         dataset_path = os.path.join(self.output_dir, f"dataset_{dataset_idx}")
@@ -107,6 +125,8 @@ class DatasetGenerator():
 
     # Delete training and test images (preserves results/metadata)
     def cleanup(self, dataset_path):
+
+        # Delete images
 
         dirs_to_remove = [
             os.path.join(dataset_path, "train"),

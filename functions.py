@@ -54,13 +54,25 @@ def check_int_range(var, min, max):
 # Function creates all working folders in the root directory of the program
 # If they do not exist yet!
 def create_prg_folders():
-    # https://kodify.net/python/pathlib-path-mkdir-method/
-    Path(setting["pth_train"]).mkdir(parents=True, exist_ok=True)
-    Path(setting["pth_test"]).mkdir(parents=True, exist_ok=True)
+    # Create folder for training images with classes subfolders
+    train_base_pth = Path(setting["pth_train"])
+    train_base_pth.mkdir(parents=True, exist_ok=True)
+    for class_name in setting["classes"]:
+        class_dir = train_base_pth / class_name
+        class_dir.mkdir(exist_ok=True)
+    # Create folder for testing images with classes subfolders
+    test_base_pth = Path(setting["pth_test"])
+    test_base_pth.mkdir(parents=True, exist_ok=True)
+    for class_name in setting["classes"]:
+        class_dir = test_base_pth / class_name
+        class_dir.mkdir(exist_ok=True)
+    # Other folders
     Path(setting["pth_checkpoint"]).mkdir(parents=True, exist_ok=True)
     Path(setting["pth_plots"]).mkdir(parents=True, exist_ok=True)
     Path(setting["pth_ds_gen_input"]).mkdir(parents=True, exist_ok=True)
     Path(setting["pth_ds_gen_output"]).mkdir(parents=True, exist_ok=True)
+    
+    return True
 
 # Function to save plots
 def save_plot_to_drive(plot_path, file_name):

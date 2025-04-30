@@ -9,6 +9,7 @@ import functions as fn
 from model import CNN_Model
 from custom_model import Custom_CNN_Model
 from dataset_gen import DatasetGenerator
+from auto_cross_validation import AutoCrossValidation
 from dataset import Dataset
 from train import Train
 from settings import setting
@@ -46,8 +47,9 @@ def main():
         print("5) Load Weights")
         print("6) Predict Images in Prediction Folder")
         print("7) Dataset Generator")
-        print("8) Captum Test")
-        print("9) Exit Program")
+        print("8) Automatic Cross Validation")
+        print("9) Captum Test")
+        print("10) Exit Program")
         menu1 = int(fn.input_int("Please choose: "))
 
         ######################
@@ -167,7 +169,8 @@ def main():
         elif(menu1 == 7):  
             print("\n:DATASET GENERATOR FOR CROSS VALIDATION:")  
             # Create a dataset generation object
-            ds_gen = DatasetGenerator()
+            # ds_gen = DatasetGenerator(mode = "gen")
+            ds_gen = DatasetGenerator(mode = "train")
             print('Generation of datasets is starting...')
             # Create datasets for cross validation
             # ds_gen.generate_all_datasets()
@@ -177,17 +180,25 @@ def main():
             # Generate each dataset in a loop
             for config in configs:
                 # 1. Generate dataset
-                dataset_path = ds_gen.generate_dataset(**config) # Unpacks dict as kwargs
-                # 2. (Optional) Cleanup
-                ds_gen.cleanup(dataset_path)
+                ds_gen.generate_dataset(**config) # Unpacks dict as kwargs
+                # 2. (Optional) Cleanup of train and test images
+                ds_gen.cleanup(setting["pth_data"])
 
             print(f"Datasets successfully created and saved to {setting['pth_ds_gen_output']}!")
+
+        ##############################
+        # Automatic Cross Validation #  
+        ##############################
+
+        elif(menu1 == 8):  
+            print("\n:AUTOMATIC CROSS VALIDATION:")  
+            acv = AutoCrossValidation()
 
         ###############
         # Captum Test #  
         ###############
 
-        elif(menu1 == 8):  
+        elif(menu1 == 9):  
             print("\n:CAPTUM:") 
 
             # ds.load_prediction_dataset()
@@ -201,7 +212,7 @@ def main():
         # Exit Program #
         ################
 
-        elif(menu1 == 9):
+        elif(menu1 == 10):
             print("\nExit program...")
             break
         

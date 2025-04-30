@@ -52,7 +52,8 @@ class CNN_Model():
         # heckpoint loading options
         # self.chckpt_weights_file = setting["chckpt_weights_file"] 
         # Get number of classes = number of output nodes
-        self.class_list = self.get_class_list()   
+        # self.class_list = self.get_class_list()
+        self.class_list = setting["classes"]   
         self.num_classes = len(self.class_list)
 
     #############################################################################################################

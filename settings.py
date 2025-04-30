@@ -47,6 +47,7 @@ setting = {
     # "ko_lines": ["KO_1096-01", "KO_1618-01", "KO_BR2986", "KO_BR3075"],
     "wt_lines": ["WT_JG", "WT_JT"],
     "ko_lines": ["KO_BR2986", "KO_BR3075"],
+    "classes": ["KO", "WT"],
 
     #########
     # MODEL #
