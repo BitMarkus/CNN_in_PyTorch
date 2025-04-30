@@ -26,7 +26,7 @@ class CNN_Model():
     
     def __init__(self):
         # Path to training images
-        self.pth_data = setting["pth_data"]
+        self.pth_train = setting["pth_train"]
         # Path to checkpoints
         self.pth_checkpoint = setting["pth_checkpoint"]
         # Input shape data
@@ -223,7 +223,7 @@ class CNN_Model():
 
     # Read classes from training data directory (subfolder names) and returns a list
     def get_class_list(self):
-        root = pathlib.Path(self.pth_data)
+        root = pathlib.Path(self.pth_train)
         class_list = sorted([j.name.split('/')[-1] for j in root.iterdir()])
         return class_list
     

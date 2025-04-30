@@ -170,8 +170,18 @@ def main():
             ds_gen = DatasetGenerator()
             print('Generation of datasets is starting...')
             # Create datasets for cross validation
-            ds_gen.generate_datasets()
-            print(f"Datasets successfully created and saved to {setting['pth_ds_output']}!")
+            # ds_gen.generate_all_datasets()
+
+            # Get all dataset configurations
+            configs = ds_gen.get_dataset_configs()
+            # Generate each dataset in a loop
+            for config in configs:
+                # 1. Generate dataset
+                dataset_path = ds_gen.generate_dataset(**config) # Unpacks dict as kwargs
+                # 2. (Optional) Cleanup
+                ds_gen.cleanup(dataset_path)
+
+            print(f"Datasets successfully created and saved to {setting['pth_ds_gen_output']}!")
 
         ###############
         # Captum Test #  

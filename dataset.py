@@ -17,9 +17,9 @@ class Dataset():
     
     def __init__(self):
         # Path to training images
-        self.pth_data = setting["pth_data"]
+        self.pth_train = setting["pth_train"]
         # Path to prediction images
-        self.pth_prediction = setting["pth_prediction"]
+        self.pth_test = setting["pth_test"]
         # Settings variables
         # Shuffle training images befor validation split
         self.shuffle = setting["ds_shuffle"]
@@ -96,7 +96,7 @@ class Dataset():
         transformer = self.get_transformer()
         # Check if training images have either one or three channels
         if(transformer):
-            dataset = torchvision.datasets.ImageFolder(self.pth_data, transform=transformer)
+            dataset = torchvision.datasets.ImageFolder(self.pth_train, transform=transformer)
             dataset_size = len(dataset)
             indices = list(range(dataset_size))
             split = int(np.floor(self.val_split * dataset_size))
@@ -142,7 +142,7 @@ class Dataset():
         transformer = self.get_transformer()
         # Check if training images have either one or three channels
         if(transformer):
-            dataset = torchvision.datasets.ImageFolder(self.pth_prediction, transform=transformer)
+            dataset = torchvision.datasets.ImageFolder(self.pth_test, transform=transformer)
             # Create dataloader object
             prediction_loader = DataLoader(
                 dataset, 

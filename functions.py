@@ -55,10 +55,10 @@ def check_int_range(var, min, max):
 # If they do not exist yet!
 def create_prg_folders():
     # https://kodify.net/python/pathlib-path-mkdir-method/
-    Path(setting["pth_data"]).mkdir(parents=True, exist_ok=True)
+    Path(setting["pth_train"]).mkdir(parents=True, exist_ok=True)
+    Path(setting["pth_test"]).mkdir(parents=True, exist_ok=True)
     Path(setting["pth_checkpoint"]).mkdir(parents=True, exist_ok=True)
     Path(setting["pth_plots"]).mkdir(parents=True, exist_ok=True)
-    Path(setting["pth_prediction"]).mkdir(parents=True, exist_ok=True)
     Path(setting["pth_ds_gen_input"]).mkdir(parents=True, exist_ok=True)
     Path(setting["pth_ds_gen_output"]).mkdir(parents=True, exist_ok=True)
 
