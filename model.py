@@ -257,11 +257,16 @@ class CNN_Model():
 
         return best_acc
     
-    def print_checkpoints_table(self):
+    def get_checkpoints_list(self, pth_checkpoint):
         # List of all model files in the checkpoint directory with the .model extension
-        checkpoints = [file for file in os.listdir(self.pth_checkpoint) if file.endswith('.model')]
+        checkpoints_list = [file for file in os.listdir(pth_checkpoint) if file.endswith('.model')]
         # Create a tuple from list with indices (no idea how to do that in one line)
-        checkpoints = list(enumerate(checkpoints))
+        checkpoints_list = list(enumerate(checkpoints_list))
+        return checkpoints_list
+    
+    def print_checkpoints_table(self, pth_checkpoint):
+        # Get a list of all checkpoints in the checkpoint folder with ID
+        checkpoints = self.get_checkpoints_list(pth_checkpoint)
         # print(checkpoints)
         table = PrettyTable(["ID", "Checkpoint"])
         for id, name in checkpoints:
@@ -286,10 +291,8 @@ class CNN_Model():
                         return checkpoints[nr-1][1] 
     
     # Load a checkpoint/weights
-    def load_weights(self, chckpt_file):
-        # https://stackoverflow.com/questions/49941426/attributeerror-collections-ordereddict-object-has-no-attribute-eval
-        self.model.load_state_dict(torch.load(self.chckpt_pth + chckpt_file))
-        # self.model.to(device)
+    def load_weights(self, chckpt_pth, chckpt_file):
+        self.model.load_state_dict(torch.load(chckpt_pth + chckpt_file))
         print(f'Weights from checkpoint {chckpt_file} successfully loaded.')
 
     # Function for Prediction

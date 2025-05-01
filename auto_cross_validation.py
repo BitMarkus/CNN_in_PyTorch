@@ -26,6 +26,7 @@ class AutoCrossValidation:
         self.ko_lines = setting['ko_lines']
         self.acv_results_dir = setting['pth_acv_results']
         self.data_dir = setting['pth_data']
+        self.class_list = setting["classes"]   
 
         # Objects
         # Create a dataset generation object (in automatic cross validation mode)
@@ -41,11 +42,11 @@ class AutoCrossValidation:
     def __call__(self):
 
         # Clean up folders train and test in the data directory (old training and test data)
-        print("Cleaning up old train and test data...")
+        print("\nCleaning up old train and test data...")
         self.ds_gen.cleanup(self.data_dir) 
         print("Cleanup finished.")  
 
-        # Generate cross validation datasets
+        # Generate list of cross validation datasets
         configs = self.ds_gen.get_dataset_configs()
         # print(configs)
         # Iterate over each dataset
@@ -56,7 +57,7 @@ class AutoCrossValidation:
             ##################
             
             # Generate dataset and folders for training results
-            print(f"\n>> PROCESSING DATASET {config['dataset_idx']}:")
+            print(f"\n>> PROCESSING DATASET {config['dataset_idx']} OF {len(configs)}:")
 
             print(f"Cell line for testing WT group: {config['test_wt']}")
             print(f"Cell line for testing KO group: {config['test_ko']}")
@@ -102,6 +103,38 @@ class AutoCrossValidation:
             print(f"\n> Start training on dataset {config['dataset_idx']}...")
             self.train.train(ckeckpoint_dir, plot_dir)
             print(f"\nTraining on dataset {config['dataset_idx']} successfully finished.")
+            
+            ################
+            # Testing Loop # 
+            ################
+            
+            # Generate checkpoint list for dataset
+            checkpoint_list = self.cnn.get_checkpoints_list(ckeckpoint_dir)
+            # Load test dataset
+            print(f"\n> Load test images for dataset {config['dataset_idx']}...")
+            self.ds.load_prediction_dataset()
+            print(f"Test images for dataset {config['dataset_idx']} successfully loaded.")             
+            print(f"Number test images/batch size: {self.ds.num_pred_img}/1")
+            # print(checkpoint_list)
+            # If the training did not return a checkpoint for the dataset
+            if(len(checkpoint_list) == 0):
+                print("No checkpoint for this dataset!")
+            else:
+                # Iterate over checkpoint list and load weights
+                for checkpoint_file in checkpoint_list:
+
+                    # Load weights
+                    print(f"\n> Load weight file {checkpoint_file[1]} for dataset {config['dataset_idx']}...")
+                    self.cnn.load_weights(ckeckpoint_dir, checkpoint_file[1]) 
+
+                    # Start prediction on test dataset with selected weights
+                    print('\n> Starting prediction...')
+                    pred_acc, cm = self.cnn.predict(self.ds.ds_pred)
+                    print(f"Accuracy: {pred_acc:.2f}") 
+                    # Plot confusion matrix
+                    class_list = self.cnn.get_class_list()
+                    fn.plot_confusion_matrix(cm, class_list, plot_dir, show_plot=False, save_plot=True)
+                    print(f'Prediction successfully finished. Confision matix saved to {plot_dir}.') 
 
             ##################
             # Cleanup images #
@@ -110,6 +143,6 @@ class AutoCrossValidation:
             # Clean up folders train and test in the data directory for next dataset
             print(f"\n> Cleaning up train and test data from dataset {config['dataset_idx']}...")
             self.ds_gen.cleanup(setting["pth_data"])
-            print("Cleanup finished.")    
+            print("Cleanup finished.")   
 
             print(f"\n>> PROCESSING OF DATASET {config['dataset_idx']} FINISHED!")         

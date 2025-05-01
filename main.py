@@ -129,12 +129,11 @@ def main():
                 print('No CNN generated yet!')
             else:
                 # Select checkpoint
-                checkpoints = cnn.print_checkpoints_table()
+                checkpoints = cnn.print_checkpoints_table(setting["pth_checkpoint"])
                 if(checkpoints):
                     checkpoint_file = cnn.select_checkpoint(checkpoints, "Select a checkpoint: ")
-                    # Load weights into the generator network
-                    cnn.load_weights(checkpoint_file)
-
+                    # Load weights
+                    cnn.load_weights(setting["pth_checkpoint"], checkpoint_file)
                 else:
                     print("The checkpoint folder is empty!")  
 
