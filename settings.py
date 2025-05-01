@@ -9,7 +9,7 @@ setting = {
     ############
 
     # Number of epochs
-    "train_num_epochs": 30,  
+    "train_num_epochs": 2,  # 30
     # Batch size for training and validation datasets
     "ds_batch_size": 50, 
 
@@ -96,7 +96,7 @@ setting = {
     # Set to True, if checkpoints shall be saved during training
     "chckpt_save": True,  
     # Mininmun validation accuracy from which on checkpoints are saved
-    "chckpt_min_acc": 0.8,  
+    "chckpt_min_acc": 0.4,  # 0.8
 
     #########
     # PATHS #
@@ -110,5 +110,7 @@ setting = {
     # Dataset generator
     "pth_ds_gen_input": "dataset_gen/input/",
     "pth_ds_gen_output": "dataset_gen/output/",   
+    # Automatic cross validation
+    "pth_acv_results": "acv_results/",
  
 }

@@ -235,7 +235,7 @@ class CNN_Model():
         print(', '.join(self.class_list))
 
     # Saves a checkpoint/weights
-    def save_weights(self, val_acc, best_acc, epoch):
+    def save_weights(self, val_acc, best_acc, epoch, chckpt_pth):
         # Save checkpoint if the accuracy has improved AND
         # if it is higher than a predefined percentage (min_acc_for_saving) AND
         # if models should be saved at all
@@ -250,7 +250,7 @@ class CNN_Model():
                 pretr = "_pretrained"
             else:
                 pretr = ""
-            filename = f'{self.chckpt_pth}{current_datetime}_checkpoint{pretr}_{self.cnn_type}_e{epoch+1}_vacc{val_acc*100:.0f}.model'
+            filename = f'{chckpt_pth}{current_datetime}_checkpoint{pretr}_{self.cnn_type}_e{epoch+1}_vacc{val_acc*100:.0f}.model'
             torch.save(self.model.state_dict(), filename)
             # Update best accuracy
             best_acc = val_acc 

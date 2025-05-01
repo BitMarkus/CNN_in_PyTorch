@@ -122,7 +122,7 @@ class Train():
         if(show_plot):
             plt.show()
 
-    def train(self):
+    def train(self, chckpt_pth, plot_pth):
 
         # Save best accuracy for model saving
         best_accuracy = 0.0
@@ -232,6 +232,12 @@ class Train():
             # Save best model #
             ###################
 
-            best_accuracy = self.cnn.save_weights(validation_accuracy, best_accuracy, epoch)
+            best_accuracy = self.cnn.save_weights(validation_accuracy, best_accuracy, epoch, chckpt_pth)
+
+        ################
+        # Metircs plot #
+        ################
+
+        self.plot_metrics(history, plot_pth, show_plot=False, save_plot=True)
 
         return history

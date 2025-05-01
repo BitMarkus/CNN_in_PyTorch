@@ -115,10 +115,8 @@ def main():
                 # Create a training object
                 train = Train(cnn, ds)
                 # Train network
-                history = train.train()
+                train.train(setting["pth_checkpoint"], setting["pth_plots"])
                 print("\nTraining finished!")
-                # Show/save training plots
-                train.plot_metrics(history, setting["pth_plots"], show_plot=True, save_plot=True)
 
         ################
         # Load Weights #
@@ -168,22 +166,11 @@ def main():
 
         elif(menu1 == 7):  
             print("\n:DATASET GENERATOR FOR CROSS VALIDATION:")  
-            # Create a dataset generation object
-            # ds_gen = DatasetGenerator(mode = "gen")
-            ds_gen = DatasetGenerator(mode = "train")
+            # Create a dataset generation object (in generation mode)
+            ds_gen = DatasetGenerator(mode = "gen")
             print('Generation of datasets is starting...')
             # Create datasets for cross validation
-            # ds_gen.generate_all_datasets()
-
-            # Get all dataset configurations
-            configs = ds_gen.get_dataset_configs()
-            # Generate each dataset in a loop
-            for config in configs:
-                # 1. Generate dataset
-                ds_gen.generate_dataset(**config) # Unpacks dict as kwargs
-                # 2. (Optional) Cleanup of train and test images
-                ds_gen.cleanup(setting["pth_data"])
-
+            ds_gen.generate_all_datasets()
             print(f"Datasets successfully created and saved to {setting['pth_ds_gen_output']}!")
 
         ##############################
@@ -192,7 +179,8 @@ def main():
 
         elif(menu1 == 8):  
             print("\n:AUTOMATIC CROSS VALIDATION:")  
-            acv = AutoCrossValidation()
+            acv = AutoCrossValidation(device)
+            acv()
 
         ###############
         # Captum Test #  

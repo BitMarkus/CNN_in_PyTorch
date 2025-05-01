@@ -25,6 +25,7 @@ class DatasetGenerator():
         self.ko_lines = setting['ko_lines']
         self.train_dir = setting['pth_train']
         self.test_dir = setting['pth_test']
+        self.acv_results_dir = setting['pth_acv_results']
 
     #############################################################################################################
     # METHODS:
@@ -33,27 +34,29 @@ class DatasetGenerator():
     def _create_folder_structure(self, dataset_path):
 
         # Folder for training and test images
-        # if mode = train, training and test images go to the data folder for training
-        # if mode = gen, training and test images go to the dataset folder
-        if(self.mode == "train"):
+        # If mode = acv (automatic cross validation), training and test images go to the data folder for training
+        # the datafolder goes into the folder acv_results and a folder results will be generated within
+        # If mode = gen, training and test images go to the dataset_gen/output folder/dataset_x folder
+        # and NO folder for results for the dataset will be created
+        if(self.mode == "acv"):
+            # Create folder for automatic cross validation results
+            os.makedirs(self.acv_results_dir, exist_ok=True)
+            # Define directory for train and test images
             train_dir = self.train_dir
             test_dir = self.test_dir
         elif(self.mode == "gen"):
+            # Define directory for train and test images
             train_dir = os.path.join(dataset_path, "train")
             test_dir = os.path.join(dataset_path, "test")
         else:
             return False
-
-        # Folder for dataset and training results
-        result_dir = os.path.join(dataset_path, "result")
         
         os.makedirs(os.path.join(train_dir, "WT"), exist_ok=True)
         os.makedirs(os.path.join(train_dir, "KO"), exist_ok=True)
         os.makedirs(os.path.join(test_dir, "WT"), exist_ok=True)
         os.makedirs(os.path.join(test_dir, "KO"), exist_ok=True)
-        os.makedirs(result_dir, exist_ok=True)
         
-        return train_dir, test_dir, result_dir
+        return train_dir, test_dir
 
     # Copy images from src_dir to dest_dir and update counts_dict
     def _copy_images(self, src_dir, dest_dir, counts_dict, key):
@@ -87,9 +90,17 @@ class DatasetGenerator():
     # Here, test and train folder go directly to the data folder for training
     def generate_dataset(self, test_wt, test_ko, dataset_idx):
 
-        dataset_path = os.path.join(self.output_dir, f"dataset_{dataset_idx}")
+        # if mode = acv (automatic cross validation), the dataset goes into the 
+        if(self.mode == "acv"):
+            dataset_path = os.path.join(self.acv_results_dir, f"dataset_{dataset_idx}")
+        # If mode = gen, the dataset folder goes into dataset_gen/output
+        elif(self.mode == "gen"):
+            dataset_path = os.path.join(self.output_dir, f"dataset_{dataset_idx}")
+        else:
+            return False
+
         os.makedirs(dataset_path, exist_ok=True)
-        train_dir, test_dir, _ = self._create_folder_structure(dataset_path)
+        train_dir, test_dir = self._create_folder_structure(dataset_path)
 
         # Initialize counters
         train_counts = {"WT": {}, "KO": {}}
@@ -127,7 +138,6 @@ class DatasetGenerator():
     def cleanup(self, dataset_path):
 
         # Delete images
-
         dirs_to_remove = [
             os.path.join(dataset_path, "train"),
             os.path.join(dataset_path, "test")
