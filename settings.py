@@ -9,7 +9,7 @@ setting = {
     ############
 
     # Number of epochs
-    "train_num_epochs": 2,  # 30
+    "train_num_epochs": 30,  # 30
     # Batch size for training and validation datasets
     "ds_batch_size": 50, 
 
@@ -43,10 +43,10 @@ setting = {
     # Fraction of images which go into the validation dataset 
     "ds_val_split": 0.1, 
     # Define cell lines (for dataset generator)
-    # "wt_lines": ["WT_1618-02", "WT_JG", "WT_JT", "WT_KM", "WT_MS"],
-    # "ko_lines": ["KO_1096-01", "KO_1618-01", "KO_BR2986", "KO_BR3075"],
-    "wt_lines": ["WT_JG", "WT_JT"],
-    "ko_lines": ["KO_BR2986", "KO_BR3075"],
+    "wt_lines": ["WT_1618-02", "WT_JG", "WT_JT", "WT_KM", "WT_MS"],
+    "ko_lines": ["KO_1096-01", "KO_1618-01", "KO_BR2986", "KO_BR3075"],
+    # "wt_lines": ["WT_JG", "WT_JT"],
+    # "ko_lines": ["KO_BR2986", "KO_BR3075"],
     "classes": ["KO", "WT"],
 
     #########
@@ -96,7 +96,7 @@ setting = {
     # Set to True, if checkpoints shall be saved during training
     "chckpt_save": True,  
     # Mininmun validation accuracy from which on checkpoints are saved
-    "chckpt_min_acc": 0.4,  # 0.8
+    "chckpt_min_acc": 0.80,  # 0.8
 
     #########
     # PATHS #
