@@ -60,18 +60,25 @@ class Dataset():
         # https://stackoverflow.com/questions/60116208/pytorch-load-dataset-of-grayscale-images
         if(self.input_channels == 1):
             transformer = transforms.Compose([
-                transforms.Resize((self.input_height, self.input_width)),
+                # No resize needed as the images are already 512x512
+                # transforms.Resize((self.input_height, self.input_width)),
+                
+                # Augmentations (DIC specific):
+                # Random 90° rotations (0°, 90°, 180°, 270°)
+                transforms.RandomRotation(degrees=[0, 90], expand=False, fill=0),
+                # Small-angle rotations (±10°)
+                # The two rotation steps will compound (e.g., an image might get 5° + 90° rotation)
+                transforms.RandomRotation(degrees=10, expand=False, fill=0),
+                # Brightness/contrast adjustments
+                # Values of 0.2 (~±20% change) are conservative to avoid unrealistic images
+                transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0, hue=0),
+                # DIC images are sensitive to focus shifts. Add slight blur to simulate focal plane variability
+                transforms.RandomApply([transforms.GaussianBlur(kernel_size=3, sigma=(0.1, 0.5))], p=0.3),                
+
                 # 0-255 to 0-1, numpy to tensors:
                 transforms.ToTensor(), 
-                # Normalization for ResNet
+                # Normalization
                 transforms.Grayscale(num_output_channels=1), # <- Grayscale
-                # Further augmentations:
-                # transforms.ToPILImage()
-                # transforms.RandomHorizontalFlip(p=0.5)
-                # transforms.ColorJitter(brightness=0.5, contrast=0, saturation=0, hue=0)
-                # transforms.RandomCrop((224,224))
-                # transforms.RandomRotation(degrees=45)
-                # transforms.RandomGrayScale(p=0.2)
             ])
             return transformer
 
@@ -79,10 +86,15 @@ class Dataset():
         # https://pytorch.org/hub/pytorch_vision_resnet/
         elif(self.input_channels == 3):
             transformer = transforms.Compose([
-                transforms.Resize((self.input_height, self.input_width)),
-                # 0-255 to 0-1, numpy to tensors:
+                # transforms.Resize((self.input_height, self.input_width)),
+
+                # Augmentations (DIC specific):
+                transforms.RandomRotation(degrees=[0, 90], expand=False, fill=0),
+                transforms.RandomRotation(degrees=10, expand=False, fill=0),
+                transforms.ColorJitter(brightness=0.3, contrast=0.3, saturation=0, hue=0),
+                transforms.RandomApply([transforms.GaussianBlur(kernel_size=3, sigma=(0.1, 0.5))], p=0.3),   
+
                 transforms.ToTensor(), 
-                # Normalization for ResNet
                 transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]), # <- RGB
             ])
             return transformer
