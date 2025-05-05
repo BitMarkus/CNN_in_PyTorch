@@ -60,23 +60,33 @@ class Dataset():
         # https://stackoverflow.com/questions/60116208/pytorch-load-dataset-of-grayscale-images
         if(self.input_channels == 1):
             transformer = transforms.Compose([
+
                 # No resize needed as the images are already 512x512
                 # transforms.Resize((self.input_height, self.input_width)),
                 
                 # Augmentations (DIC specific):
                 # Random 90° rotations (0°, 90°, 180°, 270°)
-                transforms.RandomRotation(degrees=[0, 90], expand=False, fill=0),
+                transforms.RandomChoice([
+                    transforms.RandomRotation(degrees=[0, 0]),    # 0° (25% chance)
+                    transforms.RandomRotation(degrees=[90, 90]),  # 90° (25% chance)
+                    transforms.RandomRotation(degrees=[180, 180]), # 180° (25% chance)
+                    transforms.RandomRotation(degrees=[270, 270]), # 270° (25% chance)
+                ]),
+
                 # Small-angle rotations (±10°)
                 # The two rotation steps will compound (e.g., an image might get 5° + 90° rotation)
-                transforms.RandomRotation(degrees=10, expand=False, fill=0),
+                # transforms.RandomRotation(degrees=10, expand=False, fill=0),
+
                 # Brightness/contrast adjustments
                 # Values of 0.2 (~±20% change) are conservative to avoid unrealistic images
                 transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0, hue=0),
+
                 # DIC images are sensitive to focus shifts. Add slight blur to simulate focal plane variability
                 transforms.RandomApply([transforms.GaussianBlur(kernel_size=3, sigma=(0.1, 0.5))], p=0.3),                
 
                 # 0-255 to 0-1, numpy to tensors:
                 transforms.ToTensor(), 
+
                 # Normalization
                 transforms.Grayscale(num_output_channels=1), # <- Grayscale
             ])
@@ -87,13 +97,16 @@ class Dataset():
         elif(self.input_channels == 3):
             transformer = transforms.Compose([
                 # transforms.Resize((self.input_height, self.input_width)),
-
                 # Augmentations (DIC specific):
-                transforms.RandomRotation(degrees=[0, 90], expand=False, fill=0),
-                transforms.RandomRotation(degrees=10, expand=False, fill=0),
+                transforms.RandomChoice([
+                    transforms.RandomRotation(degrees=[0, 0]),
+                    transforms.RandomRotation(degrees=[90, 90]),
+                    transforms.RandomRotation(degrees=[180, 180]),
+                    transforms.RandomRotation(degrees=[270, 270]),
+                ]),
+                # transforms.RandomRotation(degrees=10, expand=False, fill=0),
                 transforms.ColorJitter(brightness=0.3, contrast=0.3, saturation=0, hue=0),
                 transforms.RandomApply([transforms.GaussianBlur(kernel_size=3, sigma=(0.1, 0.5))], p=0.3),   
-
                 transforms.ToTensor(), 
                 transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]), # <- RGB
             ])
