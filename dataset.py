@@ -182,3 +182,29 @@ class Dataset():
             return False
     
         
+"""
+    # Transforer for image resizing and normalization (and augmentation)
+    def get_transformer(self):
+        # Transformer for Grayscale images
+        # https://stackoverflow.com/questions/60116208/pytorch-load-dataset-of-grayscale-images
+        if(self.input_channels == 1):
+            transformer = transforms.Compose([        
+                # 0-255 to 0-1, numpy to tensors:
+                transforms.ToTensor(), 
+                # Normalization
+                transforms.Grayscale(num_output_channels=1), # <- Grayscale
+            ])
+            return transformer
+
+        # Transformer for RGB images
+        # https://pytorch.org/hub/pytorch_vision_resnet/
+        elif(self.input_channels == 3):
+            transformer = transforms.Compose([
+                transforms.ToTensor(), 
+                transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]), # <- RGB
+            ])
+            return transformer
+
+        else:
+            return False
+"""

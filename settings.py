@@ -9,7 +9,7 @@ setting = {
     ############
 
     # Number of epochs
-    "train_num_epochs": 30,  # 30
+    "train_num_epochs": 50,  # 30
     # Batch size for training and validation datasets
     "ds_batch_size": 50, 
 
@@ -48,6 +48,7 @@ setting = {
     # "wt_lines": ["WT_JG", "WT_JT"],
     # "ko_lines": ["KO_BR2986", "KO_BR3075"],
     "classes": ["KO", "WT"],
+    # "classes": ["KO_1096-01", "KO_1618-01", "KO_BR2986", "KO_BR3075", "WT_1618-02", "WT_JG", "WT_JT", "WT_KM", "WT_MS"],
 
     #########
     # MODEL #
