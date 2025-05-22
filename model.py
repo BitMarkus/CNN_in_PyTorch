@@ -39,6 +39,8 @@ class CNN_Model():
         self.cnn_type = setting["cnn_type"] 
         # Variable to save if a model was alread loaded or not
         self.model_loaded = False   
+        # Variable to save if a checkpoint for this model was already loaded
+        self.checkpoint_loaded = False
         # Model
         self.model = None
         # Pretrained
@@ -243,14 +245,14 @@ class CNN_Model():
             val_acc > self.chckpt_min_acc and
             self.chckpt_save):
             # Datetime for saved files
-            current_datetime = datetime.now().strftime("%Y-%m-%d-%H-%M")
+            # current_datetime = datetime.now().strftime("%Y-%m-%d-%H-%M")
             print(f"Model with test accuracy {val_acc:.2f} saved!")
             # Add datetime, epoch and validation accuracy to the filename and save model
             if(self.is_pretrained):
-                pretr = "_pretrained"
+                pretr = "_pretr"
             else:
                 pretr = ""
-            filename = f'{chckpt_pth}{current_datetime}_checkpoint{pretr}_{self.cnn_type}_e{epoch+1}_vacc{val_acc*100:.0f}.model'
+            filename = f'{chckpt_pth}ckpt{pretr}_{self.cnn_type}_e{epoch+1}_vacc{val_acc*100:.0f}.model'
             torch.save(self.model.state_dict(), filename)
             # Update best accuracy
             best_acc = val_acc 
@@ -294,6 +296,7 @@ class CNN_Model():
     def load_weights(self, chckpt_pth, chckpt_file):
         self.model.load_state_dict(torch.load(chckpt_pth + chckpt_file))
         print(f'Weights from checkpoint {chckpt_file} successfully loaded.')
+        return chckpt_file
 
     # Function for Prediction
     def predict(self, dataset):

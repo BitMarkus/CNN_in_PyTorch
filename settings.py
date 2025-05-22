@@ -9,7 +9,7 @@ setting = {
     ############
 
     # Number of epochs
-    "train_num_epochs": 50,  # 30
+    "train_num_epochs": 1,  # 30
     # Batch size for training and validation datasets
     "ds_batch_size": 50, 
 
@@ -97,7 +97,7 @@ setting = {
     # Set to True, if checkpoints shall be saved during training
     "chckpt_save": True,  
     # Mininmun validation accuracy from which on checkpoints are saved
-    "chckpt_min_acc": 0.80,  # 0.8
+    "chckpt_min_acc": 0.40,  # 0.8
 
     #########
     # PATHS #

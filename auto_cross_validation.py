@@ -106,7 +106,7 @@ class AutoCrossValidation:
             print(f"\n> Start training on dataset {config['dataset_idx']}...")
             self.train.train(ckeckpoint_dir, plot_dir)
             print(f"\nTraining on dataset {config['dataset_idx']} successfully finished.")
-            
+
             ################
             # Testing Loop # 
             ################
@@ -132,12 +132,20 @@ class AutoCrossValidation:
 
                     # Start prediction on test dataset with selected weights
                     print('\n> Starting prediction...')
-                    pred_acc, cm = self.cnn.predict(self.ds.ds_pred)
-                    print(f"Accuracy: {pred_acc:.2f}") 
-                    # Plot confusion matrix
-                    class_list = self.cnn.get_class_list()
-                    fn.plot_confusion_matrix(cm, class_list, plot_dir, show_plot=False, save_plot=True)
-                    print(f'Prediction successfully finished. Confision matix saved to {plot_dir}.') 
+                    _, cm = self.cnn.predict(self.ds.ds_pred)
+
+                    # Plot confusion matrix and results
+                    fn.plot_confusion_matrix(cm, self.class_list, plot_dir, chckpt_name=checkpoint_file[1], show_plot=False, save_plot=True)
+                    fn.save_confusion_matrix_results(cm, self.class_list, plot_dir, chckpt_name=checkpoint_file[1])
+
+                    # Load confusion matrix results
+                    loaded_results = fn.load_confusion_matrix_results(plot_dir, file_name=checkpoint_file[1])
+                    # Access the data
+                    print(f"Overall accuracy: {(loaded_results['overall_accuracy']*100):.2f}%")
+                    print(f"WT accuracy: {(loaded_results['class_accuracy']['WT']*100):.2f}")
+                    print(f"KO accuracy: {(loaded_results['class_accuracy']['KO']*100):.2f}")
+
+                    print(f'Prediction successfully finished. Confusion matrix and results saved to {plot_dir}.') 
 
             ##################
             # Cleanup images #

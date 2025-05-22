@@ -117,7 +117,7 @@ class Train():
         plt.tight_layout()
         # Save plot
         if(save_plot):
-            fn.save_plot_to_drive(plot_path, "train_metrics")
+            plt.savefig(str(plot_path) + '/' + "train_metrics", bbox_inches='tight')
         # Show and save plot
         if(show_plot):
             plt.show()

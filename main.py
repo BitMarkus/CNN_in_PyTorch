@@ -45,7 +45,7 @@ def main():
         print("3) Load Training Data")
         print("4) Train Network")
         print("5) Load Weights")
-        print("6) Predict Images in Prediction Folder")
+        print("6) Predict Images in data/test Folder")
         print("7) Dataset Generator")
         print("8) Automatic Cross Validation")
         print("9) Captum Test")
@@ -134,6 +134,7 @@ def main():
                     checkpoint_file = cnn.select_checkpoint(checkpoints, "Select a checkpoint: ")
                     # Load weights
                     cnn.load_weights(setting["pth_checkpoint"], checkpoint_file)
+                    cnn.checkpoint_loaded = True
                 else:
                     print("The checkpoint folder is empty!")  
 
@@ -142,7 +143,7 @@ def main():
         ############################
 
         elif(menu1 == 6):  
-            print("\n:PREDICT IMAGES IN FOLDER:") 
+            print("\n:PREDICT IMAGES IN TEST FOLDER:") 
             if not (cnn.model_loaded):
                 print('No CNN generated yet!')
             else:
@@ -152,22 +153,24 @@ def main():
                 print('Prediction dataset successfully loaded.')
                 print(f"Number test images/batch size: {ds.num_pred_img}/1")
                 print('Starting prediction...')
-                pred_acc, cm = cnn.predict(ds.ds_pred)
-                # print(f"Accuracy: {pred_acc:.2f}")  
-
+                _, cm = cnn.predict(ds.ds_pred)
                 # Get class list
                 class_list = cnn.get_class_list()
+                # Get name of the checkpoint file the confusion matrix is based on
+                if(cnn.checkpoint_loaded):
+                    ckpt = checkpoint_file
+                else:
+                    ckpt = None
                 # Save confusion matrix results
-                fn.save_confusion_matrix_results(cm, class_list, setting["pth_plots"]+"test1", format='json')
+                fn.save_confusion_matrix_results(cm, class_list, setting["pth_plots"], chckpt_name=ckpt)
                 # Plot confusion matrix
-                fn.plot_confusion_matrix(cm, class_list, setting["pth_plots"], show_plot=True, save_plot=True)
-
+                fn.plot_confusion_matrix(cm, class_list, setting["pth_plots"], chckpt_name=ckpt, show_plot=True, save_plot=True)
                 # Load confusion matrix results
-                loaded_results = fn.load_confusion_matrix_results(setting["pth_plots"]+"test1", format='json')
+                loaded_results = fn.load_confusion_matrix_results(setting["pth_plots"], file_name=ckpt)
                 # Access the data
-                print(f"Overall accuracy: {loaded_results['overall_accuracy']}")
-                print(f"WT accuracy: {loaded_results['class_accuracy']['WT']}")
-                print(f"KO accuracy: {loaded_results['class_accuracy']['KO']}")
+                print(f"Overall accuracy: {(loaded_results['overall_accuracy']*100):.2f}%")
+                print(f"WT accuracy: {(loaded_results['class_accuracy']['WT']*100):.2f}")
+                print(f"KO accuracy: {(loaded_results['class_accuracy']['KO']*100):.2f}")
 
         #####################
         # Dataset Generator #  

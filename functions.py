@@ -80,17 +80,8 @@ def create_prg_folders():
     
     return True
 
-# Function to save plots
-def save_plot_to_drive(plot_path, file_name):
-    # Datetime for saved files
-    current_datetime = datetime.now().strftime("%Y-%m-%d-%H-%M")
-    # Generate filename
-    filename = f'{current_datetime}_{setting["cnn_type"]}_{file_name}.png'
-    # Save plot
-    plt.savefig(str(plot_path) + '/' + filename, bbox_inches='tight')
-
 # Function to plot a confusion matrix
-def plot_confusion_matrix(cm, class_list, plot_path, show_plot=True, save_plot=True):
+def plot_confusion_matrix(cm, class_list, plot_path, chckpt_name=None, show_plot=False, save_plot=True):
     # # Print confusion matrix 
     # https://scikit-learn.org/stable/modules/model_evaluation.html#confusion-matrix
     # https://scikit-learn.org/stable/auto_examples/model_selection/plot_confusion_matrix.html#sphx-glr-auto-examples-model-selection-plot-confusion-matrix-py
@@ -106,18 +97,26 @@ def plot_confusion_matrix(cm, class_list, plot_path, show_plot=True, save_plot=T
     plt.tight_layout()
     # Save plot
     if(save_plot):
-        save_plot_to_drive(plot_path, "confusion_matrix")
+        # Name of the cm file will be the checkpoint file it is based on
+        # If no name was passed, it will be just called "confusion_matrix"
+        if(chckpt_name is None):
+            cm_file_name = "confusion_matrix"
+        else:
+            # Remove extension from checkpoint name if necessary
+            cm_file_name = str(Path(chckpt_name).stem) + "_cm" 
+        # Save plot
+        plt.savefig(str(plot_path) + '/' + cm_file_name, bbox_inches='tight')
     # Show and save plot
     if(show_plot):
         plt.show()   
 
-# Save confusion matrix results with accuracies to a structured file.
+# Save confusion matrix results with accuracies to a json file.
 # Args:
 #    cm (dict): Dictionary with 'y' (true labels) and 'y_hat' (predicted labels)
 #    class_list (list): List of class names in order
 #    file_path (str): Path to save the file (without extension)
-#    format (str): 'json' or 'csv' file format
-def save_confusion_matrix_results(cm, class_list, file_path, format='json'):
+#    chckpt_name (str): Name of the checkpoint file the confusion matrix is based on
+def save_confusion_matrix_results(cm, class_list, file_path, chckpt_name=None):
 
     # Calculate confusion matrix
     cm_array = confusion_matrix(cm["y"], cm["y_hat"])
@@ -140,69 +139,46 @@ def save_confusion_matrix_results(cm, class_list, file_path, format='json'):
         "predicted_labels": cm["y_hat"]
     }
 
-    # Save in requested format
-    if format.lower() == 'json':
-        with open(f"{file_path}.json", 'w') as f:
-            json.dump(results, f, indent=4)
-    elif format.lower() == 'csv':
-        # Save main metrics
-        with open(f"{file_path}_metrics.csv", 'w') as f:
-            writer = csv.writer(f)
-            writer.writerow(['Class', 'Accuracy'])
-            for class_name, acc in zip(class_list, class_acc):
-                writer.writerow([class_name, acc])
-            writer.writerow(['Overall', overall_acc])
-        
-        # Save full confusion matrix
-        with open(f"{file_path}_matrix.csv", 'w') as f:
-            writer = csv.writer(f)
-            writer.writerow([''] + class_list)  # Header row
-            for i, row in enumerate(cm_array):
-                writer.writerow([class_list[i]] + row.tolist())
+    # Name of the result file will be the checkpoint file it is based on
+    # If no name was passed, it will be just called "results"
+    if(chckpt_name is None):
+        file_name = "cm_results"
     else:
-        raise ValueError("Format must be 'json' or 'csv'")
+        # Remove extension from checkpoint name if necessary
+        file_name = str(Path(chckpt_name).stem) + "_cm"
+
+    # Save file
+    with open(f"{file_path}{file_name}.json", 'w') as f:
+        json.dump(results, f, indent=4)
 
 # Load confusion matrix results from file.
 # Args:
-#    file_path (str): Path to the file (without extension)
-#    format (str): 'json' or 'csv' file format     
+#    file_path (str): Path to the file (without extension) 
+#    file_name (str): Name of the checkpoint file the confusion matrix is based on or none
 # Returns:
 #    dict: Dictionary containing all saved results
-def load_confusion_matrix_results(file_path, format='json'):
-
-    if format.lower() == 'json':
-        with open(f"{file_path}.json", 'r') as f:
+def load_confusion_matrix_results(file_path, file_name=None):
+        
+    # Name of the result file is the checkpoint file it is based on
+    # If no name was passed, the name will be "results"
+    try:
+        # Determine filename
+        if file_name is None:
+            f_name = "cm_results"
+        else:
+            f_name = str(Path(file_name).stem) + "_cm"
+        
+        # Construct full path
+        full_path = Path(file_path) / f"{f_name}.json"
+        
+        # Check if file exists
+        if not full_path.exists():
+            raise FileNotFoundError(f"Results file not found at: {full_path}")
+        
+        # Load and return data
+        with open(full_path, 'r') as f:
             return json.load(f)
-    elif format.lower() == 'csv':
-        results = {}
-        
-        # Load metrics
-        with open(f"{file_path}_metrics.csv", 'r') as f:
-            reader = csv.reader(f)
-            next(reader)  # Skip header
-            class_acc = {}
-            for row in reader:
-                if row[0] == 'Overall':
-                    results['overall_accuracy'] = float(row[1])
-                else:
-                    class_acc[row[0]] = float(row[1])
-        
-        # Load confusion matrix
-        with open(f"{file_path}_matrix.csv", 'r') as f:
-            reader = csv.reader(f)
-            class_list = next(reader)[1:]  # Get class names from header
-            cm_array = []
-            for row in reader:
-                cm_array.append([int(x) for x in row[1:]])
-        
-        # Reconstruct the results dictionary
-        results.update({
-            'classes': class_list,
-            'confusion_matrix': cm_array,
-            'class_accuracy': class_acc,
-            # Note: CSV format doesn't store true/predicted labels
-        })
-        
-        return results
-    else:
-        raise ValueError("Format must be 'json' or 'csv'")
+            
+    except Exception as e:
+        print(f"Error loading confusion matrix results: {e}")
+        return None
