@@ -153,11 +153,21 @@ def main():
                 print(f"Number test images/batch size: {ds.num_pred_img}/1")
                 print('Starting prediction...')
                 pred_acc, cm = cnn.predict(ds.ds_pred)
-                print(f"Accuracy: {pred_acc:.2f}")  
+                # print(f"Accuracy: {pred_acc:.2f}")  
 
-                # Plot confusion matrix
+                # Get class list
                 class_list = cnn.get_class_list()
+                # Save confusion matrix results
+                fn.save_confusion_matrix_results(cm, class_list, setting["pth_plots"]+"test1", format='json')
+                # Plot confusion matrix
                 fn.plot_confusion_matrix(cm, class_list, setting["pth_plots"], show_plot=True, save_plot=True)
+
+                # Load confusion matrix results
+                loaded_results = fn.load_confusion_matrix_results(setting["pth_plots"]+"test1", format='json')
+                # Access the data
+                print(f"Overall accuracy: {loaded_results['overall_accuracy']}")
+                print(f"WT accuracy: {loaded_results['class_accuracy']['WT']}")
+                print(f"KO accuracy: {loaded_results['class_accuracy']['KO']}")
 
         #####################
         # Dataset Generator #  

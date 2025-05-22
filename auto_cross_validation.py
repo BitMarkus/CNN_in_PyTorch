@@ -2,14 +2,17 @@ import os
 import shutil
 import torch
 from tqdm import tqdm
+from dataset import Dataset
+import json
+import csv
+from sklearn.metrics import confusion_matrix
+import numpy as np
+# Own modules
 from settings import setting
 import functions as fn
 from train import Train
 from dataset_gen import DatasetGenerator
 from custom_model import Custom_CNN_Model
-from dataset import Dataset
-# Own modules
-from settings import setting
 
 class AutoCrossValidation:
 

@@ -7,6 +7,11 @@ from pathlib import Path
 import torch
 from datetime import datetime
 import matplotlib.pyplot as plt
+import json
+import csv
+import os
+from sklearn.metrics import confusion_matrix
+import numpy as np
 from sklearn.metrics import ConfusionMatrixDisplay
 # Own modules
 from settings import setting
@@ -71,6 +76,7 @@ def create_prg_folders():
     Path(setting["pth_plots"]).mkdir(parents=True, exist_ok=True)
     Path(setting["pth_ds_gen_input"]).mkdir(parents=True, exist_ok=True)
     Path(setting["pth_ds_gen_output"]).mkdir(parents=True, exist_ok=True)
+    Path(setting["pth_prediction"]).mkdir(parents=True, exist_ok=True)
     
     return True
 
@@ -105,5 +111,98 @@ def plot_confusion_matrix(cm, class_list, plot_path, show_plot=True, save_plot=T
     if(show_plot):
         plt.show()   
 
+# Save confusion matrix results with accuracies to a structured file.
+# Args:
+#    cm (dict): Dictionary with 'y' (true labels) and 'y_hat' (predicted labels)
+#    class_list (list): List of class names in order
+#    file_path (str): Path to save the file (without extension)
+#    format (str): 'json' or 'csv' file format
+def save_confusion_matrix_results(cm, class_list, file_path, format='json'):
 
+    # Calculate confusion matrix
+    cm_array = confusion_matrix(cm["y"], cm["y_hat"])
+    
+    # Calculate class-wise accuracy (normalized by true labels)
+    with np.errstate(divide='ignore', invalid='ignore'):
+        class_acc = cm_array.diagonal() / cm_array.sum(axis=1)
+    class_acc = np.nan_to_num(class_acc)  # Replace NaN with 0
+    
+    # Calculate overall accuracy
+    overall_acc = np.sum(cm_array.diagonal()) / np.sum(cm_array)
+    
+    # Prepare data structure
+    results = {
+        "classes": class_list,
+        "confusion_matrix": cm_array.tolist(),
+        "class_accuracy": dict(zip(class_list, class_acc.tolist())),
+        "overall_accuracy": overall_acc,
+        "true_labels": cm["y"],
+        "predicted_labels": cm["y_hat"]
+    }
 
+    # Save in requested format
+    if format.lower() == 'json':
+        with open(f"{file_path}.json", 'w') as f:
+            json.dump(results, f, indent=4)
+    elif format.lower() == 'csv':
+        # Save main metrics
+        with open(f"{file_path}_metrics.csv", 'w') as f:
+            writer = csv.writer(f)
+            writer.writerow(['Class', 'Accuracy'])
+            for class_name, acc in zip(class_list, class_acc):
+                writer.writerow([class_name, acc])
+            writer.writerow(['Overall', overall_acc])
+        
+        # Save full confusion matrix
+        with open(f"{file_path}_matrix.csv", 'w') as f:
+            writer = csv.writer(f)
+            writer.writerow([''] + class_list)  # Header row
+            for i, row in enumerate(cm_array):
+                writer.writerow([class_list[i]] + row.tolist())
+    else:
+        raise ValueError("Format must be 'json' or 'csv'")
+
+# Load confusion matrix results from file.
+# Args:
+#    file_path (str): Path to the file (without extension)
+#    format (str): 'json' or 'csv' file format     
+# Returns:
+#    dict: Dictionary containing all saved results
+def load_confusion_matrix_results(file_path, format='json'):
+
+    if format.lower() == 'json':
+        with open(f"{file_path}.json", 'r') as f:
+            return json.load(f)
+    elif format.lower() == 'csv':
+        results = {}
+        
+        # Load metrics
+        with open(f"{file_path}_metrics.csv", 'r') as f:
+            reader = csv.reader(f)
+            next(reader)  # Skip header
+            class_acc = {}
+            for row in reader:
+                if row[0] == 'Overall':
+                    results['overall_accuracy'] = float(row[1])
+                else:
+                    class_acc[row[0]] = float(row[1])
+        
+        # Load confusion matrix
+        with open(f"{file_path}_matrix.csv", 'r') as f:
+            reader = csv.reader(f)
+            class_list = next(reader)[1:]  # Get class names from header
+            cm_array = []
+            for row in reader:
+                cm_array.append([int(x) for x in row[1:]])
+        
+        # Reconstruct the results dictionary
+        results.update({
+            'classes': class_list,
+            'confusion_matrix': cm_array,
+            'class_accuracy': class_acc,
+            # Note: CSV format doesn't store true/predicted labels
+        })
+        
+        return results
+    else:
+        raise ValueError("Format must be 'json' or 'csv'")

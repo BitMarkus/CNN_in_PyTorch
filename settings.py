@@ -108,6 +108,7 @@ setting = {
     "pth_test": "data/test/",
     "pth_checkpoint": "checkpoints/",
     "pth_plots": "plots/",
+    "pth_prediction": "prediction/",
     # Dataset generator
     "pth_ds_gen_input": "dataset_gen/input/",
     "pth_ds_gen_output": "dataset_gen/output/",   
