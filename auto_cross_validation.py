@@ -147,6 +147,4 @@ class AutoCrossValidation:
             # Clean up folders train and test in the data directory for next dataset
             print(f"\n> Cleaning up train and test data from dataset {config['dataset_idx']}...")
             self.ds_gen.cleanup(setting["pth_data"])
-            print("Cleanup finished.")   
-
-            print(f"\n>> PROCESSING OF DATASET {config['dataset_idx']} FINISHED!")         
+            print("Cleanup finished.")      

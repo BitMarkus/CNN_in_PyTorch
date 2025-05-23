@@ -7,6 +7,7 @@ from tqdm import tqdm
 import pandas as pd
 from collections import defaultdict
 from itertools import product
+import json
 # Own modules
 from model import CNN_Model
 from custom_model import Custom_CNN_Model
@@ -78,7 +79,7 @@ class ConfidenceAnalyzer:
             os.makedirs(os.path.join(self.pth_test, cls))
         # Copy images using single shutil.copytree call per class
         if current_dataset is not None and total_datasets is not None:
-            tqdm.write(f"\n>> Processing dataset {current_dataset} of {total_datasets}...")
+            tqdm.write(f"\n>> PROCESSING DATASET {current_dataset} OF {total_datasets}:")
         tqdm.write(f"Generating test set with WT: {test_wt}, KO: {test_ko}")
         shutil.copytree(
             os.path.join(self.pth_ds_gen_input, test_wt),
@@ -91,16 +92,72 @@ class ConfidenceAnalyzer:
             dirs_exist_ok=True
         )
 
-    # Analyze a single datasets checkpoints
-    def _analyze_single_dataset(self, dataset_num, total_datasets):
+    # Analyze a single datasets checkpoints with optional checkpoint selection
+    def _analyze_single_dataset(self, dataset_num, total_datasets, max_checkpoints=None, selection_method='balanced_sum'):
         dataset_results = {}
         checkpoints_path = os.path.join(
             self.pth_acv_results, 
             f"dataset_{dataset_num}", 
             'checkpoints'
         )
-        # Get all checkpoint files
-        checkpoint_files = [f for f in os.listdir(checkpoints_path) if f.endswith('.model')]
+        plots_path = os.path.join(self.pth_acv_results, f"dataset_{dataset_num}", 'plots')
+        
+        # Get all checkpoint files that have corresponding confusion matrix JSON files
+        checkpoint_files = []
+        for f in os.listdir(checkpoints_path):
+            if f.endswith('.model'):
+                json_file = f.replace('.model', '_cm.json')
+                json_path = os.path.join(plots_path, json_file)
+                if os.path.exists(json_path):  # Only consider checkpoints with CM data
+                    checkpoint_files.append(f)
+        
+        # Store checkpoint info for reporting
+        selected_checkpoints_info = []
+        
+        # Select checkpoints based on the specified method if max_checkpoints is set
+        if max_checkpoints is not None and len(checkpoint_files) > max_checkpoints:
+            checkpoint_files = self._select_checkpoints_by_metric(
+                checkpoint_files,
+                plots_path,
+                top_n=max_checkpoints,
+                method=selection_method
+            )
+        
+        # Print checkpoint selection info
+        tqdm.write(f"Selected {len(checkpoint_files)} checkpoint(s):")
+        for checkpoint_file in checkpoint_files:
+            base_name = os.path.splitext(checkpoint_file)[0]
+            json_file = f"{base_name}_cm.json"
+            json_path = os.path.join(plots_path, json_file)
+            
+            try:
+                with open(json_path, 'r') as f:
+                    cm_data = json.load(f)
+                
+                # Verify structure
+                if 'class_accuracy' not in cm_data or 'overall_accuracy' not in cm_data:
+                    raise ValueError("JSON missing required keys")
+                
+                # Get accuracies
+                wt_acc = cm_data['class_accuracy'].get(self.classes[0], 0)
+                ko_acc = cm_data['class_accuracy'].get(self.classes[1], 0)
+                overall_acc = cm_data['overall_accuracy']
+                
+                tqdm.write(f"> {checkpoint_file}:")
+                tqdm.write(f"  WT accuracy: {wt_acc:.2%}")
+                tqdm.write(f"  KO accuracy: {ko_acc:.2%}")
+                tqdm.write(f"  Overall accuracy: {overall_acc:.2%}")
+                
+            except Exception as e:
+                tqdm.write(f"- {checkpoint_file} (Error: {str(e)})")
+                # Print the full path that was attempted
+                tqdm.write(f"  Attempted path: {json_path}")
+                if os.path.exists(json_path):
+                    tqdm.write("  File exists but has unexpected content")
+                else:
+                    tqdm.write("  File does not exist")
+                continue
+        
         # Use context manager for clean progress bar handling
         with tqdm(
             checkpoint_files,
@@ -124,6 +181,52 @@ class ConfidenceAnalyzer:
                     tqdm.write(f"\nError loading {checkpoint_path}: {str(e)}")
                     continue                
         return dataset_results
+    
+    # Select top checkpoints based on specified metric from confusion matrix JSON files
+    def _select_checkpoints_by_metric(self, checkpoint_files, plots_path, top_n=3, method='balanced_sum'):
+        scores = []
+        
+        for checkpoint_file in checkpoint_files:
+            # Construct JSON filename by inserting '_cm' before '.json'
+            base_name = os.path.splitext(checkpoint_file)[0]  # removes .model
+            json_file = f"{base_name}_cm.json"
+            json_path = os.path.join(plots_path, json_file)
+            
+            try:
+                with open(json_path, 'r') as f:
+                    cm_data = json.load(f)
+                
+                # Verify the expected keys exist
+                if 'class_accuracy' not in cm_data or not isinstance(cm_data['class_accuracy'], dict):
+                    raise ValueError("Invalid or missing 'class_accuracy' in JSON")
+                    
+                if 'overall_accuracy' not in cm_data:
+                    raise ValueError("Missing 'overall_accuracy' in JSON")
+                
+                # Get class accuracies
+                wt_acc = cm_data['class_accuracy'].get(self.classes[0], 0)
+                ko_acc = cm_data['class_accuracy'].get(self.classes[1], 0)
+                overall_acc = cm_data['overall_accuracy']
+                
+                # Calculate score based on selection method
+                if method == 'balanced_sum':
+                    score = (wt_acc + ko_acc) - abs(wt_acc - ko_acc)
+                elif method == 'f1_score':
+                    score = 2 * (wt_acc * ko_acc) / (wt_acc + ko_acc) if (wt_acc + ko_acc) > 0 else 0
+                elif method == 'min_difference':
+                    score = min(wt_acc, ko_acc)
+                else:
+                    raise ValueError(f"Unknown selection method: {method}")
+                
+                scores.append((checkpoint_file, score, wt_acc, ko_acc, overall_acc))
+                
+            except Exception as e:
+                tqdm.write(f"Error processing {json_file}: {str(e)}")
+                continue
+        
+        # Sort by score in descending order and select top N
+        scores.sort(key=lambda x: x[1], reverse=True)
+        return [x[0] for x in scores[:top_n]]
 
     # Get predictions with confidence scores
     def _get_predictions_with_confidence(self):
@@ -279,6 +382,57 @@ class ConfidenceAnalyzer:
             pd.DataFrame(rows).to_csv(output_path, index=False)
             return True
         return False
+    
+    # Export a CSV file listing all used checkpoints with their accuracies
+    def _export_used_checkpoints(self, results):
+        rows = []
+        
+        for dataset_num, checkpoints in results.items():
+            config = self._get_available_datasets()[int(dataset_num)]
+            
+            for ckpt_name, pred_data in checkpoints.items():
+                # Get the corresponding JSON file for accuracy metrics
+                base_name = os.path.splitext(ckpt_name)[0]
+                json_file = f"{base_name}_cm.json"
+                json_path = os.path.join(
+                    self.pth_acv_results,
+                    f"dataset_{dataset_num}",
+                    'plots',
+                    json_file
+                )
+                
+                try:
+                    with open(json_path, 'r') as f:
+                        cm_data = json.load(f)
+                    
+                    wt_acc = cm_data['class_accuracy'].get(self.classes[0], 0)
+                    ko_acc = cm_data['class_accuracy'].get(self.classes[1], 0)
+                    overall_acc = cm_data['overall_accuracy']
+                    
+                    rows.append({
+                        'dataset': dataset_num,
+                        'test_wt': config['test_wt'],
+                        'test_ko': config['test_ko'],
+                        'checkpoint': ckpt_name,
+                        'wt_accuracy': wt_acc,
+                        'ko_accuracy': ko_acc,
+                        'overall_accuracy': overall_acc,
+                        'selection_method': 'top3_by_balanced_sum'  # or make this dynamic
+                    })
+                    
+                except Exception as e:
+                    tqdm.write(f"Error loading metrics for {ckpt_name}: {str(e)}")
+                    continue
+        
+        if rows:
+            df = pd.DataFrame(rows)
+            # Sort by dataset and overall accuracy
+            df = df.sort_values(['dataset', 'overall_accuracy'], ascending=[True, False])
+            output_path = os.path.join(self.pth_conf_analizer_results, 'used_checkpoints.csv')
+            df.to_csv(output_path, index=False)
+            tqdm.write(f"\nSaved used checkpoints report to: {output_path}")
+            return True
+        return False    
 
     # Create README file for output folder
     def _create_readme(self, output_dir, consistent_images):
@@ -294,7 +448,7 @@ class ConfidenceAnalyzer:
         if os.path.exists(self.pth_test):
             shutil.rmtree(self.pth_test, ignore_errors=True)
 
-    def analyze_all_datasets(self):
+    def analyze_all_datasets(self, max_checkpoints_per_dataset=None, selection_method='balanced_sum'):
         all_results = {}
         available_datasets = self._get_available_datasets()
         total_datasets = len(available_datasets)
@@ -320,8 +474,13 @@ class ConfidenceAnalyzer:
                     current_dataset=dataset_num,
                     total_datasets=total_datasets
                 )
-                # Analyze dataset
-                dataset_results = self._analyze_single_dataset(dataset_num, total_datasets)
+                # Analyze dataset with optional checkpoint selection
+                dataset_results = self._analyze_single_dataset(
+                    dataset_num,
+                    total_datasets,
+                    max_checkpoints=max_checkpoints_per_dataset,
+                    selection_method=selection_method
+                )
                 all_results[dataset_num] = dataset_results
                 # Save interim results
                 if self._save_results_to_csv(all_results, output_csv):
@@ -334,10 +493,12 @@ class ConfidenceAnalyzer:
     # CALL:
 
     # Main analysis method
-    def __call__(self):
-
+    def __call__(self, max_checkpoints_per_dataset=None, selection_method='balanced_sum'):
         # Get results from all datasets
-        results = self.analyze_all_datasets()
+        results = self.analyze_all_datasets(
+            max_checkpoints_per_dataset=max_checkpoints_per_dataset,
+            selection_method=selection_method
+        )
         
         # Find and organize high-confidence images
         tqdm.write("\n>> Finding high-confidence images...")
@@ -347,7 +508,11 @@ class ConfidenceAnalyzer:
         output_dir = self.organize_high_confidence_images(consistent_images)
         tqdm.write(f"High-confidence images saved to: {output_dir}")
 
+        # Export checkpoint usage report
+        self._export_used_checkpoints(results)
+        
         # Cleanup test folder when done
         self.cleanup_test_folder()
         
         tqdm.write("\nAnalysis complete!\n")
+        return results

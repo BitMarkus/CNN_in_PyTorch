@@ -196,7 +196,7 @@ def main():
         elif(menu1 == 9):  
             print("\n:CONFIDENCE ANALYZER:")  
             ca = ConfidenceAnalyzer(device)
-            ca()
+            ca(max_checkpoints_per_dataset=2)
 
         ###############
         # Captum Test #  
@@ -204,14 +204,14 @@ def main():
 
         elif(menu1 == 10):  
             print("\n:CAPTUM:") 
-
+            print("Under construction...")
+            """
             # ds.load_prediction_dataset()
             # cnn.model = Custom_CNN_Model().to(device)
             ds.load_training_dataset()
             cnn.load_weights(device)
-
             cnn.predict_single(ds.ds_train)
-
+            """
         ################
         # Exit Program #
         ################
