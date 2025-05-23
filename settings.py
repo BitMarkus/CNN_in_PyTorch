@@ -99,6 +99,13 @@ setting = {
     # Mininmun validation accuracy from which on checkpoints are saved
     "chckpt_min_acc": 0.40,  # 0.8
 
+    #######################
+    # CONFIDENCE ANALYZER #
+    #######################
+
+    # Min confidence for image sorting
+    "ca_min_conf": 0.8,     # 80%
+
     #########
     # PATHS #
     #########
@@ -114,5 +121,7 @@ setting = {
     "pth_ds_gen_output": "dataset_gen/output/",   
     # Automatic cross validation
     "pth_acv_results": "acv_results/",
+    # Confidence analyzer results
+    "pth_conf_analizer_results": "ca_results/",
  
 }

@@ -1,15 +1,9 @@
-import torch
-from PIL import Image
-from captum.attr import IntegratedGradients
-import matplotlib.pyplot as plt
-from captum.attr import visualization as viz
-import os
 # Own modules
 import functions as fn
-from model import CNN_Model
 from custom_model import Custom_CNN_Model
 from dataset_gen import DatasetGenerator
 from auto_cross_validation import AutoCrossValidation
+from conf_analyzer import ConfidenceAnalyzer
 from dataset import Dataset
 from train import Train
 from settings import setting
@@ -47,9 +41,10 @@ def main():
         print("5) Load Weights")
         print("6) Predict Images in data/test Folder")
         print("7) Dataset Generator")
-        print("8) Automatic Cross Validation")
-        print("9) Captum Test")
-        print("10) Exit Program")
+        print("8) Automatic Cross Validation (ACV)")
+        print("9) Confidence Analyzer (based on ACV)")
+        print("10) Captum Test")
+        print("11) Exit Program")
         menu1 = int(fn.input_int("Please choose: "))
 
         ######################
@@ -194,11 +189,20 @@ def main():
             acv = AutoCrossValidation(device)
             acv()
 
+        #######################
+        # Confidence Analyzer #  
+        #######################
+
+        elif(menu1 == 9):  
+            print("\n:CONFIDENCE ANALYZER:")  
+            ca = ConfidenceAnalyzer(device)
+            ca()
+
         ###############
         # Captum Test #  
         ###############
 
-        elif(menu1 == 9):  
+        elif(menu1 == 10):  
             print("\n:CAPTUM:") 
 
             # ds.load_prediction_dataset()
@@ -212,7 +216,7 @@ def main():
         # Exit Program #
         ################
 
-        elif(menu1 == 10):
+        elif(menu1 == 11):
             print("\nExit program...")
             break
         

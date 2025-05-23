@@ -1,12 +1,5 @@
 import os
-import shutil
-import torch
-from tqdm import tqdm
 from dataset import Dataset
-import json
-import csv
-from sklearn.metrics import confusion_matrix
-import numpy as np
 # Own modules
 from settings import setting
 import functions as fn
