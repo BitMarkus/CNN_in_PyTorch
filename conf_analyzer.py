@@ -35,6 +35,10 @@ class ConfidenceAnalyzer:
         self.ko_lines = setting['ko_lines']
         # Min conf for sorting
         self.min_conf = setting['ca_min_conf']
+        # Maximum number of checkpoints which for a dataset
+        self.max_ckpts = setting['ca_max_ckpts']
+        # Selection method for selecting the "best" checkpoints
+        self.ckpt_select_method = setting['ca_ckpt_select_method']
 
         # Objects
         # Create model wrapper
@@ -93,7 +97,7 @@ class ConfidenceAnalyzer:
         )
 
     # Analyze a single datasets checkpoints with optional checkpoint selection
-    def _analyze_single_dataset(self, dataset_num, total_datasets, max_checkpoints=None, selection_method='balanced_sum'):
+    def _analyze_single_dataset(self, dataset_num, total_datasets):
         dataset_results = {}
         checkpoints_path = os.path.join(
             self.pth_acv_results, 
@@ -115,12 +119,12 @@ class ConfidenceAnalyzer:
         selected_checkpoints_info = []
         
         # Select checkpoints based on the specified method if max_checkpoints is set
-        if max_checkpoints is not None and len(checkpoint_files) > max_checkpoints:
+        if self.max_ckpts is not None and len(checkpoint_files) > self.max_ckpts:
             checkpoint_files = self._select_checkpoints_by_metric(
                 checkpoint_files,
                 plots_path,
-                top_n=max_checkpoints,
-                method=selection_method
+                top_n=self.max_ckpts,
+                method=self.ckpt_select_method
             )
         
         # Print checkpoint selection info
@@ -144,9 +148,9 @@ class ConfidenceAnalyzer:
                 overall_acc = cm_data['overall_accuracy']
                 
                 tqdm.write(f"> {checkpoint_file}:")
-                tqdm.write(f"  WT accuracy: {wt_acc:.2%}")
-                tqdm.write(f"  KO accuracy: {ko_acc:.2%}")
-                tqdm.write(f"  Overall accuracy: {overall_acc:.2%}")
+                tqdm.write(f"  WT test accuracy: {wt_acc:.2%}")
+                tqdm.write(f"  KO test accuracy: {ko_acc:.2%}")
+                tqdm.write(f"  Overall test accuracy: {overall_acc:.2%}")
                 
             except Exception as e:
                 tqdm.write(f"- {checkpoint_file} (Error: {str(e)})")
@@ -448,7 +452,7 @@ class ConfidenceAnalyzer:
         if os.path.exists(self.pth_test):
             shutil.rmtree(self.pth_test, ignore_errors=True)
 
-    def analyze_all_datasets(self, max_checkpoints_per_dataset=None, selection_method='balanced_sum'):
+    def analyze_all_datasets(self):
         all_results = {}
         available_datasets = self._get_available_datasets()
         total_datasets = len(available_datasets)
@@ -475,12 +479,7 @@ class ConfidenceAnalyzer:
                     total_datasets=total_datasets
                 )
                 # Analyze dataset with optional checkpoint selection
-                dataset_results = self._analyze_single_dataset(
-                    dataset_num,
-                    total_datasets,
-                    max_checkpoints=max_checkpoints_per_dataset,
-                    selection_method=selection_method
-                )
+                dataset_results = self._analyze_single_dataset(dataset_num, total_datasets)
                 all_results[dataset_num] = dataset_results
                 # Save interim results
                 if self._save_results_to_csv(all_results, output_csv):
@@ -493,12 +492,9 @@ class ConfidenceAnalyzer:
     # CALL:
 
     # Main analysis method
-    def __call__(self, max_checkpoints_per_dataset=None, selection_method='balanced_sum'):
+    def __call__(self):
         # Get results from all datasets
-        results = self.analyze_all_datasets(
-            max_checkpoints_per_dataset=max_checkpoints_per_dataset,
-            selection_method=selection_method
-        )
+        results = self.analyze_all_datasets()
         
         # Find and organize high-confidence images
         tqdm.write("\n>> Finding high-confidence images...")

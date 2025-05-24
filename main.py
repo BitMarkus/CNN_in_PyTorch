@@ -40,6 +40,7 @@ def main():
         print("4) Train Network")
         print("5) Load Weights")
         print("6) Predict Images in data/test Folder")
+        # print("6) Predict Class from predict Folder")
         print("7) Dataset Generator")
         print("8) Automatic Cross Validation (ACV)")
         print("9) Confidence Analyzer (based on ACV)")
@@ -196,7 +197,7 @@ def main():
         elif(menu1 == 9):  
             print("\n:CONFIDENCE ANALYZER:")  
             ca = ConfidenceAnalyzer(device)
-            ca(max_checkpoints_per_dataset=2)
+            ca()
 
         ###############
         # Captum Test #  

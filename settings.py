@@ -9,7 +9,7 @@ setting = {
     ############
 
     # Number of epochs
-    "train_num_epochs": 1,  # 30
+    "train_num_epochs": 30,  # 30
     # Batch size for training and validation datasets
     "ds_batch_size": 50, 
 
@@ -97,7 +97,7 @@ setting = {
     # Set to True, if checkpoints shall be saved during training
     "chckpt_save": True,  
     # Mininmun validation accuracy from which on checkpoints are saved
-    "chckpt_min_acc": 0.40,  # 0.8
+    "chckpt_min_acc": 0.8,  # 0.8
 
     #######################
     # CONFIDENCE ANALYZER #
@@ -105,6 +105,11 @@ setting = {
 
     # Min confidence for image sorting
     "ca_min_conf": 0.8,     # 80%
+    # Meximum number of checkpoints which are analyzed for a dataset
+    "ca_max_ckpts": 2,
+    # Method for best checkpoint selection
+    # Options: balanced_sum, f1_score, min_difference
+    "ca_ckpt_select_method": 'f1_score',
 
     #########
     # PATHS #

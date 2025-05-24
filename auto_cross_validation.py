@@ -135,8 +135,8 @@ class AutoCrossValidation:
                     loaded_results = fn.load_confusion_matrix_results(plot_dir, file_name=checkpoint_file[1])
                     # Access the data
                     print(f"Overall accuracy: {(loaded_results['overall_accuracy']*100):.2f}%")
-                    print(f"WT accuracy: {(loaded_results['class_accuracy']['WT']*100):.2f}")
-                    print(f"KO accuracy: {(loaded_results['class_accuracy']['KO']*100):.2f}")
+                    print(f"WT accuracy: {(loaded_results['class_accuracy']['WT']*100):.2f}%")
+                    print(f"KO accuracy: {(loaded_results['class_accuracy']['KO']*100):.2f}%")
 
                     print(f'Prediction successfully finished. Confusion matrix and results saved to {plot_dir}.') 
 
