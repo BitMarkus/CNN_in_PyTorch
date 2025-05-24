@@ -262,19 +262,19 @@ class CNN_Model():
     def get_checkpoints_list(self, pth_checkpoint):
         # List of all model files in the checkpoint directory with the .model extension
         checkpoints_list = [file for file in os.listdir(pth_checkpoint) if file.endswith('.model')]
-        # Create a tuple from list with indices (no idea how to do that in one line)
-        checkpoints_list = list(enumerate(checkpoints_list))
-        return checkpoints_list
+        # Return list of tuples with (display_id, filename) where display_id starts at 1
+        return [(i+1, name) for i, name in enumerate(checkpoints_list)]
     
-    def print_checkpoints_table(self, pth_checkpoint):
+    def print_checkpoints_table(self, pth_checkpoint, print_table=True):
         # Get a list of all checkpoints in the checkpoint folder with ID
         checkpoints = self.get_checkpoints_list(pth_checkpoint)
         # print(checkpoints)
-        table = PrettyTable(["ID", "Checkpoint"])
-        for id, name in checkpoints:
-            table.add_row([id+1, name])
-        print()
-        print(table)
+        if print_table and checkpoints:
+            table = PrettyTable(["ID", "Checkpoint"])
+            for display_id, name in checkpoints:
+                table.add_row([display_id, name])
+            print()
+            print(table)
         # print(f"Number of checkpoints: {len(checkpoints)}")
         return checkpoints
     

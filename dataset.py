@@ -18,8 +18,10 @@ class Dataset():
     def __init__(self):
         # Path to training images
         self.pth_train = setting["pth_train"]
-        # Path to prediction images
+        # Path to test images
         self.pth_test = setting["pth_test"]
+        # Path to prediction images
+        self.pth_prediction = setting["pth_prediction"]
         # Settings variables
         # Shuffle training images befor validation split
         self.shuffle = setting["ds_shuffle"]
@@ -162,12 +164,31 @@ class Dataset():
             print("Loading of dataset failed! Input images must have either one (grayscale) or three (RGB) channels.")
             return False
 
-    # Loads dataset for prediction
-    def load_prediction_dataset(self):
+    # Loads test dataset for prediction
+    def load_test_dataset(self):
         transformer = self.get_transformer()
         # Check if training images have either one or three channels
         if(transformer):
             dataset = torchvision.datasets.ImageFolder(self.pth_test, transform=transformer)
+            # Create dataloader object
+            prediction_loader = DataLoader(
+                dataset, 
+                batch_size=self.batch_size_pred, 
+            )
+            # Get number of images in test dataset
+            self.num_pred_img = len(prediction_loader)
+            self.ds_pred = prediction_loader  
+            return True  
+        else:
+            print("Loading of dataset failed! Input images must have either one (grayscale) or three (RGB) channels.")
+            return False
+        
+    # Loads prediction dataset
+    def load_prediction_dataset(self):
+        transformer = self.get_transformer()
+        # Check if training images have either one or three channels
+        if(transformer):
+            dataset = torchvision.datasets.ImageFolder(self.pth_prediction, transform=transformer)
             # Create dataloader object
             prediction_loader = DataLoader(
                 dataset, 

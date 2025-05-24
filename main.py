@@ -6,6 +6,7 @@ from auto_cross_validation import AutoCrossValidation
 from conf_analyzer import ConfidenceAnalyzer
 from dataset import Dataset
 from train import Train
+from class_analyzer import ClassAnalyzer
 from settings import setting
 
 ###########
@@ -39,8 +40,8 @@ def main():
         print("3) Load Training Data")
         print("4) Train Network")
         print("5) Load Weights")
-        print("6) Predict Images in data/test Folder")
-        # print("6) Predict Class from predict Folder")
+        # print("6) Predict Images in data/test Folder")
+        print("6) Predict Class from Predict Folder")
         print("7) Dataset Generator")
         print("8) Automatic Cross Validation (ACV)")
         print("9) Confidence Analyzer (based on ACV)")
@@ -139,13 +140,18 @@ def main():
         ############################
 
         elif(menu1 == 6):  
-            print("\n:PREDICT IMAGES IN TEST FOLDER:") 
+            print("\n:PREDICT CLASS FROM PREDICTION FOLDER:") 
+
+            analyzer = ClassAnalyzer(device)
+            analyzer.analyze_prediction_folder()
+
+            """
             if not (cnn.model_loaded):
                 print('No CNN generated yet!')
             else:
                 # Load prediction dataset
                 print('Load prediction dataset...')
-                ds.load_prediction_dataset()
+                ds.load_test_dataset()
                 print('Prediction dataset successfully loaded.')
                 print(f"Number test images/batch size: {ds.num_pred_img}/1")
                 print('Starting prediction...')
@@ -167,6 +173,7 @@ def main():
                 print(f"Overall accuracy: {(loaded_results['overall_accuracy']*100):.2f}%")
                 print(f"WT accuracy: {(loaded_results['class_accuracy']['WT']*100):.2f}")
                 print(f"KO accuracy: {(loaded_results['class_accuracy']['KO']*100):.2f}")
+            """
 
         #####################
         # Dataset Generator #  
@@ -207,7 +214,7 @@ def main():
             print("\n:CAPTUM:") 
             print("Under construction...")
             """
-            # ds.load_prediction_dataset()
+            # ds.load_test_dataset()
             # cnn.model = Custom_CNN_Model().to(device)
             ds.load_training_dataset()
             cnn.load_weights(device)

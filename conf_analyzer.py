@@ -236,7 +236,7 @@ class ConfidenceAnalyzer:
     def _get_predictions_with_confidence(self):
         # Load test dataset
         ds = Dataset()
-        ds.load_prediction_dataset()
+        ds.load_test_dataset()
         # Iterate over test images
         confidences = {}
         total_images = len(ds.ds_pred.dataset)

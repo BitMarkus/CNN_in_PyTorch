@@ -1,6 +1,6 @@
 import os
-from dataset import Dataset
 # Own modules
+from dataset import Dataset
 from settings import setting
 import functions as fn
 from train import Train
@@ -108,7 +108,7 @@ class AutoCrossValidation:
             checkpoint_list = self.cnn.get_checkpoints_list(ckeckpoint_dir)
             # Load test dataset
             print(f"\n> Load test images for dataset {config['dataset_idx']}...")
-            self.ds.load_prediction_dataset()
+            self.ds.load_test_dataset()
             print(f"Test images for dataset {config['dataset_idx']} successfully loaded.")             
             print(f"Number test images/batch size: {self.ds.num_pred_img}/1")
             # print(checkpoint_list)

@@ -109,7 +109,7 @@ setting = {
     "ca_max_ckpts": 2,
     # Method for best checkpoint selection
     # Options: balanced_sum, f1_score, min_difference
-    "ca_ckpt_select_method": 'f1_score',
+    "ca_ckpt_select_method": 'min_difference',
 
     #########
     # PATHS #
