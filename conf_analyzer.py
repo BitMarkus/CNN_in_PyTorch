@@ -8,6 +8,7 @@ import pandas as pd
 from collections import defaultdict
 from itertools import product
 import json
+from sklearn.metrics import balanced_accuracy_score
 # Own modules
 from model import CNN_Model
 from custom_model import Custom_CNN_Model
@@ -202,8 +203,7 @@ class ConfidenceAnalyzer:
                 
                 # Verify the expected keys exist
                 if 'class_accuracy' not in cm_data or not isinstance(cm_data['class_accuracy'], dict):
-                    raise ValueError("Invalid or missing 'class_accuracy' in JSON")
-                    
+                    raise ValueError("Invalid or missing 'class_accuracy' in JSON")  
                 if 'overall_accuracy' not in cm_data:
                     raise ValueError("Missing 'overall_accuracy' in JSON")
                 
@@ -219,6 +219,13 @@ class ConfidenceAnalyzer:
                     score = 2 * (wt_acc * ko_acc) / (wt_acc + ko_acc) if (wt_acc + ko_acc) > 0 else 0
                 elif method == 'min_difference':
                     score = min(wt_acc, ko_acc)
+                elif method == 'balanced_accuracy':
+                    # Get true and predicted labels if available
+                    if 'true_labels' not in cm_data or 'predicted_labels' not in cm_data:
+                        raise ValueError("Missing 'true_labels' or 'predicted_labels' for balanced accuracy calculation")
+                    y_true = cm_data['true_labels']
+                    y_pred = cm_data['predicted_labels']
+                    score = balanced_accuracy_score(y_true, y_pred)
                 else:
                     raise ValueError(f"Unknown selection method: {method}")
                 
