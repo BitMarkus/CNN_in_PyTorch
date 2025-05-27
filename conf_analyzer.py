@@ -225,6 +225,7 @@ class ConfidenceAnalyzer:
                         raise ValueError("Missing 'true_labels' or 'predicted_labels' for balanced accuracy calculation")
                     y_true = cm_data['true_labels']
                     y_pred = cm_data['predicted_labels']
+                    # https://scikit-learn.org/stable/modules/generated/sklearn.metrics.balanced_accuracy_score.html
                     score = balanced_accuracy_score(y_true, y_pred)
                 else:
                     raise ValueError(f"Unknown selection method: {method}")
