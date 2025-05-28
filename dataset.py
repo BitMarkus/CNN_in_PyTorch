@@ -56,8 +56,33 @@ class Dataset():
     #############################################################################################################
     # METHODS:
 
-    # Transforer for image resizing and normalization (and augmentation)
-    def get_transformer(self):
+    # Transformer for testing and predicting WITHOUT AUGMENTATIONS
+    def get_transformer_test(self):
+        # Transformer for Grayscale images
+        # https://stackoverflow.com/questions/60116208/pytorch-load-dataset-of-grayscale-images
+        if(self.input_channels == 1):
+            transformer = transforms.Compose([        
+                # 0-255 to 0-1, numpy to tensors:
+                transforms.ToTensor(), 
+                # Normalization
+                transforms.Grayscale(num_output_channels=1), # <- Grayscale
+            ])
+            return transformer
+
+        # Transformer for RGB images
+        # https://pytorch.org/hub/pytorch_vision_resnet/
+        elif(self.input_channels == 3):
+            transformer = transforms.Compose([
+                transforms.ToTensor(), 
+                transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]), # <- RGB
+            ])
+            return transformer
+
+        else:
+            return False
+
+    # Transformer for training WITH AUGMENTATIONS
+    def get_transformer_train(self):
         # Transformer for Grayscale images
         # https://stackoverflow.com/questions/60116208/pytorch-load-dataset-of-grayscale-images
         if(self.input_channels == 1):
@@ -120,7 +145,7 @@ class Dataset():
     # Loads and splits images in a folder into 2 datasets (train, validation)
     # https://stackoverflow.com/questions/50544730/how-do-i-split-a-custom-dataset-into-training-and-test-datasets/50544887#50544887
     def load_training_dataset(self):
-        transformer = self.get_transformer()
+        transformer = self.get_transformer_train()
         # Check if training images have either one or three channels
         if(transformer):
             dataset = torchvision.datasets.ImageFolder(self.pth_train, transform=transformer)
@@ -166,7 +191,7 @@ class Dataset():
 
     # Loads test dataset for prediction
     def load_test_dataset(self):
-        transformer = self.get_transformer()
+        transformer = self.get_transformer_test()
         # Check if training images have either one or three channels
         if(transformer):
             dataset = torchvision.datasets.ImageFolder(self.pth_test, transform=transformer)
@@ -182,50 +207,4 @@ class Dataset():
         else:
             print("Loading of dataset failed! Input images must have either one (grayscale) or three (RGB) channels.")
             return False
-        
-    # Loads prediction dataset
-    def load_prediction_dataset(self):
-        transformer = self.get_transformer()
-        # Check if training images have either one or three channels
-        if(transformer):
-            dataset = torchvision.datasets.ImageFolder(self.pth_prediction, transform=transformer)
-            # Create dataloader object
-            prediction_loader = DataLoader(
-                dataset, 
-                batch_size=self.batch_size_pred, 
-            )
-            # Get number of images in test dataset
-            self.num_pred_img = len(prediction_loader)
-            self.ds_pred = prediction_loader  
-            return True  
-        else:
-            print("Loading of dataset failed! Input images must have either one (grayscale) or three (RGB) channels.")
-            return False
-    
-        
-"""
-    # Transforer for image resizing and normalization (and augmentation)
-    def get_transformer(self):
-        # Transformer for Grayscale images
-        # https://stackoverflow.com/questions/60116208/pytorch-load-dataset-of-grayscale-images
-        if(self.input_channels == 1):
-            transformer = transforms.Compose([        
-                # 0-255 to 0-1, numpy to tensors:
-                transforms.ToTensor(), 
-                # Normalization
-                transforms.Grayscale(num_output_channels=1), # <- Grayscale
-            ])
-            return transformer
 
-        # Transformer for RGB images
-        # https://pytorch.org/hub/pytorch_vision_resnet/
-        elif(self.input_channels == 3):
-            transformer = transforms.Compose([
-                transforms.ToTensor(), 
-                transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]), # <- RGB
-            ])
-            return transformer
-
-        else:
-            return False
-"""

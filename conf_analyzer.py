@@ -77,7 +77,6 @@ class ConfidenceAnalyzer:
     # Generates test set directly from input files
     # and copies the images to the data/test folder
     def _generate_test_set(self, test_wt, test_ko, current_dataset=None, total_datasets=None):
-
         # Clear and recreate test folder
         shutil.rmtree(self.pth_test, ignore_errors=True)
         for cls in self.classes:
@@ -307,7 +306,7 @@ class ConfidenceAnalyzer:
         # Iterate over image history and sort out images, which
         # 1) are correctly classified
         # 2) have a confidence > min_conf
-        # in all datasets and checkpoints they were part of
+        # in all datasets and checkpoints where they were part of the test dataset
         for img_key, predictions in self.image_history.items():
             if all((p['pred_class'] == p['true_class']) and 
                   (p['confidence'] >= self.min_conf) 

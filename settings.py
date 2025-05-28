@@ -47,8 +47,8 @@ setting = {
     "ko_lines": ["KO_1096-01", "KO_1618-01", "KO_BR2986", "KO_BR3075"],
     # "wt_lines": ["WT_JG", "WT_JT"],
     # "ko_lines": ["KO_BR2986", "KO_BR3075"],
-    "classes": ["KO", "WT"],
-    # "classes": ["KO_1096-01", "KO_1618-01", "KO_BR2986", "KO_BR3075", "WT_1618-02", "WT_JG", "WT_JT", "WT_KM", "WT_MS"],
+    # "classes": ["KO", "WT"],
+    "classes": ["KO_1096-01", "KO_1618-01", "KO_BR2986", "KO_BR3075", "WT_1618-02", "WT_JG", "WT_JT", "WT_KM", "WT_MS"],
 
     #########
     # MODEL #
@@ -106,7 +106,7 @@ setting = {
     # Min confidence for image sorting
     "ca_min_conf": 0.8,     # 80%
     # Meximum number of checkpoints which are analyzed for a dataset
-    "ca_max_ckpts": 3,
+    "ca_max_ckpts": 2,
     # Method for best checkpoint selection
     # Options: balanced_sum, f1_score, min_difference, balanced_accuracy
     "ca_ckpt_select_method": 'balanced_accuracy',
