@@ -52,6 +52,8 @@ class Dataset():
         self.ds_train = None
         self.ds_val = None
         self.ds_pred = None
+        # Augentatioms for dataset
+        self.train_use_augment = setting["train_use_augment"]
 
     #############################################################################################################
     # METHODS:
@@ -145,7 +147,11 @@ class Dataset():
     # Loads and splits images in a folder into 2 datasets (train, validation)
     # https://stackoverflow.com/questions/50544730/how-do-i-split-a-custom-dataset-into-training-and-test-datasets/50544887#50544887
     def load_training_dataset(self):
-        transformer = self.get_transformer_train()
+        # Training dataset with or without augmentations
+        if(self.train_use_augment):
+            transformer = self.get_transformer_train()
+        else:
+            transformer = self.get_transformer_test()
         # Check if training images have either one or three channels
         if(transformer):
             dataset = torchvision.datasets.ImageFolder(self.pth_train, transform=transformer)
