@@ -25,7 +25,7 @@ class ClassAnalyzer:
         
         # Initialize dataset to get transforms
         self.ds = Dataset()
-        self.transform = self.ds.get_transformer()
+        self.transform = self.ds.get_transformer_test()
         if not self.transform:
             raise ValueError("Failed to get image transformer")
         
