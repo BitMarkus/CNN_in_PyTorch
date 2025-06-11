@@ -307,13 +307,17 @@ class ConfidenceAnalyzer:
         # 1) are correctly classified
         # 2) have a confidence > min_conf
         # in all datasets and checkpoints where they were part of the test dataset
-        for img_key, predictions in self.image_history.items():
+        self._build_image_history(results)
+        consistent_images = {cls: [] for cls in self.classes}
+        
+        for img_path, predictions in self.image_history.items():
             if all((p['pred_class'] == p['true_class']) and 
-                  (p['confidence'] >= self.min_conf) 
-                  for p in predictions):
+                (p['confidence'] >= self.min_conf) 
+                for p in predictions):
                 true_class = predictions[0]['true_class']
                 avg_confidence = sum(p['confidence'] for p in predictions) / len(predictions)
-                consistent_images[true_class].append((self._find_original_image_path(img_key), avg_confidence))
+                consistent_images[true_class].append((img_path, avg_confidence))  # img_path is already original path
+        
         return consistent_images
     
     # Build history of all image predictions
@@ -322,7 +326,10 @@ class ConfidenceAnalyzer:
             config = self._get_available_datasets()[int(dataset_num)]
             for checkpoint_name, pred_data in checkpoints.items():
                 for img_path, pred in pred_data['per_image_results'].items():
-                    self.image_history[os.path.basename(img_path)].append({
+                    # Get the original path, not just basename
+                    original_path = self._find_original_image_path(os.path.basename(img_path))
+                    img_key = original_path  # Use full original path as key
+                    self.image_history[img_key].append({
                         'dataset': dataset_num,
                         'checkpoint': checkpoint_name,
                         **pred
@@ -338,35 +345,33 @@ class ConfidenceAnalyzer:
 
     # Organize high-confidence images into folder structure
     def organize_high_confidence_images(self, consistent_images):
-        # Folder for high confidence images, separated by class
-        output_subdir="high_confidence_examples"
+        output_subdir = "high_confidence_examples"
         output_dir = os.path.join(self.pth_conf_analizer_results, output_subdir)
-        # Iterate over each class and make directories
+        
+        # Track copied files to prevent duplicates
+        copied_files = set()
+        
         for class_name in self.classes:
             class_dir = os.path.join(output_dir, class_name)
             os.makedirs(class_dir, exist_ok=True)
-            # Iterate over images
-            for img_path, confidence in tqdm(
-                consistent_images[class_name],
-                desc=f"Copying {class_name}",
-                leave=True
-            ):
+            
+            for img_path, confidence in consistent_images[class_name]:
+                if img_path in copied_files:
+                    continue
+                    
                 try:
-                    base, ext = os.path.splitext(os.path.basename(img_path))
+                    # Create new filename with confidence
+                    original_name = os.path.basename(img_path)
+                    base, ext = os.path.splitext(original_name)
                     confidence_pct = int(round(confidence * 100))
-                    new_filename = f"{base}_{class_name}_{confidence_pct}{ext}"
+                    new_filename = f"{base}_conf{confidence_pct}{ext}"
                     dest_path = os.path.join(class_dir, new_filename)
-                    # Handle duplicates (not really necessary as all images suppose to have unique names)
-                    counter = 1
-                    while os.path.exists(dest_path):
-                        new_filename = f"{base}_{class_name}_{confidence_pct}_{counter}{ext}"
-                        dest_path = os.path.join(class_dir, new_filename)
-                        counter += 1
-                    # Copy images to high conf folder
+                    
                     shutil.copy2(img_path, dest_path)
+                    copied_files.add(img_path)
                 except Exception as e:
-                    tqdm.write(f"\nError copying {img_path}: {str(e)}")
-        # Create readme
+                    print(f"Error copying {img_path}: {str(e)}")
+        
         self._create_readme(output_dir, consistent_images)
         return output_dir
 
@@ -428,7 +433,8 @@ class ConfidenceAnalyzer:
                         'wt_accuracy': wt_acc,
                         'ko_accuracy': ko_acc,
                         'overall_accuracy': overall_acc,
-                        'selection_method': 'top3_by_balanced_sum'  # or make this dynamic
+                        'selection_method': self.ckpt_select_method,  # From class settings
+                        'max_checkpoints': self.max_ckpts  # From class settings
                     })
                     
                 except Exception as e:
@@ -443,7 +449,7 @@ class ConfidenceAnalyzer:
             df.to_csv(output_path, index=False)
             tqdm.write(f"\nSaved used checkpoints report to: {output_path}")
             return True
-        return False    
+        return False
 
     # Create README file for output folder
     def _create_readme(self, output_dir, consistent_images):
