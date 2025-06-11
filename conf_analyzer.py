@@ -443,7 +443,7 @@ class ConfidenceAnalyzer:
             df = df.sort_values(['dataset', 'overall_accuracy'], ascending=[True, False])
             output_path = self.pth_conf_analizer_results / 'used_checkpoints.csv'
             df.to_csv(output_path, index=False)
-            tqdm.write(f"\nSaved used checkpoints report to: {output_path}")
+            tqdm.write(f"Saved used checkpoints report to: {output_path}")
             return True
         return False
 
@@ -506,7 +506,7 @@ class ConfidenceAnalyzer:
         results = self.analyze_all_datasets()
         
         # Find and organize high-confidence images
-        tqdm.write("\n>> Finding high-confidence images...")
+        tqdm.write("\n>> SAVING HIGH CONFIDENCE IMAGES:")
         consistent_images = self.find_high_confidence_images(results)
         
         tqdm.write("Organizing high-confidence images...")
