@@ -226,8 +226,7 @@ class CNN_Model():
 
     # Read classes from training data directory (subfolder names) and returns a list
     def get_class_list(self):
-        root = pathlib.Path(self.pth_train)
-        class_list = sorted([j.name.split('/')[-1] for j in root.iterdir()])
+        class_list = sorted([j.name for j in self.pth_train.iterdir() if j.is_dir()])
         return class_list
     
     # Prints all classes
@@ -252,7 +251,7 @@ class CNN_Model():
                 pretr = "_pretr"
             else:
                 pretr = ""
-            filename = f'{chckpt_pth}ckpt{pretr}_{self.cnn_type}_e{epoch+1}_vacc{val_acc*100:.0f}.model'
+            filename = chckpt_pth / f'ckpt{pretr}_{self.cnn_type}_e{epoch+1}_vacc{val_acc*100:.0f}.model'
             torch.save(self.model.state_dict(), filename)
             # Update best accuracy
             best_acc = val_acc 
@@ -261,7 +260,7 @@ class CNN_Model():
     
     def get_checkpoints_list(self, pth_checkpoint):
         # List of all model files in the checkpoint directory with the .model extension
-        checkpoints_list = [file for file in os.listdir(pth_checkpoint) if file.endswith('.model')]
+        checkpoints_list = [file.name for file in pth_checkpoint.glob('*.model')]
         # Return list of tuples with (display_id, filename) where display_id starts at 1
         return [(i+1, name) for i, name in enumerate(checkpoints_list)]
     
@@ -294,7 +293,7 @@ class CNN_Model():
     
     # Load a checkpoint/weights
     def load_weights(self, chckpt_pth, chckpt_file):
-        self.model.load_state_dict(torch.load(chckpt_pth + chckpt_file))
+        self.model.load_state_dict(torch.load(chckpt_pth / chckpt_file))
         print(f'Weights from checkpoint {chckpt_file} successfully loaded.')
         return chckpt_file
 

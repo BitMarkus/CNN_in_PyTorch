@@ -117,7 +117,7 @@ class Train():
         plt.tight_layout()
         # Save plot
         if(save_plot):
-            plt.savefig(str(plot_path) + '/' + "train_metrics", bbox_inches='tight')
+            plt.savefig(str(plot_path / "train_metrics"), bbox_inches='tight')  # Modified path handling
         # Show and save plot
         if(show_plot):
             plt.show()

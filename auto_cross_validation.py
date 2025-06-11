@@ -1,4 +1,4 @@
-import os
+from pathlib import Path
 # Own modules
 from dataset import Dataset
 from settings import setting
@@ -42,6 +42,9 @@ class AutoCrossValidation:
         self.ds_gen.cleanup(self.data_dir) 
         print("Cleanup finished.")  
 
+        # Ensure the acv_results directory exists
+        self.acv_results_dir.mkdir(parents=True, exist_ok=True)
+
         # Generate list of cross validation datasets
         configs = self.ds_gen.get_dataset_configs()
         # print(configs)
@@ -61,11 +64,11 @@ class AutoCrossValidation:
             print(f"\n> Create dataset {config['dataset_idx']}...")
             dataset_dir = self.ds_gen.generate_dataset(**config) # Unpacks dict as kwargs
             # Create a subfolder for checkpoints
-            ckeckpoint_dir = os.path.join(dataset_dir, "checkpoints/")
-            os.makedirs(ckeckpoint_dir, exist_ok=True)
+            ckeckpoint_dir = dataset_dir / "checkpoints"
+            ckeckpoint_dir.mkdir(exist_ok=True)
             # Create a subfolder for plots
-            plot_dir = os.path.join(dataset_dir, "plots/")
-            os.makedirs(plot_dir, exist_ok=True)
+            plot_dir = dataset_dir / "plots"
+            plot_dir.mkdir(exist_ok=True)
             print(f"Dataset {config['dataset_idx']} successfully created.")
 
             ######################
@@ -138,7 +141,7 @@ class AutoCrossValidation:
                     print(f"WT accuracy: {(loaded_results['class_accuracy']['WT']*100):.2f}%")
                     print(f"KO accuracy: {(loaded_results['class_accuracy']['KO']*100):.2f}%")
 
-                    print(f'Prediction successfully finished. Confusion matrix and results saved to {plot_dir}.') 
+                    print(f'Prediction successfully finished. Confusion matrix and results saved to {plot_dir}.')
 
             ##################
             # Cleanup images #
@@ -147,4 +150,4 @@ class AutoCrossValidation:
             # Clean up folders train and test in the data directory for next dataset
             print(f"\n> Cleaning up train and test data from dataset {config['dataset_idx']}...")
             self.ds_gen.cleanup(setting["pth_data"])
-            print("Cleanup finished.")      
+            print("Cleanup finished.")

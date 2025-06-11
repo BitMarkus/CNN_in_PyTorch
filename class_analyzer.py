@@ -1,10 +1,10 @@
-import os
 import torch
 import pandas as pd
 from torch.utils.data import DataLoader
 from PIL import Image
 import torchvision
 from tqdm import tqdm
+from pathlib import Path
 # Own modules
 from dataset import Dataset
 from settings import setting
@@ -19,8 +19,8 @@ class ClassAnalyzer:
     def __init__(self, device):
         self.device = device
         # Settings parameters
-        self.pth_prediction = os.path.abspath(setting['pth_prediction'])
-        self.pth_checkpoint = os.path.abspath(setting['pth_checkpoint'])
+        self.pth_prediction = setting['pth_prediction'].resolve()
+        self.pth_checkpoint = setting['pth_checkpoint'].resolve()
         self.classes = setting['classes']
         
         # Initialize dataset to get transforms
@@ -74,10 +74,10 @@ class ClassAnalyzer:
                 return False
         
         try:
-            full_path = os.path.join(self.pth_checkpoint, checkpoint_file)
+            full_path = self.pth_checkpoint / checkpoint_file
             self.cnn.model.load_state_dict(torch.load(full_path))
             self.checkpoint_loaded = True
-            self.loaded_checkpoint_name = os.path.splitext(checkpoint_file)[0]
+            self.loaded_checkpoint_name = full_path.stem
             print(f"Successfully loaded weights from {checkpoint_file}")
             return True
         except FileNotFoundError as e:
@@ -92,10 +92,10 @@ class ClassAnalyzer:
         """Create a DataLoader that properly handles image loading and transformation"""
         class FlatImageFolder(torch.utils.data.Dataset):
             def __init__(self, folder, transform=None):
-                self.folder = folder
+                self.folder = Path(folder)
                 self.transform = transform
-                self.image_files = [f for f in os.listdir(folder) 
-                                  if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
+                self.image_files = [f for f in self.folder.iterdir() 
+                                  if f.suffix.lower() in ('.png', '.jpg', '.jpeg')]
                 if not self.image_files:
                     raise ValueError(f"No images found in {folder}")
 
@@ -103,7 +103,7 @@ class ClassAnalyzer:
                 return len(self.image_files)
 
             def __getitem__(self, idx):
-                img_path = os.path.join(self.folder, self.image_files[idx])
+                img_path = self.image_files[idx]
                 img = Image.open(img_path).convert('RGB')
                 if self.transform:
                     img = self.transform(img)
@@ -117,7 +117,7 @@ class ClassAnalyzer:
             prediction_loader = self.create_prediction_loader(folder_path)
             
             class_counts = {class_name: 0 for class_name in self.classes}
-            folder_name = os.path.basename(folder_path)
+            folder_name = Path(folder_path).name
             total_images = 0
             
             self.cnn.model.eval()
@@ -173,7 +173,7 @@ class ClassAnalyzer:
             print("WARNING: Proceeding with untrained weights!\n")
             self.loaded_checkpoint_name = "untrained"
 
-        subfolders = [f.path for f in os.scandir(self.pth_prediction) if f.is_dir()]
+        subfolders = [f for f in self.pth_prediction.iterdir() if f.is_dir()]
         
         if not subfolders:
             print(f"\nNo subfolders found in {self.pth_prediction}")
@@ -186,7 +186,7 @@ class ClassAnalyzer:
         
         for folder in subfolders:
             try:
-                print(f"\n> PROCESSING FOLDER: {os.path.basename(folder)}")
+                print(f"\n> PROCESSING FOLDER: {folder.name}")
                 folder_result = self.predict_folder(folder)
                 detailed_results.append(folder_result)
             except Exception as e:
@@ -202,7 +202,7 @@ class ClassAnalyzer:
         
         # Generate output filename based on checkpoint name
         output_filename = f"result_{self.loaded_checkpoint_name}.csv"
-        output_path = os.path.join(self.pth_prediction, output_filename)
+        output_path = self.pth_prediction / output_filename
         
         detailed_df.to_csv(output_path, index=False)
         

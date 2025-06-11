@@ -2,6 +2,11 @@
 # Program settings #
 ####################
 
+# Path handling
+from pathlib import Path
+# Base directory
+BASE_DIR = Path(__file__).parent
+
 setting = {
 
     ############
@@ -9,7 +14,7 @@ setting = {
     ############
 
     # Number of epochs
-    "train_num_epochs": 60,  # 30
+    "train_num_epochs": 1,  # 30
     # Batch size for training and validation datasets
     "ds_batch_size": 50, 
 
@@ -50,8 +55,8 @@ setting = {
     "ko_lines": ["KO_1096-01", "KO_1618-01", "KO_BR2986", "KO_BR3075"],
     # "wt_lines": ["WT_JG", "WT_JT"],
     # "ko_lines": ["KO_BR2986", "KO_BR3075"],
-    # "classes": ["KO", "WT"],
-    "classes": ["KO_1096-01", "KO_1618-01", "KO_BR2986", "KO_BR3075", "WT_1618-02", "WT_JG", "WT_JT", "WT_KM", "WT_MS"],
+    "classes": ["KO", "WT"],
+    # "classes": ["KO_1096-01", "KO_1618-01", "KO_BR2986", "KO_BR3075", "WT_1618-02", "WT_JG", "WT_JT", "WT_KM", "WT_MS"],
 
     #########
     # MODEL #
@@ -100,7 +105,7 @@ setting = {
     # Set to True, if checkpoints shall be saved during training
     "chckpt_save": True,  
     # Mininmun validation accuracy from which on checkpoints are saved
-    "chckpt_min_acc": 0.8,  # 0.8 for 2 classes, 0.6 for 9 classess
+    "chckpt_min_acc": 0.4,  # 0.8 for 2 classes, 0.6 for 9 classess
 
     #######################
     # CONFIDENCE ANALYZER #
@@ -118,18 +123,18 @@ setting = {
     # PATHS #
     #########
 
-    "pth_data": "data/",
-    "pth_train": "data/train/",
-    "pth_test": "data/test/",
-    "pth_checkpoint": "checkpoints/",
-    "pth_plots": "plots/",
-    "pth_prediction": "prediction/",
+    "pth_data": BASE_DIR / "data/",
+    "pth_train": BASE_DIR / "data/train/",
+    "pth_test": BASE_DIR / "data/test/",
+    "pth_checkpoint": BASE_DIR / "checkpoints/",
+    "pth_plots": BASE_DIR / "plots/",
+    "pth_prediction": BASE_DIR / "prediction/",
     # Dataset generator
-    "pth_ds_gen_input": "dataset_gen/input/",
-    "pth_ds_gen_output": "dataset_gen/output/",   
+    "pth_ds_gen_input": BASE_DIR / "dataset_gen/input/",
+    "pth_ds_gen_output": BASE_DIR / "dataset_gen/output/",   
     # Automatic cross validation
-    "pth_acv_results": "acv_results/",
+    "pth_acv_results": BASE_DIR / "acv_results/",
     # Confidence analyzer results
-    "pth_conf_analizer_results": "ca_results/",
+    "pth_conf_analizer_results": BASE_DIR / "ca_results/",
  
 }

@@ -2,6 +2,7 @@
 # FUNCTIONS #
 #############
 
+
 import sys
 from pathlib import Path
 import torch
@@ -57,23 +58,23 @@ def check_int_range(var, min, max):
 # If they do not exist yet!
 def create_prg_folders():
     # Create folder for training images with classes subfolders
-    train_base_pth = Path(setting["pth_train"])
+    train_base_pth = setting["pth_train"]  # Already a Path object now
     train_base_pth.mkdir(parents=True, exist_ok=True)
     for class_name in setting["classes"]:
         class_dir = train_base_pth / class_name
         class_dir.mkdir(exist_ok=True)
     # Create folder for testing images with classes subfolders
-    test_base_pth = Path(setting["pth_test"])
+    test_base_pth = setting["pth_test"]  # Already a Path object
     test_base_pth.mkdir(parents=True, exist_ok=True)
     for class_name in setting["classes"]:
         class_dir = test_base_pth / class_name
         class_dir.mkdir(exist_ok=True)
     # Other folders
-    Path(setting["pth_checkpoint"]).mkdir(parents=True, exist_ok=True)
-    Path(setting["pth_plots"]).mkdir(parents=True, exist_ok=True)
-    Path(setting["pth_ds_gen_input"]).mkdir(parents=True, exist_ok=True)
-    Path(setting["pth_ds_gen_output"]).mkdir(parents=True, exist_ok=True)
-    Path(setting["pth_prediction"]).mkdir(parents=True, exist_ok=True)
+    setting["pth_checkpoint"].mkdir(parents=True, exist_ok=True)
+    setting["pth_plots"].mkdir(parents=True, exist_ok=True)
+    setting["pth_ds_gen_input"].mkdir(parents=True, exist_ok=True)
+    setting["pth_ds_gen_output"].mkdir(parents=True, exist_ok=True)
+    setting["pth_prediction"].mkdir(parents=True, exist_ok=True)
     
     return True
 
@@ -100,9 +101,9 @@ def plot_confusion_matrix(cm, class_list, plot_path, chckpt_name=None, show_plot
             cm_file_name = "confusion_matrix"
         else:
             # Remove extension from checkpoint name if necessary
-            cm_file_name = str(Path(chckpt_name).stem) + "_cm" 
-        # Save plot
-        plt.savefig(str(plot_path) + '/' + cm_file_name, bbox_inches='tight')
+            cm_file_name = Path(chckpt_name).stem + "_cm" 
+        # Save plot - use pathlib for path joining
+        plt.savefig(plot_path / cm_file_name, bbox_inches='tight')
     # Show and save plot
     if(show_plot):
         plt.show()   
@@ -137,15 +138,13 @@ def save_confusion_matrix_results(cm, class_list, file_path, chckpt_name=None):
     }
 
     # Name of the result file will be the checkpoint file it is based on
-    # If no name was passed, it will be just called "results"
     if(chckpt_name is None):
         file_name = "cm_results"
     else:
-        # Remove extension from checkpoint name if necessary
-        file_name = str(Path(chckpt_name).stem) + "_cm"
+        file_name = Path(chckpt_name).stem + "_cm"
 
-    # Save file
-    with open(f"{file_path}{file_name}.json", 'w') as f:
+    # Save file - use pathlib for path joining
+    with open(file_path / f"{file_name}.json", 'w') as f:
         json.dump(results, f, indent=4)
 
 # Load confusion matrix results from file.
@@ -155,18 +154,15 @@ def save_confusion_matrix_results(cm, class_list, file_path, chckpt_name=None):
 # Returns:
 #    dict: Dictionary containing all saved results
 def load_confusion_matrix_results(file_path, file_name=None):
-        
-    # Name of the result file is the checkpoint file it is based on
-    # If no name was passed, the name will be "results"
     try:
         # Determine filename
         if file_name is None:
             f_name = "cm_results"
         else:
-            f_name = str(Path(file_name).stem) + "_cm"
+            f_name = Path(file_name).stem + "_cm"
         
-        # Construct full path
-        full_path = Path(file_path) / f"{f_name}.json"
+        # Construct full path using pathlib
+        full_path = file_path / f"{f_name}.json"
         
         # Check if file exists
         if not full_path.exists():

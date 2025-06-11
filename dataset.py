@@ -154,6 +154,7 @@ class Dataset():
             transformer = self.get_transformer_test()
         # Check if training images have either one or three channels
         if(transformer):
+            # No change needed here - ImageFolder accepts Path objects
             dataset = torchvision.datasets.ImageFolder(self.pth_train, transform=transformer)
             dataset_size = len(dataset)
             indices = list(range(dataset_size))

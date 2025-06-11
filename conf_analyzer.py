@@ -9,6 +9,7 @@ from collections import defaultdict
 from itertools import product
 import json
 from sklearn.metrics import balanced_accuracy_score
+from pathlib import Path
 # Own modules
 from model import CNN_Model
 from custom_model import Custom_CNN_Model
@@ -26,10 +27,10 @@ class ConfidenceAnalyzer:
         self.device = device
         # Settings parameters
         # Paths
-        self.pth_acv_results = os.path.abspath(setting['pth_acv_results'])
-        self.pth_ds_gen_input = os.path.abspath(setting['pth_ds_gen_input'])
-        self.pth_test = os.path.abspath(setting['pth_test'])
-        self.pth_conf_analizer_results = os.path.abspath(setting['pth_conf_analizer_results'])
+        self.pth_acv_results = Path(setting['pth_acv_results']).absolute()
+        self.pth_ds_gen_input = Path(setting['pth_ds_gen_input']).absolute()
+        self.pth_test = Path(setting['pth_test']).absolute()
+        self.pth_conf_analizer_results = Path(setting['pth_conf_analizer_results']).absolute()
         # Classes and cell lines
         self.classes = setting['classes']
         self.wt_lines = setting['wt_lines']
@@ -56,8 +57,8 @@ class ConfidenceAnalyzer:
             self.cnn = self.cnn.to(self.device)
 
         # Create required directories
-        os.makedirs(self.pth_test, exist_ok=True)
-        os.makedirs(self.pth_conf_analizer_results, exist_ok=True)
+        self.pth_test.mkdir(parents=True, exist_ok=True)
+        self.pth_conf_analizer_results.mkdir(parents=True, exist_ok=True)
         # List of confidences for each testing for each image
         self.image_history = defaultdict(list)
 
@@ -69,8 +70,8 @@ class ConfidenceAnalyzer:
     def _get_available_datasets(self):
         datasets = {}
         for idx, (wt, ko) in enumerate(product(self.wt_lines, self.ko_lines), 1):
-            dataset_path = os.path.join(self.pth_acv_results, f"dataset_{idx}")
-            if os.path.exists(dataset_path):
+            dataset_path = self.pth_acv_results / f"dataset_{idx}"
+            if dataset_path.exists():
                 datasets[idx] = {'test_wt': wt, 'test_ko': ko, 'dataset_idx': idx}
         return datasets 
 
@@ -80,39 +81,36 @@ class ConfidenceAnalyzer:
         # Clear and recreate test folder
         shutil.rmtree(self.pth_test, ignore_errors=True)
         for cls in self.classes:
-            os.makedirs(os.path.join(self.pth_test, cls))
+            (self.pth_test / cls).mkdir(parents=True)
         # Copy images using single shutil.copytree call per class
         if current_dataset is not None and total_datasets is not None:
             tqdm.write(f"\n>> PROCESSING DATASET {current_dataset} OF {total_datasets}:")
         tqdm.write(f"Generating test set with WT: {test_wt}, KO: {test_ko}")
         shutil.copytree(
-            os.path.join(self.pth_ds_gen_input, test_wt),
-            os.path.join(self.pth_test, 'WT'),
+            self.pth_ds_gen_input / test_wt,
+            self.pth_test / 'WT',
             dirs_exist_ok=True
         )
         shutil.copytree(
-            os.path.join(self.pth_ds_gen_input, test_ko),
-            os.path.join(self.pth_test, 'KO'),
+            self.pth_ds_gen_input / test_ko,
+            self.pth_test / 'KO',
             dirs_exist_ok=True
         )
 
     # Analyze a single datasets checkpoints with optional checkpoint selection
     def _analyze_single_dataset(self, dataset_num, total_datasets):
         dataset_results = {}
-        checkpoints_path = os.path.join(
-            self.pth_acv_results, 
-            f"dataset_{dataset_num}", 
-            'checkpoints'
-        )
-        plots_path = os.path.join(self.pth_acv_results, f"dataset_{dataset_num}", 'plots')
+        checkpoints_path = self.pth_acv_results / f"dataset_{dataset_num}" / 'checkpoints'
+        plots_path = self.pth_acv_results / f"dataset_{dataset_num}" / 'plots'
         # Get all checkpoint files that have corresponding confusion matrix JSON files
         checkpoint_files = []
-        for f in os.listdir(checkpoints_path):
-            if f.endswith('.model'):
-                json_file = f.replace('.model', '_cm.json')
-                json_path = os.path.join(plots_path, json_file)
-                if os.path.exists(json_path):  # Only consider checkpoints with CM data
-                    checkpoint_files.append(f)
+        for f in checkpoints_path.iterdir():
+            if f.suffix == '.model':
+                # Fixed line - replaced with_stem with compatible version
+                json_file = f.parent / f"{f.stem}_cm.json"  # Changed to explicitly use .json
+                json_path = plots_path / json_file.name
+                if json_path.exists():  # Only consider checkpoints with CM data
+                    checkpoint_files.append(f.name)
         # Select checkpoints if needed
         if self.max_ckpts is not None and len(checkpoint_files) > self.max_ckpts:
             checkpoint_files = self._select_checkpoints_by_metric(
@@ -124,9 +122,9 @@ class ConfidenceAnalyzer:
         # Print checkpoint selection info
         tqdm.write(f"Selected {len(checkpoint_files)} checkpoint(s):")
         for checkpoint_file in checkpoint_files:
-            base_name = os.path.splitext(checkpoint_file)[0]
+            base_name = Path(checkpoint_file).stem
             json_file = f"{base_name}_cm.json"
-            json_path = os.path.join(plots_path, json_file)
+            json_path = plots_path / json_file
             
             try:
                 with open(json_path, 'r') as f:
@@ -147,7 +145,7 @@ class ConfidenceAnalyzer:
             except Exception as e:
                 tqdm.write(f"- {checkpoint_file} (Error: {str(e)})")
                 tqdm.write(f"  Attempted path: {json_path}")
-                if os.path.exists(json_path):
+                if json_path.exists():
                     tqdm.write("  File exists but has unexpected content")
                 else:
                     tqdm.write("  File does not exist")
@@ -161,7 +159,7 @@ class ConfidenceAnalyzer:
             leave=False
         ) as pbar:
             for checkpoint_file in pbar:
-                checkpoint_path = os.path.join(checkpoints_path, checkpoint_file)
+                checkpoint_path = checkpoints_path / checkpoint_file
                 try:
                     # Load checkpoint
                     tqdm.write(f"Loading checkpoint: {checkpoint_file}")
@@ -186,9 +184,9 @@ class ConfidenceAnalyzer:
         
         for checkpoint_file in checkpoint_files:
             # Construct JSON filename by inserting '_cm' before '.json'
-            base_name = os.path.splitext(checkpoint_file)[0]  # removes .model
+            base_name = Path(checkpoint_file).stem  # removes .model
             json_file = f"{base_name}_cm.json"
-            json_path = os.path.join(plots_path, json_file)
+            json_path = plots_path / json_file
             
             try:
                 with open(json_path, 'r') as f:
@@ -277,7 +275,7 @@ class ConfidenceAnalyzer:
                      for cls in self.classes}
         # Iteate over confidences
         for img_path, (true_class, pred_class, confidence) in confidences.items():
-            img_key = os.path.basename(img_path)
+            img_key = Path(img_path).name
             per_image[img_key] = {
                 'true_class': true_class,
                 'pred_class': pred_class,
@@ -321,7 +319,7 @@ class ConfidenceAnalyzer:
             for checkpoint_name, pred_data in checkpoints.items():
                 for img_path, pred in pred_data['per_image_results'].items():
                     try:
-                        original_path = self._find_original_image_path(os.path.basename(img_path))
+                        original_path = self._find_original_image_path(Path(img_path).name)
                         self.image_history[original_path].append({
                             'dataset': dataset_num,
                             'checkpoint': checkpoint_name,
@@ -334,22 +332,22 @@ class ConfidenceAnalyzer:
     # Find original image path by checking all possible locations
     def _find_original_image_path(self, img_key):
         for line in self.wt_lines + self.ko_lines:
-            candidate = os.path.join(self.pth_ds_gen_input, line, img_key)
-            if os.path.exists(candidate):
-                return candidate
+            candidate = self.pth_ds_gen_input / line / img_key
+            if candidate.exists():
+                return str(candidate)
         raise FileNotFoundError(f"Original image not found for {img_key}")
 
     # Organize high-confidence images into folder structure
     def organize_high_confidence_images(self, consistent_images):
         output_subdir = "high_confidence_examples"
-        output_dir = os.path.join(self.pth_conf_analizer_results, output_subdir)
+        output_dir = self.pth_conf_analizer_results / output_subdir
         
         # Track copied files to prevent duplicates
         copied_files = set()
         
         for class_name in self.classes:
-            class_dir = os.path.join(output_dir, class_name)
-            os.makedirs(class_dir, exist_ok=True)
+            class_dir = output_dir / class_name
+            class_dir.mkdir(parents=True, exist_ok=True)
             
             for img_path, confidence in consistent_images[class_name]:
                 if img_path in copied_files:
@@ -357,11 +355,11 @@ class ConfidenceAnalyzer:
                     
                 try:
                     # Create new filename with confidence
-                    original_name = os.path.basename(img_path)
+                    original_name = Path(img_path).name
                     base, ext = os.path.splitext(original_name)
                     confidence_pct = int(round(confidence * 100))
                     new_filename = f"{base}_conf{confidence_pct}{ext}"
-                    dest_path = os.path.join(class_dir, new_filename)
+                    dest_path = class_dir / new_filename
                     
                     shutil.copy2(img_path, dest_path)
                     copied_files.add(img_path)
@@ -405,12 +403,12 @@ class ConfidenceAnalyzer:
             
             for ckpt_name in checkpoint_files:
                 # Get the corresponding JSON file for accuracy metrics
-                base_name = os.path.splitext(ckpt_name)[0]
+                base_name = Path(ckpt_name).stem
                 json_file = f"{base_name}_cm.json"
-                json_path = os.path.join(
-                    self.pth_acv_results,
-                    f"dataset_{dataset_num}",
-                    'plots',
+                json_path = (
+                    self.pth_acv_results / 
+                    f"dataset_{dataset_num}" / 
+                    'plots' / 
                     json_file
                 )
                 
@@ -443,7 +441,7 @@ class ConfidenceAnalyzer:
             df = pd.DataFrame(rows)
             # Sort by dataset and overall accuracy
             df = df.sort_values(['dataset', 'overall_accuracy'], ascending=[True, False])
-            output_path = os.path.join(self.pth_conf_analizer_results, 'used_checkpoints.csv')
+            output_path = self.pth_conf_analizer_results / 'used_checkpoints.csv'
             df.to_csv(output_path, index=False)
             tqdm.write(f"\nSaved used checkpoints report to: {output_path}")
             return True
@@ -451,7 +449,7 @@ class ConfidenceAnalyzer:
 
     # Create README file for output folder
     def _create_readme(self, output_dir, consistent_images):
-        with open(os.path.join(output_dir, "README.txt"), 'w') as f:
+        with open(output_dir / "README.txt", 'w') as f:
             f.write("High-Confidence Image Classification Results\n")
             f.write("="*50 + "\n\n")
             f.write(f"Images meeting confidence threshold: {sum(len(v) for v in consistent_images.values())}\n")
@@ -460,7 +458,7 @@ class ConfidenceAnalyzer:
 
     # Clean up the test folder after analysis
     def cleanup_test_folder(self):
-        if os.path.exists(self.pth_test):
+        if self.pth_test.exists():
             shutil.rmtree(self.pth_test, ignore_errors=True)
 
     def analyze_all_datasets(self):
@@ -468,7 +466,7 @@ class ConfidenceAnalyzer:
         available_datasets = self._get_available_datasets()
         total_datasets = len(available_datasets)
         # Path and name of output csv file
-        output_csv = os.path.join(self.pth_conf_analizer_results, 'confidence_analysis.csv')
+        output_csv = self.pth_conf_analizer_results / 'confidence_analysis.csv'
         
         tqdm.write("Starting confidence analysis...")
         tqdm.write(f"Found {total_datasets} datasets to analyze")
