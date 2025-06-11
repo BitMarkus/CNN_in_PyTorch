@@ -105,7 +105,6 @@ class ConfidenceAnalyzer:
             'checkpoints'
         )
         plots_path = os.path.join(self.pth_acv_results, f"dataset_{dataset_num}", 'plots')
-        
         # Get all checkpoint files that have corresponding confusion matrix JSON files
         checkpoint_files = []
         for f in os.listdir(checkpoints_path):
@@ -114,11 +113,7 @@ class ConfidenceAnalyzer:
                 json_path = os.path.join(plots_path, json_file)
                 if os.path.exists(json_path):  # Only consider checkpoints with CM data
                     checkpoint_files.append(f)
-        
-        # Store checkpoint info for reporting
-        selected_checkpoints_info = []
-        
-        # Select checkpoints based on the specified method if max_checkpoints is set
+        # Select checkpoints if needed
         if self.max_ckpts is not None and len(checkpoint_files) > self.max_ckpts:
             checkpoint_files = self._select_checkpoints_by_metric(
                 checkpoint_files,
@@ -126,7 +121,6 @@ class ConfidenceAnalyzer:
                 top_n=self.max_ckpts,
                 method=self.ckpt_select_method
             )
-        
         # Print checkpoint selection info
         tqdm.write(f"Selected {len(checkpoint_files)} checkpoint(s):")
         for checkpoint_file in checkpoint_files:
@@ -138,11 +132,9 @@ class ConfidenceAnalyzer:
                 with open(json_path, 'r') as f:
                     cm_data = json.load(f)
                 
-                # Verify structure
                 if 'class_accuracy' not in cm_data or 'overall_accuracy' not in cm_data:
                     raise ValueError("JSON missing required keys")
                 
-                # Get accuracies
                 wt_acc = cm_data['class_accuracy'].get(self.classes[0], 0)
                 ko_acc = cm_data['class_accuracy'].get(self.classes[1], 0)
                 overall_acc = cm_data['overall_accuracy']
@@ -154,7 +146,6 @@ class ConfidenceAnalyzer:
                 
             except Exception as e:
                 tqdm.write(f"- {checkpoint_file} (Error: {str(e)})")
-                # Print the full path that was attempted
                 tqdm.write(f"  Attempted path: {json_path}")
                 if os.path.exists(json_path):
                     tqdm.write("  File exists but has unexpected content")
@@ -162,28 +153,31 @@ class ConfidenceAnalyzer:
                     tqdm.write("  File does not exist")
                 continue
         
-        # Use context manager for clean progress bar handling
+        # Process checkpoints
         with tqdm(
             checkpoint_files,
             desc=f"Dataset {dataset_num}/{total_datasets} - Checkpoints",
-            position=1,  # Nested position
-            leave=False  # Auto-remove when done
+            position=1,
+            leave=False
         ) as pbar:
             for checkpoint_file in pbar:
                 checkpoint_path = os.path.join(checkpoints_path, checkpoint_file)
                 try:
                     # Load checkpoint
                     tqdm.write(f"Loading checkpoint: {checkpoint_file}")
-                    self.cnn.model.load_state_dict(torch.load(checkpoint_path, map_location=self.device))
-                    # Set network to evaluation mode
+                    self.cnn.model.load_state_dict(
+                        torch.load(checkpoint_path, map_location=self.device)
+                    )
                     self.cnn.model.eval()
-                    # Make predictions on test images and get confidences
+                    # Get predictions
                     confidences = self._get_predictions_with_confidence()
-                    # Save all results for one dataset
                     dataset_results[checkpoint_file] = self._organize_prediction_results(confidences)
                 except Exception as e:
-                    tqdm.write(f"\nError loading {checkpoint_path}: {str(e)}")
-                    continue                
+                    tqdm.write(f"\nError processing {checkpoint_file}: {str(e)}")
+                    if isinstance(e, RuntimeError) and "CUDA out of memory" in str(e):
+                        raise  # Critical error - stop execution
+                    continue
+                    
         return dataset_results
     
     # Select top checkpoints based on specified metric from confusion matrix JSON files
@@ -326,14 +320,16 @@ class ConfidenceAnalyzer:
             config = self._get_available_datasets()[int(dataset_num)]
             for checkpoint_name, pred_data in checkpoints.items():
                 for img_path, pred in pred_data['per_image_results'].items():
-                    # Get the original path, not just basename
-                    original_path = self._find_original_image_path(os.path.basename(img_path))
-                    img_key = original_path  # Use full original path as key
-                    self.image_history[img_key].append({
-                        'dataset': dataset_num,
-                        'checkpoint': checkpoint_name,
-                        **pred
-                    })
+                    try:
+                        original_path = self._find_original_image_path(os.path.basename(img_path))
+                        self.image_history[original_path].append({
+                            'dataset': dataset_num,
+                            'checkpoint': checkpoint_name,
+                            **pred
+                        })
+                    except FileNotFoundError as e:
+                        tqdm.write(f"Warning: {str(e)}")
+                        continue
 
     # Find original image path by checking all possible locations
     def _find_original_image_path(self, img_key):
@@ -402,11 +398,12 @@ class ConfidenceAnalyzer:
     # Export a CSV file listing all used checkpoints with their accuracies
     def _export_used_checkpoints(self, results):
         rows = []
-        
         for dataset_num, checkpoints in results.items():
             config = self._get_available_datasets()[int(dataset_num)]
+            checkpoint_files = list(checkpoints.keys())
+            was_filtered = self.max_ckpts is not None and len(checkpoint_files) > self.max_ckpts
             
-            for ckpt_name, pred_data in checkpoints.items():
+            for ckpt_name in checkpoint_files:
                 # Get the corresponding JSON file for accuracy metrics
                 base_name = os.path.splitext(ckpt_name)[0]
                 json_file = f"{base_name}_cm.json"
@@ -433,8 +430,9 @@ class ConfidenceAnalyzer:
                         'wt_accuracy': wt_acc,
                         'ko_accuracy': ko_acc,
                         'overall_accuracy': overall_acc,
-                        'selection_method': self.ckpt_select_method,  # From class settings
-                        'max_checkpoints': self.max_ckpts  # From class settings
+                        'selection_method': self.ckpt_select_method if was_filtered else 'none',
+                        'max_checkpoints': self.max_ckpts if was_filtered else len(checkpoint_files),
+                        'was_filtered': was_filtered
                     })
                     
                 except Exception as e:
