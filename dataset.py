@@ -51,6 +51,7 @@ class Dataset():
         # Datasets
         self.ds_train = None
         self.ds_val = None
+        self.ds_test = None
         self.ds_pred = None
         # Augentatioms for dataset
         self.train_use_augment = setting["train_use_augment"]
@@ -209,7 +210,30 @@ class Dataset():
             )
             # Get number of images in test dataset
             self.num_pred_img = len(prediction_loader)
+            self.ds_test = prediction_loader  
+            # Set datasets to loaded
+            self.ds_loaded = True  
+            return True  
+        else:
+            print("Loading of dataset failed! Input images must have either one (grayscale) or three (RGB) channels.")
+            return False
+        
+    # Loads prediction dataset for captum
+    def load_pred_dataset(self):
+        transformer = self.get_transformer_test()
+        # Check if training images have either one or three channels
+        if(transformer):
+            dataset = torchvision.datasets.ImageFolder(self.pth_prediction, transform=transformer)
+            # Create dataloader object
+            prediction_loader = DataLoader(
+                dataset, 
+                batch_size=self.batch_size_pred, 
+            )
+            # Get number of images in test dataset
+            self.num_pred_img = len(prediction_loader)
             self.ds_pred = prediction_loader  
+            # Set datasets to loaded
+            self.ds_loaded = True  
             return True  
         else:
             print("Loading of dataset failed! Input images must have either one (grayscale) or three (RGB) channels.")

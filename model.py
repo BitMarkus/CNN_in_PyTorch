@@ -12,9 +12,11 @@ from tqdm import tqdm
 from prettytable import PrettyTable
 from PIL import Image
 from captum.attr import IntegratedGradients
-import matplotlib.pyplot as plt
 from captum.attr import visualization as viz
+# import matplotlib
+# import matplotlib.pyplot as plt
 import os
+from pathlib import Path
 # Own modules
 import functions as fn
 from settings import setting
@@ -27,6 +29,8 @@ class CNN_Model():
     def __init__(self):
         # Path to training images
         self.pth_train = setting["pth_train"]
+        # Path to prediction images
+        self.pth_pred = setting["pth_prediction"]
         # Path to checkpoints
         self.pth_checkpoint = setting["pth_checkpoint"]
         # Input shape data
@@ -296,6 +300,40 @@ class CNN_Model():
         self.model.load_state_dict(torch.load(chckpt_pth / chckpt_file))
         print(f'Weights from checkpoint {chckpt_file} successfully loaded.')
         return chckpt_file
+    
+    def load_checkpoint(self):
+        # First get checkpoints without printing table
+        silent_checkpoints = self.print_checkpoints_table(self.pth_checkpoint, print_table=False)
+        # In case the folder is empty
+        if not silent_checkpoints:
+            print("The checkpoint folder is empty!")
+            return False
+        # If only one checkpoint exists
+        if len(silent_checkpoints) == 1:
+            # Extract filename from the tuple: (id, name)
+            checkpoint_file = silent_checkpoints[0][1]
+            print(f"\nFound single checkpoint: {checkpoint_file}")
+            print("Loading automatically...")
+        else:
+            # Show interactive table for multiple checkpoints
+            self.print_checkpoints_table(self.pth_checkpoint)
+            checkpoint_file = self.select_checkpoint(silent_checkpoints, "Select a checkpoint: ")
+            if not checkpoint_file:
+                return False
+        # Load weights from checkpoint
+        try:
+            full_path = self.pth_checkpoint / checkpoint_file
+            self.load_weights(self.pth_checkpoint, checkpoint_file)
+            self.checkpoint_loaded = True
+            self.loaded_checkpoint_name = full_path.stem
+            return True
+        except FileNotFoundError as e:
+            print(f"\nError loading checkpoint: {str(e)}")
+            print(f"Full path attempted: {full_path}")
+            return False
+        except Exception as e:
+            print(f"\nError loading checkpoint: {str(e)}")
+            return False
 
     # Function for Prediction
     def predict(self, dataset):
@@ -333,52 +371,6 @@ class CNN_Model():
         # Set model back to training mode
         self.model.train()
         return acc, cm
-    
-    def predict_single(self, dataset):
-
-        # Set model to evaluation mode
-        self.model.eval()
-        # No need to keep track of gradients
-        with torch.no_grad():
-            # Loop through the data
-            for i, (images, labels) in enumerate(dataset):
-                # Send images and labels to gpu
-                if torch.cuda.is_available():
-                    images, labels = images.cuda(), labels.cuda()
-
-                for i, img in enumerate(images):
-                    img = img.unsqueeze(0)  # Add batch dimension
-                    # print(img.shape)
-                    score = self.model(img)
-                    probability = torch.softmax(score, dim=1)
-
-                    # Initialize Integrated Gradients
-                    ig = IntegratedGradients(self.model) 
-                    # Read target class (e.g., class 1)
-                    # ko = 0, wt = 1  
-                    tar_class = labels[i].item()
-                    # Compute attributions
-                    attributions = ig.attribute(img, target=tar_class) 
-                    print("Target class:", tar_class)
-                    print("Probability:", probability)
-
-                    # Convert the input image and attributions to a format suitable for visualization
-                    image_np = img.squeeze(0).permute(1, 2, 0).cpu().numpy()
-                    # print(image_np.shape)
-                    attributions_np = attributions.squeeze(0).permute(1, 2, 0).cpu().numpy()     
-
-                    # Visualize the attributions
-                    fig, ax = viz.visualize_image_attr(
-                        attributions_np,  # Attributions
-                        original_image=image_np,  # Original image
-                        method="heat_map",  # Visualization method # blended_heat_map, heat_map or masked_image
-                        sign="positive",  # Show positive and negative attributions # all
-                        cmap="inferno",
-                        show_colorbar=True,  # Show color bar
-                        title=f"Feature Attribution for Class {tar_class}",
-                        fig_size=(12,12)
-                    )                       
-                    plt.show() 
 
     # Prints number of model parameters
     def print_model_size(self):

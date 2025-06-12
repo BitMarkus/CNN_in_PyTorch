@@ -238,20 +238,20 @@ class ConfidenceAnalyzer:
         ds.load_test_dataset()
         # Iterate over test images
         confidences = {}
-        total_images = len(ds.ds_pred.dataset)
+        total_images = len(ds.ds_test.dataset)
         
         with torch.no_grad():
             with torch.cuda.amp.autocast():  # Mixed precision if using CUDA
                 # Add progress bar for image predictions
                 with tqdm(
-                    ds.ds_pred,
+                    ds.ds_test,
                     desc="Predicting images",
                     total=total_images,
                     position=2,
                     leave=False
                 ) as img_pbar:
                     for batch_idx, (images, labels) in enumerate(img_pbar):
-                        img_path = ds.ds_pred.dataset.samples[batch_idx][0]
+                        img_path = ds.ds_test.dataset.samples[batch_idx][0]
                         images = images.to(self.device)
                         if images.dim() == 3:
                             images = images.unsqueeze(0)

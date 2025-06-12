@@ -7,6 +7,7 @@ from conf_analyzer import ConfidenceAnalyzer
 from dataset import Dataset
 from train import Train
 from class_analyzer import ClassAnalyzer
+from captum_analyzer import CaptumAnalyzer
 from settings import setting
 
 ###########
@@ -125,15 +126,7 @@ def main():
             if not (cnn.model_loaded):
                 print('No CNN generated yet!')
             else:
-                # Select checkpoint
-                checkpoints = cnn.print_checkpoints_table(setting["pth_checkpoint"])
-                if(checkpoints):
-                    checkpoint_file = cnn.select_checkpoint(checkpoints, "Select a checkpoint: ")
-                    # Load weights
-                    cnn.load_weights(setting["pth_checkpoint"], checkpoint_file)
-                    cnn.checkpoint_loaded = True
-                else:
-                    print("The checkpoint folder is empty!")  
+                cnn.load_checkpoint()
 
         ############################
         # Predict images in folder #  
@@ -203,8 +196,8 @@ def main():
 
         elif(menu1 == 9):  
             print("\n:CONFIDENCE ANALYZER:")  
-            ca = ConfidenceAnalyzer(device)
-            ca()
+            confa = ConfidenceAnalyzer(device)
+            confa()
 
         ###############
         # Captum Test #  
@@ -212,14 +205,10 @@ def main():
 
         elif(menu1 == 10):  
             print("\n:CAPTUM:") 
-            print("Under construction...")
-            """
-            # ds.load_test_dataset()
-            # cnn.model = Custom_CNN_Model().to(device)
-            ds.load_training_dataset()
-            cnn.load_weights(device)
-            cnn.predict_single(ds.ds_train)
-            """
+            # print("Under construction...")
+            capta = CaptumAnalyzer(device)
+            capta()
+
         ################
         # Exit Program #
         ################

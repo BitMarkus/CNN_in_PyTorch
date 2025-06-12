@@ -11,6 +11,7 @@ import json
 from sklearn.metrics import confusion_matrix
 import numpy as np
 from sklearn.metrics import ConfusionMatrixDisplay
+import captum
 # Own modules
 from settings import setting
 
@@ -24,6 +25,7 @@ def show_cuda_and_versions():
     print("Pytorch:", torch.__version__)
     print("CUDA:", torch.version.cuda)
     print("cuDNN:", torch.backends.cudnn.version())
+    print("Captum:", captum.__version__)
     return device
 
 # Creates an input with prompt

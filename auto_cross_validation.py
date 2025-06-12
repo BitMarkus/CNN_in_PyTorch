@@ -128,7 +128,7 @@ class AutoCrossValidation:
 
                     # Start prediction on test dataset with selected weights
                     print('\n> Starting prediction...')
-                    _, cm = self.cnn.predict(self.ds.ds_pred)
+                    _, cm = self.cnn.predict(self.ds.ds_test)
 
                     # Plot confusion matrix and results
                     fn.plot_confusion_matrix(cm, self.class_list, plot_dir, chckpt_name=checkpoint_file[1], show_plot=False, save_plot=True)

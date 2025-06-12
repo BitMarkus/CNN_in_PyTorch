@@ -22,6 +22,7 @@ class ClassAnalyzer:
         self.pth_prediction = setting['pth_prediction'].resolve()
         self.pth_checkpoint = setting['pth_checkpoint'].resolve()
         self.classes = setting['classes']
+        self.img_channels = setting['img_channels']
         
         # Initialize dataset to get transforms
         self.ds = Dataset()
@@ -51,8 +52,8 @@ class ClassAnalyzer:
     #############################################################################################################
     # METHODS:
 
+    # Load model weights from a selected checkpoint
     def load_checkpoint(self):
-        """Load model weights from a selected checkpoint"""
         # First get checkpoints without printing table
         silent_checkpoints = self.cnn.print_checkpoints_table(self.pth_checkpoint, print_table=False)
         
@@ -88,12 +89,13 @@ class ClassAnalyzer:
             print(f"\nError loading checkpoint: {str(e)}")
             return False
     
+    # Create a DataLoader that properly handles image loading and transformation
     def create_prediction_loader(self, folder_path):
-        """Create a DataLoader that properly handles image loading and transformation"""
         class FlatImageFolder(torch.utils.data.Dataset):
-            def __init__(self, folder, transform=None):
+            def __init__(self, folder, transform=None, img_channels=1):
                 self.folder = Path(folder)
                 self.transform = transform
+                self.img_channels = img_channels
                 self.image_files = [f for f in self.folder.iterdir() 
                                   if f.suffix.lower() in ('.png', '.jpg', '.jpeg')]
                 if not self.image_files:
@@ -104,12 +106,15 @@ class ClassAnalyzer:
 
             def __getitem__(self, idx):
                 img_path = self.image_files[idx]
-                img = Image.open(img_path).convert('RGB')
+                if self.img_channels == 1:
+                    img = Image.open(img_path).convert('L')  # Convert to grayscale
+                else:
+                    img = Image.open(img_path).convert('RGB')  # Convert to RGB
                 if self.transform:
                     img = self.transform(img)
                 return img, 0  # Dummy label
 
-        dataset = FlatImageFolder(folder_path, transform=self.transform)
+        dataset = FlatImageFolder(folder_path, transform=self.transform, img_channels=self.img_channels)
         return DataLoader(dataset, batch_size=self.ds.batch_size_pred)
     
     def predict_folder(self, folder_path):
@@ -165,9 +170,8 @@ class ClassAnalyzer:
         except Exception as e:
             raise ValueError(f"Error processing folder {folder_path}: {str(e)}")
 
+    # Analyze all folders in the prediction directory
     def analyze_prediction_folder(self):
-        """Analyze all folders in the prediction directory"""
-
         # Load checkpoint
         if not self.load_checkpoint():
             print("WARNING: Proceeding with untrained weights!\n")
