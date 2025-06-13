@@ -41,7 +41,6 @@ def main():
         print("3) Load Training Data")
         print("4) Train Network")
         print("5) Load Weights")
-        # print("6) Predict Images in data/test Folder")
         print("6) Predict Class from Predict Folder")
         print("7) Dataset Generator")
         print("8) Automatic Cross Validation (ACV)")
@@ -137,36 +136,6 @@ def main():
 
             analyzer = ClassAnalyzer(device)
             analyzer.analyze_prediction_folder()
-
-            """
-            if not (cnn.model_loaded):
-                print('No CNN generated yet!')
-            else:
-                # Load prediction dataset
-                print('Load prediction dataset...')
-                ds.load_test_dataset()
-                print('Prediction dataset successfully loaded.')
-                print(f"Number test images/batch size: {ds.num_pred_img}/1")
-                print('Starting prediction...')
-                _, cm = cnn.predict(ds.ds_pred)
-                # Get class list
-                class_list = cnn.get_class_list()
-                # Get name of the checkpoint file the confusion matrix is based on
-                if(cnn.checkpoint_loaded):
-                    ckpt = checkpoint_file
-                else:
-                    ckpt = None
-                # Save confusion matrix results
-                fn.save_confusion_matrix_results(cm, class_list, setting["pth_plots"], chckpt_name=ckpt)
-                # Plot confusion matrix
-                fn.plot_confusion_matrix(cm, class_list, setting["pth_plots"], chckpt_name=ckpt, show_plot=True, save_plot=True)
-                # Load confusion matrix results
-                loaded_results = fn.load_confusion_matrix_results(setting["pth_plots"], file_name=ckpt)
-                # Access the data
-                print(f"Overall accuracy: {(loaded_results['overall_accuracy']*100):.2f}%")
-                print(f"WT accuracy: {(loaded_results['class_accuracy']['WT']*100):.2f}")
-                print(f"KO accuracy: {(loaded_results['class_accuracy']['KO']*100):.2f}")
-            """
 
         #####################
         # Dataset Generator #  
