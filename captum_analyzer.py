@@ -84,7 +84,7 @@ class CaptumAnalyzer:
                         attributions = ig.attribute(
                             img,
                             target=label.item(),
-                            n_steps=10,
+                            n_steps=50,
                             internal_batch_size=1
                         )
                         
