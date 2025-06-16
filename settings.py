@@ -119,6 +119,44 @@ setting = {
     # Options: balanced_sum, f1_score, min_difference, balanced_accuracy
     "ca_ckpt_select_method": 'balanced_sum',
 
+    ##########
+    # CAPTUM #
+    ##########
+
+    # Show overlay image in addidion to original and heatmap image
+    "captum_show_overlay": True,
+    # Determines how to handle positive/negative attributions. Options:
+    # "absolute_value" (default): Uses absolute values
+    # "positive": Only positive attributions
+    # "negative": Only negative attributions
+    # "all": Shows both positive and negative
+    "captum_sign": 'all',
+    # Colormap for the heatmap. Common options:
+    # "viridis", "plasma", "magma", "inferno" (default), "cividis", etc
+    # Any valid Matplotlib colormap name
+    # Color map for original image
+    "captum_cmap_orig": 'gray',
+    # Color map for heatmap
+    "captum_cmap_heatmap": 'RdYlGn',
+    # Show color bar for different images
+    "captum_show_color_bar_orig": True,
+    "captum_show_color_bar_heatmap": True,
+    "captum_show_color_bar_overlay": True,
+    # The n_steps parameter in Integrated Gradients (IG) controls the number of 
+    # interpolation steps used when approximating the integral for computing attributions
+    # Higher n_steps = Smoother approximation of the integral (more accurate but slower)
+    # Lower n_steps = Rougher approximation (faster but potentially noisier)
+    # With too few steps (e.g., 5), attributions may appear pixelated or noisy
+    # With more steps (e.g., 50), heatmaps become smoother but take longer to compute
+    # Default: 50
+    "captum_n_steps_ig": 50,
+    # Image size of the result output
+    "captum_output_size": 8,
+    # Control transparency of the heatmap
+    # 0.0: Heatmap completely transparent (only original image visible)
+    # 1.0: Heatmap fully opaque (original image barely visible under intense colors)
+    "captum_alpha_overlay": 0.5, 
+
     #########
     # PATHS #
     #########
