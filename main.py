@@ -8,6 +8,7 @@ from dataset import Dataset
 from train import Train
 from class_analyzer import ClassAnalyzer
 from captum_analyzer import CaptumAnalyzer
+from gradcam_analyzer import GradCAMAnalyzer
 from settings import setting
 
 ###########
@@ -174,9 +175,10 @@ def main():
 
         elif(menu1 == 10):  
             print("\n:CAPTUM:") 
-            # print("Under construction...")
-            capta = CaptumAnalyzer(device)
-            capta()
+            # capta = CaptumAnalyzer(device)
+            # capta()
+            gradcam = GradCAMAnalyzer(device)
+            gradcam()
 
         ################
         # Exit Program #
