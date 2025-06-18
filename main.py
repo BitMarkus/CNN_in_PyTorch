@@ -46,8 +46,9 @@ def main():
         print("7) Dataset Generator")
         print("8) Automatic Cross Validation (ACV)")
         print("9) Confidence Analyzer (based on ACV)")
-        print("10) Captum Test")
-        print("11) Exit Program")
+        print("10) Captum Analyzer")
+        print("11) GradCAM Analyzer (for DenseNet-121)")
+        print("12) Exit Program")
         menu1 = int(fn.input_int("Please choose: "))
 
         ######################
@@ -169,14 +170,21 @@ def main():
             confa = ConfidenceAnalyzer(device)
             confa()
 
-        ###############
-        # Captum Test #  
-        ###############
+        ###################
+        # Captum Analyzer #  
+        ###################
 
         elif(menu1 == 10):  
-            print("\n:CAPTUM:") 
-            # capta = CaptumAnalyzer(device)
-            # capta()
+            print("\n:CAPTUM ANALYZER:") 
+            capta = CaptumAnalyzer(device)
+            capta()
+
+        ####################
+        # GradCAM Analyzer #  
+        ####################
+
+        elif(menu1 == 11):  
+            print("\n:GradCAM ANALYZER (for DenseNet-121):") 
             gradcam = GradCAMAnalyzer(device)
             gradcam()
 
@@ -184,7 +192,7 @@ def main():
         # Exit Program #
         ################
 
-        elif(menu1 == 11):
+        elif(menu1 == 12):
             print("\nExit program...")
             break
         

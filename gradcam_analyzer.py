@@ -12,8 +12,10 @@ from dataset import Dataset
 from model import CNN_Model
 
 class GradCAMAnalyzer:
-    ###########################################################################
-    # CONSTRUCTOR
+    
+    #############################################################################################################
+    # CONSTRUCTOR:
+
     def __init__(self, device):
         self.device = device
         
@@ -41,28 +43,206 @@ class GradCAMAnalyzer:
         self.cnn.model = self.cnn.load_model(self.device)
         self.cnn.model = self.cnn.model.to(self.device)
         print(f"Network {self.cnn.cnn_type} created successfully.")
-        
-        # Register hooks for Grad-CAM
-        self._register_hooks()
 
+        # For faster convolutions
+        torch.backends.cudnn.benchmark = True  
+        
+    #############################################################################################################
+    # METHODS:
+
+    # Generate Grad-CAM heatmap for a single input image
+    # If target_class=None (default behavior):
+    #   The model makes a prediction (e.g., "dog")
+    #   Grad-CAM highlights regions that most influenced the model's predicted class
+    # No ground truth needed! This is the most common use case
+    # If target_class is specified:
+    #   Grad-CAM will show regions important for that specific class (!), even if the model predicted something else
+    #   Useful for debugging (e.g., "Why did the model not predict 'cat'?")
+    def generate_heatmap(self, input_tensor, target_class=None):
+        self.cnn.model.zero_grad()
+        
+        # Forward pass while retaining activations
+        with torch.no_grad():
+            features = self.cnn.model.features(input_tensor.unsqueeze(0))
+            activations = features.detach().requires_grad_(True)
+        
+        # Get model output
+        output = self.cnn.model.classifier(F.relu(F.adaptive_avg_pool2d(activations, (1, 1)).view(1, -1)))
+        
+        if target_class is None:
+            target_class = torch.argmax(output).item()
+        
+        # Backward pass
+        one_hot = torch.zeros_like(output)
+        one_hot[0][target_class] = 1
+        output.backward(gradient=one_hot, retain_graph=True)
+        torch.cuda.empty_cache()  # Clean up unused memory
+        
+        # Compute Grad-CAM
+        with torch.no_grad():
+            weights = torch.mean(activations.grad, dim=[2, 3], keepdim=True)
+            cam = torch.sum(weights * activations, dim=1)
+            cam = F.relu(cam)
+            cam = F.interpolate(cam.unsqueeze(0), input_tensor.shape[1:], 
+                            mode='bilinear', align_corners=False)
+            cam = cam - cam.min()
+            cam = cam / (cam.max() + 1e-10)
+        
+        return cam.squeeze().cpu().numpy(), target_class
+
+    # Create visualization plots for Grad-CAM results
+    # Color code for heatmaps:
+    # Blue: Values < 0.25 (unimportant)
+    # Green: 0.25-0.75
+    # Red: > 0.75 (most important)
+    def visualize_gradcam(self, image, heatmap, img_path, label, target_class):
+        # Convert tensors to numpy
+        if self.img_channels == 1:
+            img_np = image.squeeze().cpu().numpy()
+        else:
+            img_np = image.permute(1, 2, 0).cpu().numpy()
+        
+        # Create output directory
+        relative_path = img_path.relative_to(self.pth_prediction)
+        output_folder = self.pth_prediction / f"{relative_path.parent.name}_gradcam"
+        output_folder.mkdir(exist_ok=True, parents=True)
+        
+        # Create figure with adjusted layout
+        plt.ioff()
+        fig = plt.figure(figsize=(12, 4.5))  # Slightly adjusted height
+        
+        # Main grid: 2 rows (images and colorbars), 3 columns
+        # Changed height ratio to make colorbars thinner (20:1 instead of 10:1)
+        gs_main = gridspec.GridSpec(2, 3, height_ratios=[20, 1], width_ratios=[1, 1, 1])
+        
+        # Subplot 1: Original Image
+        ax1 = plt.subplot(gs_main[0, 0])
+        img_vis = np.mean(img_np, axis=2) if self.img_channels != 1 else img_np
+        im1 = ax1.imshow(img_vis, cmap=self.cmap_orig)
+        ax1.set_title(f"Original: {self.classes[label.item()]}")
+        ax1.axis('off')
+        
+        # Subplot 2: Heatmap
+        ax2 = plt.subplot(gs_main[0, 1])
+        im2 = ax2.imshow(heatmap, cmap='jet', vmin=0, vmax=1)
+        ax2.set_title(f"Grad-CAM (Class {self.classes[target_class]})")
+        ax2.axis('off')
+        
+        # Subplot 3: Overlay
+        ax3 = plt.subplot(gs_main[0, 2])
+        ax3.imshow(img_vis, cmap='gray' if self.img_channels == 1 else None)
+        im3 = ax3.imshow(heatmap, cmap='jet', vmin=0, vmax=1, alpha=self.alpha_overlay)
+        ax3.set_title("Overlay")
+        ax3.axis('off')
+        
+        # Color bars - now thinner
+        if self.show_color_bar_orig:
+            cax1 = fig.add_subplot(gs_main[1, 0])
+            cbar1 = plt.colorbar(im1, cax=cax1, orientation='horizontal')
+            cbar1.ax.tick_params(labelsize=6)  # Even smaller font
+        
+        cax2 = fig.add_subplot(gs_main[1, 1])
+        cbar2 = plt.colorbar(im2, cax=cax2, orientation='horizontal')
+        cbar2.ax.tick_params(labelsize=6, pad=0.1)  # Reduced padding
+        
+        cax3 = fig.add_subplot(gs_main[1, 2])
+        cbar3 = plt.colorbar(im3, cax=cax3, orientation='horizontal')
+        cbar3.ax.tick_params(labelsize=6, pad=0.1)
+        
+        # Make colorbars even more compact
+        for cbar in [cbar1, cbar2, cbar3] if self.show_color_bar_orig else [cbar2, cbar3]:
+            cbar.ax.xaxis.set_tick_params(pad=1)  # Reduce tick label padding
+            cbar.outline.set_linewidth(0.5)  # Thinner border
+        
+        # Adjust layout with less space for colorbars
+        plt.tight_layout()
+        plt.subplots_adjust(hspace=0.05, wspace=0.1)  # Reduced vertical space
+        
+        output_path = output_folder / f"{img_path.stem}_gradcam.png"
+        fig.savefig(output_path, bbox_inches='tight', dpi=100)
+        plt.close(fig)
+
+    # Process all images in dataset with Grad-CAM (hook-free version)
+    def predict_gradcam(self, dataset):
+
+        self.cnn.model.eval()
+        
+        for batch_idx, (images, labels) in enumerate(tqdm(dataset, desc="Grad-CAM Analysis")):
+            batch_paths = [Path(dataset.dataset.samples[i][0]) 
+                        for i in range(batch_idx * dataset.batch_size,
+                                    min((batch_idx + 1) * dataset.batch_size, len(dataset.dataset)))]
+            
+            for img_idx in range(len(images)):
+                try:
+                    # 1. Prepare image
+                    img = images[img_idx].to(self.device)
+                    img_path = batch_paths[img_idx]
+                    label = labels[img_idx]
+                    
+                    # 2. Generate heatmap (hook-free)
+                    heatmap, target_class = self.generate_heatmap(img, label.item())
+                    
+                    # 3. Visualize results
+                    self.visualize_gradcam(
+                        image=img.detach(),
+                        heatmap=heatmap,
+                        img_path=img_path,
+                        label=label,
+                        target_class=target_class
+                    )
+                    
+                    # 4. Cleanup
+                    del img, heatmap
+                    torch.cuda.empty_cache()
+                    
+                except Exception as e:
+                    print(f"\nError processing {img_path.name}: {str(e)}")
+                    continue
+
+    #############################################################################################################
+    # CALL:
+    def __call__(self):
+
+        print("\nLoading dataset for prediction:")
+        self.ds.load_pred_dataset()
+        if self.ds.ds_loaded:
+            print("Dataset loaded successfully!")
+        
+        print("\nLoading model weights:")
+        self.cnn.load_checkpoint()
+        
+        print("\nRunning Grad-CAM analysis:")
+        self.predict_gradcam(self.ds.ds_pred)
+
+"""
     def _register_hooks(self):
-        """Register forward and backward hooks for Grad-CAM."""
+
         target_layer = self.cnn.model.features.norm5  # Last conv layer in DenseNet-121
         
-        # Forward hook (unchanged)
         def forward_hook(module, input, output):
             self.activations = output.detach()
-        target_layer.register_forward_hook(forward_hook)
         
-        # Replace backward_hook with FULL backward hook
-        self.backward_hook = target_layer.register_full_backward_hook(
-            lambda module, grad_in, grad_out: setattr(self, 'gradients', grad_out[0].detach())
-        )
+        def backward_hook(module, grad_input, grad_output):
+            self.gradients = grad_output[0].detach()
+        
+        target_layer.register_forward_hook(forward_hook)
+        target_layer.register_backward_hook(backward_hook)
 
-    ###########################################################################
-    # GRAD-CAM METHODS
+    def _register_hooks(self):
+        target_layer = self.cnn.model.features.norm5
+        
+        # Use old-style hooks with gradient protection
+        def backward_hook(module, grad_input, grad_output):
+            with torch.no_grad():
+                self.gradients = grad_output[0].clone()
+        
+        target_layer.register_forward_hook(
+            lambda m, i, o: setattr(self, 'activations', o.clone().detach())
+        )
+        target_layer.register_backward_hook(backward_hook)
+
     def generate_heatmap(self, input_tensor, target_class=None):
-        """Generate Grad-CAM heatmap for a single input image."""
+
         self.cnn.model.zero_grad()
         
         # Forward pass
@@ -85,102 +265,4 @@ class GradCAMAnalyzer:
         cam = cam - cam.min()
         cam = cam / (cam.max() + 1e-10)
         return cam.squeeze().cpu().numpy(), target_class
-
-    def visualize_gradcam(self, image, heatmap, img_path, label, target_class):
-        """Create visualization plots for Grad-CAM results."""
-        # Convert tensors to numpy
-        if self.img_channels == 1:
-            img_np = image.squeeze().cpu().numpy()
-        else:
-            img_np = image.permute(1, 2, 0).cpu().numpy()
-        
-        # Create output directory
-        relative_path = img_path.relative_to(self.pth_prediction)
-        output_folder = self.pth_prediction / f"{relative_path.parent.name}_gradcam"
-        output_folder.mkdir(exist_ok=True, parents=True)
-        
-        # Create figure
-        plt.ioff()
-        fig = plt.figure(figsize=(self.output_size * 3 + 0.5, self.output_size))
-        gs = gridspec.GridSpec(1, 3, width_ratios=[1.1, 1, 1])
-        
-        # Subplot 1: Original Image
-        ax1 = plt.subplot(gs[0])
-        img_vis = np.mean(img_np, axis=2) if self.img_channels != 1 else img_np
-        im1 = ax1.imshow(img_vis, cmap=self.cmap_orig)
-        ax1.set_title(f"Original: {self.classes[label.item()]}")
-        ax1.axis('off')
-        if self.show_color_bar_orig:
-            plt.colorbar(im1, ax=ax1, fraction=0.046, pad=0.04)
-        
-        # Subplot 2: Heatmap
-        ax2 = plt.subplot(gs[1])
-        im2 = ax2.imshow(heatmap, cmap=self.cmap_heatmap)
-        ax2.set_title(f"Grad-CAM (Class {self.classes[target_class]})")
-        ax2.axis('off')
-        plt.colorbar(im2, ax=ax2, fraction=0.046, pad=0.04)
-        
-        # Subplot 3: Overlay
-        ax3 = plt.subplot(gs[2])
-        ax3.imshow(img_vis, cmap='gray' if self.img_channels == 1 else None)
-        im3 = ax3.imshow(heatmap, cmap=self.cmap_heatmap, alpha=self.alpha_overlay)
-        ax3.set_title("Overlay")
-        ax3.axis('off')
-        plt.colorbar(im3, ax=ax3, fraction=0.046, pad=0.04)
-        
-        # Save figure
-        plt.tight_layout()
-        output_path = output_folder / f"{img_path.stem}_gradcam.png"
-        fig.savefig(output_path, bbox_inches='tight', dpi=100)
-        plt.close(fig)
-
-    ###########################################################################
-    # MAIN PREDICTION LOOP
-    def predict_gradcam(self, dataset):
-        """Process all images in dataset with Grad-CAM."""
-        self.cnn.model.eval()  # Keep model in eval mode
-        
-        for batch_idx, (images, labels) in enumerate(tqdm(dataset)):
-            batch_paths = [Path(dataset.dataset.samples[i][0]) 
-                        for i in range(batch_idx * dataset.batch_size,
-                                    min((batch_idx + 1) * dataset.batch_size, len(dataset.dataset)))]
-            
-            for img_idx in range(len(images)):
-                try:
-                    torch.cuda.empty_cache()
-                    
-                    # 1. Prepare image with gradient tracking
-                    img = images[img_idx].to(self.device)
-                    img.requires_grad_()  # Enable gradients for input
-                    
-                    label = labels[img_idx]
-                    img_path = batch_paths[img_idx]
-                    
-                    # 2. Forward pass with gradient context
-                    with torch.set_grad_enabled(True):  # Force gradient computation
-                        heatmap, target_class = self.generate_heatmap(img, label.item())
-                    
-                    # 3. Visualize results
-                    self.visualize_gradcam(img.detach(), heatmap, img_path, label, target_class)
-                    
-                    del img, heatmap
-                    torch.cuda.empty_cache()
-                    
-                except Exception as e:
-                    print(f"Error processing {batch_paths[img_idx]}: {str(e)}")
-                    continue
-
-    ###########################################################################
-    # CALL
-    def __call__(self):
-        """Main execution method."""
-        print("\nLoading dataset for prediction:")
-        self.ds.load_pred_dataset()
-        if self.ds.ds_loaded:
-            print("Dataset loaded successfully!")
-        
-        print("\nLoading model weights:")
-        self.cnn.load_checkpoint()
-        
-        print("\nRunning Grad-CAM analysis:")
-        self.predict_gradcam(self.ds.ds_pred)
+"""
