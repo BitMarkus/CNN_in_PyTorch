@@ -119,13 +119,13 @@ class GradCAMAnalyzer:
         ax1 = plt.subplot(gs_main[0, 0])
         img_vis = np.mean(img_np, axis=2) if self.img_channels != 1 else img_np
         im1 = ax1.imshow(img_vis, cmap=self.cmap_orig)
-        ax1.set_title(f"Original: {self.classes[label.item()]}")
+        ax1.set_title(f"Original: Class {self.classes[label.item()]}")
         ax1.axis('off')
         
         # Subplot 2: Heatmap
         ax2 = plt.subplot(gs_main[0, 1])
         im2 = ax2.imshow(heatmap, cmap='jet', vmin=0, vmax=1)
-        ax2.set_title(f"Grad-CAM (Class {self.classes[target_class]})")
+        ax2.set_title(f"Grad-CAM: Target class {self.classes[target_class]}")
         ax2.axis('off')
         
         # Subplot 3: Overlay
