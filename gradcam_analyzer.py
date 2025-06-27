@@ -33,11 +33,12 @@ class GradCAMAnalyzer:
         self.output_size = setting['captum_output_size']
         self.alpha_overlay = setting['captum_alpha_overlay']
 
-        # second iteration
+        # Second iteration with blurring
+        self.second_iteration = setting['gradcam_second_iteration']
         # Percentage of most prominent pixels to blur (0-1)
-        self.threshold_percent = 0.25
+        self.threshold_percent = setting['gradcam_threshold_percent']
         # Gaussian blur strength
-        self.sigma = 15
+        self.sigma = setting['gradcam_blurr_sigma']
 
         
         # Initialize dataset and model
@@ -240,7 +241,7 @@ class GradCAMAnalyzer:
 
     #############################################################################################################
     # CALL:
-    def __call__(self, second_iteration=True):
+    def __call__(self):
         print("\nLoading dataset for prediction:")
         self.ds.load_pred_dataset()
         if self.ds.ds_loaded:
@@ -250,4 +251,4 @@ class GradCAMAnalyzer:
         self.cnn.load_checkpoint()
         
         print("\nRunning Grad-CAM analysis:")
-        self.predict_gradcam(self.ds.ds_pred, second_iteration)
+        self.predict_gradcam(self.ds.ds_pred, self.second_iteration)

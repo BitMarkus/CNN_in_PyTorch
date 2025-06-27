@@ -53,8 +53,7 @@ setting = {
     # Define cell lines (for dataset generator)
     "wt_lines": ["WT_1618-02", "WT_JG", "WT_JT", "WT_KM", "WT_MS"],
     "ko_lines": ["KO_1096-01", "KO_1618-01", "KO_BR2986", "KO_BR3075"],
-    # "wt_lines": ["WT_JG", "WT_JT"],
-    # "ko_lines": ["KO_BR2986", "KO_BR3075"],
+    # Define classes
     "classes": ["KO", "WT"],
     # "classes": ["KO_1096-01", "KO_1618-01", "KO_BR2986", "KO_BR3075", "WT_1618-02", "WT_JG", "WT_JT", "WT_KM", "WT_MS"],
 
@@ -156,6 +155,18 @@ setting = {
     # 0.0: Heatmap completely transparent (only original image visible)
     # 1.0: Heatmap fully opaque (original image barely visible under intense colors)
     "captum_alpha_overlay": 0.5, 
+
+    ###########
+    # GradCAM #
+    ###########
+
+    # Parameters for second iteration with blurring
+    "gradcam_second_iteration": True,
+    # Percentage of most prominent pixels to blur (0-1)
+    "gradcam_threshold_percent": 0.40,
+    # Gaussian blur strength
+    "gradcam_blurr_sigma": 15,
+
 
     #########
     # PATHS #
