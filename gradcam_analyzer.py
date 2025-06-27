@@ -7,6 +7,7 @@ matplotlib.use('Agg')  # Set non-interactive backend
 import matplotlib.pyplot as plt
 from matplotlib import gridspec
 import numpy as np
+from scipy.ndimage import gaussian_filter
 from settings import setting
 from dataset import Dataset
 from model import CNN_Model
@@ -31,6 +32,13 @@ class GradCAMAnalyzer:
         self.show_color_bar_orig = setting['captum_show_color_bar_orig']
         self.output_size = setting['captum_output_size']
         self.alpha_overlay = setting['captum_alpha_overlay']
+
+        # second iteration
+        # Percentage of most prominent pixels to blur (0-1)
+        self.threshold_percent = 0.25
+        # Gaussian blur strength
+        self.sigma = 15
+
         
         # Initialize dataset and model
         self.ds = Dataset()
@@ -50,14 +58,6 @@ class GradCAMAnalyzer:
     #############################################################################################################
     # METHODS:
 
-    # Generate Grad-CAM heatmap for a single input image
-    # If target_class=None (default behavior):
-    #   The model makes a prediction (e.g., "dog")
-    #   Grad-CAM highlights regions that most influenced the model's predicted class
-    # No ground truth needed! This is the most common use case
-    # If target_class is specified:
-    #   Grad-CAM will show regions important for that specific class (!), even if the model predicted something else
-    #   Useful for debugging (e.g., "Why did the model not predict 'cat'?")
     def generate_heatmap(self, input_tensor, target_class=None):
         self.cnn.model.zero_grad()
         
@@ -89,13 +89,48 @@ class GradCAMAnalyzer:
             cam = cam / (cam.max() + 1e-10)
         
         return cam.squeeze().cpu().numpy(), target_class
+    
+    # Apply blur to the most prominent regions identified by the heatmap
+    # Args:
+    #    image: original image tensor (C, H, W)
+    #    heatmap: Grad-CAM heatmap (H, W)
+    # Returns:
+    #    blurred_image: image with prominent regions blurred
+    def apply_blur_mask(self, image, heatmap):
 
-    # Create visualization plots for Grad-CAM results
-    # Color code for heatmaps:
-    # Blue: Values < 0.25 (unimportant)
-    # Green: 0.25-0.75
-    # Red: > 0.75 (most important)
-    def visualize_gradcam(self, image, heatmap, img_path, label, target_class):
+        # Convert to numpy
+        if isinstance(image, torch.Tensor):
+            image_np = image.permute(1, 2, 0).cpu().numpy() if self.img_channels != 1 else image.squeeze().cpu().numpy()
+        else:
+            image_np = image.copy()
+
+        # Normalize heatmap and create mask
+        heatmap_normalized = (heatmap - heatmap.min()) / (heatmap.max() - heatmap.min() + 1e-10)
+        threshold = 1 - self.threshold_percent
+        mask = (heatmap_normalized > threshold).astype(np.float32)
+
+        # Smooth mask edges
+        mask = gaussian_filter(mask, sigma=1)  # Softens edges
+        mask = np.clip(mask, 0, 1)  # Ensures valid range
+
+        # Apply blur
+        if self.img_channels == 1:
+            blurred = gaussian_filter(image_np, sigma=self.sigma)
+            image_np = image_np * (1 - mask) + blurred * mask
+        else:
+            for c in range(self.img_channels):
+                blurred = gaussian_filter(image_np[:, :, c], sigma=self.sigma)
+                image_np[:, :, c] = image_np[:, :, c] * (1 - mask) + blurred * mask
+
+        # Convert back to tensor
+        if isinstance(image, torch.Tensor):
+            if self.img_channels == 1:
+                return torch.from_numpy(image_np).unsqueeze(0).to(self.device)
+            else:
+                return torch.from_numpy(image_np).permute(2, 0, 1).to(self.device)
+        return image_np
+
+    def visualize_gradcam(self, image, heatmap, img_path, label, target_class, iteration=1):
         # Convert tensors to numpy
         if self.img_channels == 1:
             img_np = image.squeeze().cpu().numpy()
@@ -112,14 +147,16 @@ class GradCAMAnalyzer:
         fig = plt.figure(figsize=(12, 4.5))  # Slightly adjusted height
         
         # Main grid: 2 rows (images and colorbars), 3 columns
-        # Changed height ratio to make colorbars thinner (20:1 instead of 10:1)
         gs_main = gridspec.GridSpec(2, 3, height_ratios=[20, 1], width_ratios=[1, 1, 1])
         
         # Subplot 1: Original Image
         ax1 = plt.subplot(gs_main[0, 0])
         img_vis = np.mean(img_np, axis=2) if self.img_channels != 1 else img_np
         im1 = ax1.imshow(img_vis, cmap=self.cmap_orig)
-        ax1.set_title(f"Original: Class {self.classes[label.item()]}")
+        title = f"Original: Class {self.classes[label.item()]}"
+        if iteration > 1:
+            title += f" (Iter {iteration})"
+        ax1.set_title(title)
         ax1.axis('off')
         
         # Subplot 2: Heatmap
@@ -158,13 +195,15 @@ class GradCAMAnalyzer:
         plt.tight_layout()
         plt.subplots_adjust(hspace=0.05, wspace=0.1)  # Reduced vertical space
         
-        output_path = output_folder / f"{img_path.stem}_gradcam.png"
+        # Modify output filename for second iteration
+        suffix = "_iter2" if iteration > 1 else ""
+        output_path = output_folder / f"{img_path.stem}_gradcam{suffix}.png"
         fig.savefig(output_path, bbox_inches='tight', dpi=100)
         plt.close(fig)
 
-    # Process all images in dataset with Grad-CAM (hook-free version)
-    def predict_gradcam(self, dataset):
-
+    # Args:
+    #    second_iteration: if True, performs a second Grad-CAM after blurring prominent features
+    def predict_gradcam(self, dataset, second_iteration=False, threshold_percent=0.2, sigma=5):
         self.cnn.model.eval()
         
         for batch_idx, (images, labels) in enumerate(tqdm(dataset, desc="Grad-CAM Analysis")):
@@ -174,25 +213,25 @@ class GradCAMAnalyzer:
             
             for img_idx in range(len(images)):
                 try:
-                    # 1. Prepare image
+                    # 1. First Grad-CAM pass
                     img = images[img_idx].to(self.device)
                     img_path = batch_paths[img_idx]
                     label = labels[img_idx]
                     
-                    # 2. Generate heatmap (hook-free)
-                    heatmap, target_class = self.generate_heatmap(img, label.item())
+                    heatmap1, target_class1 = self.generate_heatmap(img, label.item())
+                    self.visualize_gradcam(img.detach(), heatmap1, img_path, label, target_class1, iteration=1)
                     
-                    # 3. Visualize results
-                    self.visualize_gradcam(
-                        image=img.detach(),
-                        heatmap=heatmap,
-                        img_path=img_path,
-                        label=label,
-                        target_class=target_class
-                    )
+                    # 2. Second iteration with blurring
+                    if second_iteration:
+                        # Apply blur to prominent regions from first heatmap
+                        blurred_img = self.apply_blur_mask(img, heatmap1)
+                        
+                        # Generate new heatmap on blurred image
+                        heatmap2, target_class2 = self.generate_heatmap(blurred_img, label.item())
+                        
+                        # Visualize second iteration
+                        self.visualize_gradcam(blurred_img.detach(), heatmap2, img_path, label, target_class2, iteration=2)
                     
-                    # 4. Cleanup
-                    del img, heatmap
                     torch.cuda.empty_cache()
                     
                 except Exception as e:
@@ -201,8 +240,7 @@ class GradCAMAnalyzer:
 
     #############################################################################################################
     # CALL:
-    def __call__(self):
-
+    def __call__(self, second_iteration=True):
         print("\nLoading dataset for prediction:")
         self.ds.load_pred_dataset()
         if self.ds.ds_loaded:
@@ -212,57 +250,4 @@ class GradCAMAnalyzer:
         self.cnn.load_checkpoint()
         
         print("\nRunning Grad-CAM analysis:")
-        self.predict_gradcam(self.ds.ds_pred)
-
-"""
-    def _register_hooks(self):
-
-        target_layer = self.cnn.model.features.norm5  # Last conv layer in DenseNet-121
-        
-        def forward_hook(module, input, output):
-            self.activations = output.detach()
-        
-        def backward_hook(module, grad_input, grad_output):
-            self.gradients = grad_output[0].detach()
-        
-        target_layer.register_forward_hook(forward_hook)
-        target_layer.register_backward_hook(backward_hook)
-
-    def _register_hooks(self):
-        target_layer = self.cnn.model.features.norm5
-        
-        # Use old-style hooks with gradient protection
-        def backward_hook(module, grad_input, grad_output):
-            with torch.no_grad():
-                self.gradients = grad_output[0].clone()
-        
-        target_layer.register_forward_hook(
-            lambda m, i, o: setattr(self, 'activations', o.clone().detach())
-        )
-        target_layer.register_backward_hook(backward_hook)
-
-    def generate_heatmap(self, input_tensor, target_class=None):
-
-        self.cnn.model.zero_grad()
-        
-        # Forward pass
-        output = self.cnn.model(input_tensor.unsqueeze(0))
-        if target_class is None:
-            target_class = torch.argmax(output).item()
-        
-        # Backward pass
-        one_hot = torch.zeros_like(output)
-        one_hot[0][target_class] = 1
-        output.backward(gradient=one_hot)
-        
-        # Pool gradients and generate heatmap
-        weights = torch.mean(self.gradients, dim=[2, 3], keepdim=True)
-        cam = torch.sum(weights * self.activations, dim=1, keepdim=True)
-        cam = F.relu(cam)  # Only positive influences
-        cam = F.interpolate(cam, input_tensor.shape[1:], mode='bilinear', align_corners=False)
-        
-        # Normalize
-        cam = cam - cam.min()
-        cam = cam / (cam.max() + 1e-10)
-        return cam.squeeze().cpu().numpy(), target_class
-"""
+        self.predict_gradcam(self.ds.ds_pred, second_iteration)
