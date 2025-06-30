@@ -47,7 +47,9 @@ class Train():
 
         # Optmizer, learning rate scheduler and loss function
         # ADAM:
-        # self.optimizer = Adam(model.parameters(), lr=self.init_lr, weight_decay=self.weight_decay)
+        # amsgrad=True: Avoids LR instability
+        # self.optimizer = Adam(model.parameters(), lr=self.init_lr, weight_decay=self.weight_decay, amsgrad=True)
+        
         # SGD:
         self.optimizer = SGD(
             self.model.parameters(), 
@@ -57,6 +59,8 @@ class Train():
         )
         # This loss function combines nn.LogSoftmax() and nn.NLLLoss() in one single class
         self.loss_function = nn.CrossEntropyLoss()
+        # With label smoothing:
+        # self.loss_function = nn.CrossEntropyLoss(label_smoothing=0.1)
 
         # Learning rate scheduler:
         # CosineAnnealingLR:

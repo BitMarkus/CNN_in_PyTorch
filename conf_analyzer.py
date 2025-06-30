@@ -1,5 +1,4 @@
-from custom_model import Custom_CNN_Model
-from dataset import Dataset
+
 import os
 import shutil
 import torch
@@ -11,9 +10,8 @@ import json
 from sklearn.metrics import balanced_accuracy_score
 from pathlib import Path
 # Own modules
+from dataset import Dataset
 from model import CNN_Model
-from custom_model import Custom_CNN_Model
-import functions as fn
 from settings import setting
 
 class ConfidenceAnalyzer:
@@ -42,19 +40,13 @@ class ConfidenceAnalyzer:
         # Selection method for selecting the "best" checkpoints
         self.ckpt_select_method = setting['ca_ckpt_select_method']
 
-        # Objects
         # Create model wrapper
-        if setting["cnn_type"] == "custom":
-            self.cnn = Custom_CNN_Model()  # Custom_CNN_Model is both wrapper AND model
-            self.cnn.model = self.cnn      # Make model reference point to itself
-        else:
-            self.cnn = CNN_Model()         # Standard wrapper
-            self.cnn.model = self.cnn.load_model(self.device)  # Load actual model
-
-        # Ensure everything is on the right device
-        self.cnn.model = self.cnn.model.to(self.device)
-        if hasattr(self.cnn, 'to'):  # Move wrapper if it's a nn.Module
-            self.cnn = self.cnn.to(self.device)
+        self.cnn_wrapper = CNN_Model()  
+        # Load model wrapper with model information
+        print(f"Creating new {self.cnn_wrapper.cnn_type} network...")
+        # Get actual model (nn.Module)
+        self.cnn = self.cnn_wrapper.load_model(device).to(device)
+        print("New network was successfully created.")   
 
         # Create required directories
         self.pth_test.mkdir(parents=True, exist_ok=True)
@@ -163,10 +155,10 @@ class ConfidenceAnalyzer:
                 try:
                     # Load checkpoint
                     tqdm.write(f"Loading checkpoint: {checkpoint_file}")
-                    self.cnn.model.load_state_dict(
+                    self.cnn_wrapper.model.load_state_dict(
                         torch.load(checkpoint_path, map_location=self.device)
                     )
-                    self.cnn.model.eval()
+                    self.cnn.eval()
                     # Get predictions
                     confidences = self._get_predictions_with_confidence()
                     dataset_results[checkpoint_file] = self._organize_prediction_results(confidences)

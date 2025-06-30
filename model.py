@@ -13,11 +13,10 @@ from prettytable import PrettyTable
 from PIL import Image
 from captum.attr import IntegratedGradients
 from captum.attr import visualization as viz
-# import matplotlib
-# import matplotlib.pyplot as plt
 import os
 from pathlib import Path
 # Own modules
+from custom_cnn import CustomCNN
 import functions as fn
 from settings import setting
 
@@ -104,42 +103,46 @@ class CNN_Model():
             # EfficientNet variants
             "efficientnet_b0": models.efficientnet_b0,
             "efficientnet_b7": models.efficientnet_b7,
+            # Add custom model constructor
+            "custom": self._build_custom_model
         }
         
-        # Load model
-        if self.is_pretrained:
-            self.model = model_dict[self.cnn_type](weights="DEFAULT")
+        # Custom Model Case
+        if self.cnn_type == "custom":
+            self.is_pretrained = False  # Custom models cannot be pretrained
+            self.model = CustomCNN(
+                input_channels=self.input_channels,
+                num_classes=self.num_classes,
+                batch_size = self.batch_size,
+                img_size=(self.img_height, self.img_width),
+                dropout=setting.get("cnn_dropout", 0.5)
+            )
+        
+        # Predefined Model Case
         else:
-            self.model = model_dict[self.cnn_type](weights=None)
-        
-        # Adapt input for one channel (grayscale)
-        if self.input_channels == 1:
-            original_conv = self._adapt_first_conv(self.model, self.input_channels)
-            if self.is_pretrained and original_conv:
-                # Handle all architecture cases:
-                if hasattr(self.model, 'conv1'):  # ResNet/ResNeXt/AlexNet
-                    self.model.conv1.weight.data = original_conv.weight.data.mean(dim=1, keepdim=True)
-                elif hasattr(self.model.features, '0') and isinstance(self.model.features[0], nn.Conv2d):  # VGG
-                    self.model.features[0].weight.data = original_conv.weight.data.mean(dim=1, keepdim=True)
-                elif hasattr(self.model.features, 'conv0'):  # DenseNet
-                    self.model.features.conv0.weight.data = original_conv.weight.data.mean(dim=1, keepdim=True)
-                elif hasattr(self.model.features[0], '0'):  # EfficientNet
-                    self.model.features[0][0].weight.data = original_conv.weight.data.mean(dim=1, keepdim=True)
-        elif(self.input_channels == 2 or self.input_channels > 3):
-            print("The input images must either have one (grayscale) or three (RGB) channels!")
-            return False
-        
-        # Modify last layer to match number of classes
-        # ResNet/ResNeXt/AlexNet:
-        if hasattr(self.model, 'fc'):  
+            # Load with/without pretrained weights
+            constructor = model_dict[self.cnn_type]
+            self.model = constructor(weights="DEFAULT" if self.is_pretrained else None)
+            
+            # Adapt for grayscale input (only for predefined models)
+            if self.input_channels == 1:
+                original_conv = self._adapt_first_conv(self.model, self.input_channels)
+                if self.is_pretrained and original_conv:
+                    # Transfer pretrained weights by averaging RGB channels
+                    if hasattr(self.model, 'conv1'):
+                        self.model.conv1.weight.data = original_conv.weight.data.mean(dim=1, keepdim=True)
+                    elif hasattr(self.model.features, '0'):
+                        self.model.features[0].weight.data = original_conv.weight.data.mean(dim=1, keepdim=True)
+            
+            elif self.input_channels not in [1, 3]:
+                raise ValueError("Input must be 1 (grayscale) or 3 (RGB) channels")
+
+        # Common Modifications
+        # Modify final layer for all models
+        if hasattr(self.model, 'fc'):  # ResNet-style
             in_features = self.model.fc.in_features
             self.model.fc = nn.Linear(in_features, self.num_classes)
-        # VGG/DenseNet:
-        elif hasattr(self.model, 'classifier') and isinstance(self.model.classifier, nn.Sequential):  
-            in_features = self.model.classifier[-1].in_features
-            self.model.classifier[-1] = nn.Linear(in_features, self.num_classes)
-        # EfficientNet:
-        elif hasattr(self.model, 'classifier'):  
+        elif hasattr(self.model, 'classifier'):  # DenseNet/VGG-style
             if isinstance(self.model.classifier, nn.Sequential):
                 in_features = self.model.classifier[-1].in_features
                 self.model.classifier[-1] = nn.Linear(in_features, self.num_classes)
@@ -147,16 +150,24 @@ class CNN_Model():
                 in_features = self.model.classifier.in_features
                 self.model.classifier = nn.Linear(in_features, self.num_classes)
         
-        # Initialize non-pretrained models
-        if not self.is_pretrained:         
+        # Initialize non-pretrained weights
+        if not self.is_pretrained:
             self.model.apply(self._init_weights)
-        
-        # Send model to gpu or cpu
-        self.model.to(device) 
-        # Set model to loaded
-        self.model_loaded = True  
 
-        return self.model   
+        # Final setup
+        self.model.to(device)
+        self.model_loaded = True
+        return self.model
+
+    # Constructs your custom CNN architecture
+    def _build_custom_model(self):
+        return CustomCNN(
+            input_channels=self.input_channels,
+            num_classes=self.num_classes,
+            batch_size=self.batch_size,
+            img_size=(self.img_height, self.img_width),
+            dropout=setting.get("cnn_dropout", 0.5)
+        ) 
     
     # Weight initialization for non-pretrained cnns
     def _init_weights(self, m):

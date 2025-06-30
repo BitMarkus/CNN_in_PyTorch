@@ -12,7 +12,6 @@ import numpy as np
 # Own modules
 from settings import setting
 from dataset import Dataset
-from custom_model import Custom_CNN_Model
 from model import CNN_Model
 
 class CaptumAnalyzer:
@@ -50,18 +49,12 @@ class CaptumAnalyzer:
             raise ValueError("Failed to get image transformer")
         
         # Create model wrapper
-        print(f"Creating new network...")
-        if setting["cnn_type"] == "custom":
-            self.cnn = Custom_CNN_Model()
-            self.cnn.model = self.cnn
-        else:
-            self.cnn = CNN_Model()
-            self.cnn.model = self.cnn.load_model(self.device)
-        # Ensure everything is on the right device
-        self.cnn.model = self.cnn.model.to(self.device)
-        if hasattr(self.cnn, 'to'):
-            self.cnn = self.cnn.to(self.device)
-        print(f"Network {self.cnn.cnn_type} was successfully created.")
+        self.cnn_wrapper = CNN_Model()  
+        # Load model wrapper with model information
+        print(f"Creating new {self.cnn_wrapper.cnn_type} network...")
+        # Get actual model (nn.Module)
+        self.cnn = self.cnn_wrapper.load_model(device).to(device)
+        print("New network was successfully created.")   
 
     #############################################################################################################
     # METHODS
@@ -73,7 +66,7 @@ class CaptumAnalyzer:
     #    show_overlay: Whether to show the blended heatmap overlay (default: True)
     def predict_captum(self, dataset, device, show_overlay=True):
 
-        self.cnn.model.eval()
+        self.cnn.eval()
         with torch.no_grad():
             for batch_idx, (images, labels) in enumerate(tqdm(dataset)):
                 batch_paths = [Path(dataset.dataset.samples[i][0]) 
@@ -201,7 +194,7 @@ class CaptumAnalyzer:
 
         # Load weights
         print("\nLoading weights:")
-        self.cnn.load_checkpoint()
+        self.cnn_wrapper.load_checkpoint()
 
         # Iterate over images and predict
         self.predict_captum(self.ds.ds_pred, self.device, self.show_overlay)

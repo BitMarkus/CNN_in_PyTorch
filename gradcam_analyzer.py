@@ -40,7 +40,6 @@ class GradCAMAnalyzer:
         # Gaussian blur strength
         self.sigma = setting['gradcam_blurr_sigma']
 
-        
         # Initialize dataset and model
         self.ds = Dataset()
         self.transform = self.ds.get_transformer_test()

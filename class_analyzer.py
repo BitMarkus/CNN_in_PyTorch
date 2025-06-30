@@ -2,13 +2,11 @@ import torch
 import pandas as pd
 from torch.utils.data import DataLoader
 from PIL import Image
-import torchvision
 from tqdm import tqdm
 from pathlib import Path
 # Own modules
 from dataset import Dataset
 from settings import setting
-from custom_model import Custom_CNN_Model
 from model import CNN_Model
 
 class ClassAnalyzer:
@@ -32,18 +30,12 @@ class ClassAnalyzer:
         
         # Create model wrapper
         print(f"Creating new network...")
-        if setting["cnn_type"] == "custom":
-            self.cnn = Custom_CNN_Model()
-            self.cnn.model = self.cnn
-        else:
-            self.cnn = CNN_Model()
-            self.cnn.model = self.cnn.load_model(self.device)
-
-        # Ensure everything is on the right device
-        self.cnn.model = self.cnn.model.to(self.device)
-        if hasattr(self.cnn, 'to'):
-            self.cnn = self.cnn.to(self.device)
-        print(f"Network {self.cnn.cnn_type} was successfully created.")
+        self.cnn_wrapper = CNN_Model()  
+        # Load model wrapper with model information
+        print(f"Creating new {self.cnn_wrapper.cnn_type} network...")
+        # Get actual model (nn.Module)
+        self.cnn = self.cnn_wrapper.load_model(device).to(device)
+        print("New network was successfully created.")   
 
         # Initialize checkpoint flag
         self.checkpoint_loaded = False
@@ -55,7 +47,7 @@ class ClassAnalyzer:
     # Load model weights from a selected checkpoint
     def load_checkpoint(self):
         # First get checkpoints without printing table
-        silent_checkpoints = self.cnn.print_checkpoints_table(self.pth_checkpoint, print_table=False)
+        silent_checkpoints = self.cnn_wrapper.print_checkpoints_table(self.pth_checkpoint, print_table=False)
         
         if not silent_checkpoints:
             print("The checkpoint folder is empty!")
@@ -69,14 +61,14 @@ class ClassAnalyzer:
             print("Loading automatically...")
         else:
             # Show interactive table for multiple checkpoints
-            self.cnn.print_checkpoints_table(self.pth_checkpoint)  # prints table
-            checkpoint_file = self.cnn.select_checkpoint(silent_checkpoints, "Select a checkpoint: ")
+            self.cnn_wrapper.print_checkpoints_table(self.pth_checkpoint)  # prints table
+            checkpoint_file = self.cnn_wrapper.select_checkpoint(silent_checkpoints, "Select a checkpoint: ")
             if not checkpoint_file:
                 return False
         
         try:
             full_path = self.pth_checkpoint / checkpoint_file
-            self.cnn.model.load_state_dict(torch.load(full_path))
+            self.cnn.load_state_dict(torch.load(full_path))
             self.checkpoint_loaded = True
             self.loaded_checkpoint_name = full_path.stem
             print(f"Successfully loaded weights from {checkpoint_file}")
@@ -125,7 +117,7 @@ class ClassAnalyzer:
             folder_name = Path(folder_path).name
             total_images = 0
             
-            self.cnn.model.eval()
+            self.cnn.eval()
             with torch.no_grad():
                 # Initialize tqdm progress bar that will stay after completion
                 pbar = tqdm(prediction_loader, desc=f"Predicting {folder_name}", 
@@ -133,7 +125,7 @@ class ClassAnalyzer:
                 
                 for images, _ in pbar:
                     images = images.to(self.device)
-                    outputs = self.cnn.model(images)
+                    outputs = self.cnn(images)
                     _, predicted = torch.max(outputs, 1)
                     
                     batch_size = images.size(0)

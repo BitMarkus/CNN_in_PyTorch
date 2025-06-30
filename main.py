@@ -1,6 +1,6 @@
 # Own modules
 import functions as fn
-from custom_model import Custom_CNN_Model
+from model import CNN_Model
 from dataset_gen import DatasetGenerator
 from auto_cross_validation import AutoCrossValidation
 from conf_analyzer import ConfidenceAnalyzer
@@ -17,8 +17,8 @@ from settings import setting
 
 # Create a dataset object
 ds = Dataset()
-# Create a model object
-cnn = Custom_CNN_Model()
+# Create wrapper (contains all metadata)
+cnn_wrapper = CNN_Model()   
 
 ########
 # MAIN #
@@ -58,21 +58,18 @@ def main():
         if(menu1 == 1):       
             print("\n:NEW CNN NETWORK:")  
             # Check if a model was already loaded
-            if(cnn.model_loaded):
+            if(cnn_wrapper.model_loaded):
                 print("A network was already loaded!")
             else:
-                if(cnn):
+                if(cnn_wrapper):
                     # Print class information
-                    cnn.print_class_list()
+                    cnn_wrapper.print_class_list()
                     # Load model
-                    print(f"Creating new {cnn.cnn_type} network...")
-                    if(setting["cnn_type"] == "custom"):
-                        cnn.model = Custom_CNN_Model().to(device)
-                        cnn.model_loaded = True  
-                    else:
-                        cnn.model = cnn.load_model(device)  
+                    print(f"Creating new {cnn_wrapper.cnn_type} network...")
+                    # Get actual model (nn.Module)
+                    cnn = cnn_wrapper.load_model(device).to(device)
                     print("New network was successfully created.")   
-                    cnn.print_model_size()  
+                    cnn_wrapper.print_model_size()  
                 else:
                     print("Unable to load the requested cnn architecture!")          
 
@@ -82,8 +79,8 @@ def main():
 
         elif(menu1 == 2):        
             print("\n:SHOW NETWORK SUMMARY:")   
-            if(cnn.model_loaded):
-                cnn.model_summary(device) # print(cnn.model)   
+            if(cnn_wrapper.model_loaded):
+                cnn_wrapper.model_summary(device) # print(cnn.model)   
             else:
                 print("No network was generated yet!") 
 
@@ -105,14 +102,14 @@ def main():
                 
         elif(menu1 == 4):
             print("\n:TRAIN NETWORK:") 
-            if not (cnn.model_loaded):
+            if not (cnn_wrapper.model_loaded):
                 print('No CNN generated yet!')
             elif not (ds.ds_loaded):
                 print('No training data loaded yet!')
             else:
                 print("Start training...")
                 # Create a training object
-                train = Train(cnn, ds)
+                train = Train(cnn_wrapper, ds)
                 # Train network
                 train.train(setting["pth_checkpoint"], setting["pth_plots"])
                 print("\nTraining finished!")
@@ -124,10 +121,10 @@ def main():
         elif(menu1 == 5):
             # Load checkpoint weights
             print("\n:LOAD WEIGHTS:") 
-            if not (cnn.model_loaded):
+            if not (cnn_wrapper.model_loaded):
                 print('No CNN generated yet!')
             else:
-                cnn.load_checkpoint()
+                cnn_wrapper.load_checkpoint()
 
         ############################
         # Predict images in folder #  

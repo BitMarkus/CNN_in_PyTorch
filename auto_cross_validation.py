@@ -5,7 +5,7 @@ from settings import setting
 import functions as fn
 from train import Train
 from dataset_gen import DatasetGenerator
-from custom_model import Custom_CNN_Model
+from model import CNN_Model
 
 class AutoCrossValidation:
 
@@ -29,8 +29,8 @@ class AutoCrossValidation:
         self.ds_gen = DatasetGenerator(mode = "acv")
         # Create a dataset object
         self.ds = Dataset()
-        # Create a model object
-        self.cnn = Custom_CNN_Model()
+        # Create model wrapper
+        self.cnn_wrapper = CNN_Model()  
 
     #############################################################################################################
     # METHODS:
@@ -86,12 +86,11 @@ class AutoCrossValidation:
             # Create CNN #
             ##############
 
-            print(f"\n> Creating new {self.cnn.cnn_type} network...")
-            if setting["cnn_type"] == "custom":
-                self.cnn.model = Custom_CNN_Model().to(self.device)
-            else:
-                self.cnn.model = self.cnn.load_model(self.device)
-            print("New network successfully created.")
+            # Load model wrapper with model information
+            print(f"Creating new {self.cnn_wrapper.cnn_type} network...")
+            # Get actual model (nn.Module)
+            self.cnn = self.cnn_wrapper.load_model(self.device).to(self.device)
+            print("New network was successfully created.")   
 
             ####################
             # Train on dataset #
@@ -108,7 +107,7 @@ class AutoCrossValidation:
             ################
             
             # Generate checkpoint list for dataset
-            checkpoint_list = self.cnn.get_checkpoints_list(ckeckpoint_dir)
+            checkpoint_list = self.cnn_wrapper.get_checkpoints_list(ckeckpoint_dir)
             # Load test dataset
             print(f"\n> Load test images for dataset {config['dataset_idx']}...")
             self.ds.load_test_dataset()
@@ -124,11 +123,11 @@ class AutoCrossValidation:
 
                     # Load weights
                     print(f"\n> Load weight file {checkpoint_file[1]} for dataset {config['dataset_idx']}...")
-                    self.cnn.load_weights(ckeckpoint_dir, checkpoint_file[1]) 
+                    self.cnn_wrapper.load_weights(ckeckpoint_dir, checkpoint_file[1]) 
 
                     # Start prediction on test dataset with selected weights
                     print('\n> Starting prediction...')
-                    _, cm = self.cnn.predict(self.ds.ds_test)
+                    _, cm = self.cnn_wrapper.predict(self.ds.ds_test)
 
                     # Plot confusion matrix and results
                     fn.plot_confusion_matrix(cm, self.class_list, plot_dir, chckpt_name=checkpoint_file[1], show_plot=False, save_plot=True)
