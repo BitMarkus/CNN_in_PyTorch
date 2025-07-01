@@ -9,6 +9,8 @@ matplotlib.use('Agg')  # Set before other matplotlib imports
 import matplotlib.pyplot as plt
 from matplotlib import gridspec
 import numpy as np
+from scipy.ndimage import gaussian_filter
+import gc  # For garbage collection
 # Own modules
 from settings import setting
 from dataset import Dataset
@@ -32,12 +34,18 @@ class CaptumAnalyzer:
         self.sign = setting['captum_sign']
         self.cmap_orig = setting['captum_cmap_orig']
         self.cmap_heatmap = setting['captum_cmap_heatmap']
+        self.cmap_overlay = setting['captum_cmap_overlay']
         self.show_color_bar_orig = setting['captum_show_color_bar_orig']
-        self.show_color_bar_hatmap = setting['captum_show_color_bar_heatmap']
+        self.show_color_bar_heatmap = setting['captum_show_color_bar_heatmap']
         self.show_color_bar_overlay = setting['captum_show_color_bar_overlay']
         self.n_steps_ig = setting['captum_n_steps_ig']
         self.output_size = setting['captum_output_size']
         self.alpha_overlay = setting['captum_alpha_overlay']
+
+        self.threshold_percentile = setting['captum_threshold_percentile']
+        self.dpi = setting['captum_dpi']
+        self.sigma = setting['captum_sigma']
+
         # Aggregate across channels (recommended for heatmaps): Use aggregate_channels=True (default)
         # For channel-specific analysis (process per-channel independently): Use aggregate_channels=False
         self.aggregate_channels = True
@@ -64,9 +72,11 @@ class CaptumAnalyzer:
     #    dataset: Input dataset
     #    device: Torch device (cpu/cuda)
     #    show_overlay: Whether to show the blended heatmap overlay (default: True)
-    def predict_captum(self, dataset, device, show_overlay=True):
-
+    def predict_captum(self, dataset, device, show_overlay=None):
         self.cnn.eval()
+        if show_overlay is None:
+            show_overlay = self.show_overlay  # Use setting if not overridden
+
         with torch.no_grad():
             for batch_idx, (images, labels) in enumerate(tqdm(dataset)):
                 batch_paths = [Path(dataset.dataset.samples[i][0]) 
@@ -75,53 +85,50 @@ class CaptumAnalyzer:
                 
                 for img_idx in range(len(images)):
                     try:
-                        torch.cuda.empty_cache()
-                        
-                        # Prepare image and label
+                        # --- Preparation ---
                         img = images[img_idx].unsqueeze(0).to(device)
                         label = labels[img_idx].to(device)
                         img_path = batch_paths[img_idx]
                         
-                        # Create output folder matching original structure
+                        # Create output folder
                         relative_path = img_path.relative_to(self.pth_prediction)
                         output_folder = self.pth_prediction / f"{relative_path.parent.name}_captum"
                         output_folder.mkdir(exist_ok=True, parents=True)
                         
-                        # Compute Integrated Gradients
+                        # Convert image to numpy
+                        img_np = img.squeeze().cpu().numpy() if self.img_channels == 1 else img.squeeze(0).permute(1, 2, 0).cpu().numpy()
+
+                        # --- Attribution Calculation ---
                         ig = IntegratedGradients(self.cnn)
                         attributions = ig.attribute(
                             img,
                             target=label.item(),
-                            n_steps=self.n_steps_ig,
-                            internal_batch_size=1
+                            n_steps=self.n_steps_ig,  # From settings
+                            internal_batch_size=2,
+                            baselines=img.mean(dim=(2,3), keepdim=True),  # Channel-wise mean
+                            return_convergence_delta=False
                         )
                         
-                        # --- Data Conversion ---
+                        # --- Attribution Processing ---
                         if self.img_channels == 1:
-                            # Grayscale case - remove channel dims
-                            img_np = img.squeeze().cpu().numpy()  # Shape: (H, W)
-                            attr_np = attributions.squeeze().cpu().detach().numpy()
+                            attr_np = attributions.squeeze().cpu().numpy()
                         else:
-                            # RGB case - permute to (H,W,C)
-                            img_np = img.squeeze(0).permute(1, 2, 0).cpu().numpy()
                             attr_np = attributions.squeeze(0).permute(1, 2, 0).cpu().detach().numpy()
-                            
-                            # Aggregate across channels if enabled
-                            if hasattr(self, 'aggregate_channels') and self.aggregate_channels:
-                                attr_np = np.mean(attr_np, axis=2)  # Shape: (H, W)
+                            attr_np = np.max(attr_np, axis=2)  # Max projection
 
-                        # --- Normalization ---
-                        if self.sign == "all":
-                            max_abs = max(np.abs(attr_np.min()), np.abs(attr_np.max()))
-                            attr_np = attr_np / (max_abs + 1e-10)  # Prevent division by zero
-                        elif self.sign == "positive":
-                            attr_np = attr_np / (attr_np.max() + 1e-10)
-                        elif self.sign == "negative":
-                            attr_np = attr_np / (np.abs(attr_np.min()) + 1e-10)
-                        else:  # absolute_value
-                            attr_np = np.abs(attr_np) / (np.max(np.abs(attr_np)) + 1e-10)
+                        # Normalization and thresholding
+                        attr_np = np.abs(attr_np)  # Focus on magnitude
+                        p99 = np.percentile(attr_np, 99)
+                        attr_np = np.clip(attr_np, 0, p99)
                         
-                        # Ensure 3D shape for Captum (H,W,1) or (H,W,3)
+                        # Apply Gaussian blur with configured sigma
+                        attr_np = gaussian_filter(attr_np, sigma=self.sigma)
+                        
+                        # Dynamic thresholding using configured percentile
+                        threshold = np.percentile(attr_np, self.threshold_percentile)
+                        attr_np[attr_np < threshold] = 0
+
+                        # Prepare for visualization
                         if attr_np.ndim == 2:
                             attr_np = np.expand_dims(attr_np, axis=-1)
                         
@@ -135,57 +142,55 @@ class CaptumAnalyzer:
                         ax1 = plt.subplot(gs[0])
                         img_vis = np.mean(img_np, axis=2) if self.img_channels != 1 else img_np
                         im1 = ax1.imshow(img_vis, cmap=self.cmap_orig)
-                        ax1.set_title(f"Original Image: Class {self.classes[label.item()]}")
+                        ax1.set_title(f"Original: {self.classes[label.item()]}")
                         ax1.axis('off')
                         if self.show_color_bar_orig:
-                            cbar = plt.colorbar(im1, ax=ax1, fraction=0.046, pad=0.04)
-                            cbar.ax.tick_params(labelsize=8)
+                            plt.colorbar(im1, ax=ax1, fraction=0.046, pad=0.04)
                         
-                        # Subplot 2: Attribution Heatmap
+                        # Subplot 2: Heatmap
                         ax2 = plt.subplot(gs[1])
+                        importance = (attr_np - attr_np.min()) / (attr_np.max() - attr_np.min() + 1e-10)
                         viz.visualize_image_attr(
-                            attr_np,
+                            importance,
                             method="heat_map",
                             sign=self.sign,
-                            show_colorbar=self.show_color_bar_hatmap,
+                            show_colorbar=self.show_color_bar_heatmap,
                             cmap=self.cmap_heatmap,
                             plt_fig_axis=(fig, ax2),
-                            title="Attribution Heatmap"
+                            title="Feature Importance"
                         )
                         
-                        # Subplot 3: Blended Overlay (optional)
+                        # Subplot 3: Overlay
                         if show_overlay:
                             ax3 = plt.subplot(gs[2])
                             viz.visualize_image_attr(
-                                attr_np,
+                                np.expand_dims(attr_np, -1) if attr_np.ndim == 2 else attr_np,
                                 original_image=np.expand_dims(img_np, axis=-1) if self.img_channels == 1 else img_np,
                                 method="blended_heat_map",
                                 sign=self.sign,
                                 show_colorbar=self.show_color_bar_overlay,
-                                cmap=self.cmap_heatmap,
+                                cmap=self.cmap_overlay,
                                 alpha_overlay=self.alpha_overlay,
                                 plt_fig_axis=(fig, ax3),
-                                title="Blended Heatmap Overlay"
+                                title="Important Cell Regions"
                             )
                         
-                        # Save and cleanup
+                        # Save with configured DPI
                         plt.tight_layout()
                         output_path = output_folder / f"{img_path.stem}_captum.png"
-                        fig.savefig(output_path, bbox_inches='tight', dpi=100)
+                        fig.savefig(output_path, bbox_inches='tight', dpi=self.dpi)
                         plt.close(fig)
                         
-                        del img, attributions, attr_np, fig
-                        torch.cuda.empty_cache()
-                        
                     except Exception as e:
-                        print(f"Error processing image {batch_paths[img_idx]}: {str(e)}")
-                        continue
+                        print(f"Error processing {img_path.name}: {str(e)}")
+                    finally:
+                        torch.cuda.empty_cache()
+                        gc.collect()
 
     #############################################################################################################
     # CALL
 
     def __call__(self):
-
         # Load dataset for prediction
         print("\nLoading dataset for prediction:") 
         self.ds.load_pred_dataset()
@@ -198,3 +203,123 @@ class CaptumAnalyzer:
 
         # Iterate over images and predict
         self.predict_captum(self.ds.ds_pred, self.device, self.show_overlay)
+
+"""
+    def predict_captum(self, dataset, device, show_overlay=True):
+        self.cnn.eval()
+        with torch.no_grad():
+            for batch_idx, (images, labels) in enumerate(tqdm(dataset)):
+                batch_paths = [Path(dataset.dataset.samples[i][0]) 
+                            for i in range(batch_idx * dataset.batch_size,
+                                        min((batch_idx + 1) * dataset.batch_size, len(dataset.dataset)))]
+                
+                for img_idx in range(len(images)):
+                    try:
+                        # 1. Prepare image and paths
+                        img = images[img_idx].unsqueeze(0).to(device)
+                        label = labels[img_idx].to(device)
+                        img_path = batch_paths[img_idx]
+                        
+                        # Create output folder
+                        relative_path = img_path.relative_to(self.pth_prediction)
+                        output_folder = self.pth_prediction / f"{relative_path.parent.name}_captum"
+                        output_folder.mkdir(exist_ok=True, parents=True)
+                        
+                        # 2. Convert image to numpy for visualization
+                        img_np = img.squeeze().cpu().numpy() if self.img_channels == 1 else img.squeeze(0).permute(1, 2, 0).cpu().numpy()
+                        
+                        # 3. Compute attributions with fibroblast-optimized parameters
+                        ig = IntegratedGradients(self.cnn)
+                        attributions = ig.attribute(
+                            img,
+                            target=label.item(),
+                            n_steps=self.n_steps_ig,
+                            internal_batch_size=2,
+                            baselines=img.mean(dim=(2,3), keepdim=True),  # Channel-wise mean baseline
+                            return_convergence_delta=False
+                        )
+                        
+                        # 4. Process attributions for cell images
+                        if self.img_channels == 1:
+                            attr_np = attributions.squeeze().cpu().numpy()
+                        else:
+                            attr_np = attributions.squeeze(0).permute(1, 2, 0).cpu().numpy()
+                            attr_np = np.max(attr_np, axis=2)  # Max projection
+                        
+                        # 5. Cell-specific normalization
+                        attr_np = np.abs(attr_np)  # Focus on magnitude
+                        p99 = np.percentile(attr_np, 99)
+                        attr_np = np.clip(attr_np, 0, p99)  # Clip extreme values
+                        
+                        # 6. Specialized postprocessing
+                        sigma = 0.7 if self.img_channels == 1 else 1.2
+                        attr_np = gaussian_filter(attr_np, sigma=sigma)
+                        dyn_threshold = np.mean(attr_np) + 2*np.std(attr_np)
+                        attr_np[attr_np < dyn_threshold] = 0
+                        
+                        # 7. Prepare for visualization
+                        if attr_np.ndim == 2:
+                            attr_np = np.expand_dims(attr_np, axis=-1)
+                        
+                        # 8. Visualization
+                        plt.ioff()
+                        num_cols = 3 if show_overlay else 2
+                        fig = plt.figure(figsize=(self.output_size * num_cols + 0.5, self.output_size))
+                        gs = gridspec.GridSpec(1, num_cols, width_ratios=[1.1 if i == 0 else 1 for i in range(num_cols)])
+
+                        # Subplot 1: Original Image
+                        ax1 = plt.subplot(gs[0])
+                        img_vis = np.mean(img_np, axis=2) if self.img_channels != 1 else img_np
+                        im1 = ax1.imshow(img_vis, cmap=self.cmap_orig)
+                        ax1.set_title(f"Original: {self.classes[label.item()]}")
+                        ax1.axis('off')
+                        if self.show_color_bar_orig:
+                            plt.colorbar(im1, ax=ax1, fraction=0.046, pad=0.04)
+
+                        # Subplot 2: Heatmap 
+                        ax2 = plt.subplot(gs[1])
+                        # First convert attributions to importance scores (0-1)
+                        importance = (attr_np - attr_np.min()) / (attr_np.max() - attr_np.min() + 1e-10)
+                        # Apply threshold to focus only on most important regions
+                        importance[importance < 0.3] = 0  # Only show top 70% important pixels
+                        viz.visualize_image_attr(
+                            importance,
+                            method="heat_map",
+                            sign=self.sign,  # Only show positive importance
+                            show_colorbar=self.show_color_bar_heatmap,
+                            cmap=self.cmap_heatmap,  # More scientific colormap
+                            plt_fig_axis=(fig, ax2),
+                            title="Feature Importance",
+                            use_pyplot=False
+                        )
+
+                        # Subplot 3: Overlay with cell-focused visualization
+                        if show_overlay:
+                            ax3 = plt.subplot(gs[2])
+                            # Create mask of important regions
+                            mask = importance > 0
+                            # Visualize only important cell regions
+                            viz.visualize_image_attr(
+                                np.expand_dims(mask.astype(np.float32), -1) if mask.ndim == 2 else mask,
+                                original_image=np.expand_dims(img_np, axis=-1) if self.img_channels == 1 else img_np,
+                                method="blended_heat_map",
+                                sign=self.sign,
+                                show_colorbar=self.show_color_bar_overlay,
+                                cmap=self.cmap_overlay,
+                                alpha_overlay=self.alpha_overlay,  
+                                plt_fig_axis=(fig, ax3),
+                                title="Important Cell Regions",
+                                use_pyplot=False
+                            )
+
+                        plt.tight_layout()
+                        output_path = output_folder / f"{img_path.stem}_captum.png"
+                        fig.savefig(output_path, bbox_inches='tight', dpi=150)
+                        plt.close(fig)
+                        
+                    except Exception as e:
+                        print(f"Error processing {img_path.name}: {str(e)}")
+                    finally:
+                        torch.cuda.empty_cache()
+                        gc.collect()
+"""

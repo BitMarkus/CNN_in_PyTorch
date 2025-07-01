@@ -129,14 +129,16 @@ setting = {
     # "positive": Only positive attributions
     # "negative": Only negative attributions
     # "all": Shows both positive and negative
-    "captum_sign": 'all',
+    "captum_sign": 'positive',
     # Colormap for the heatmap. Common options:
     # "viridis", "plasma", "magma", "inferno" (default), "cividis", etc
     # Any valid Matplotlib colormap name
     # Color map for original image
     "captum_cmap_orig": 'gray',
     # Color map for heatmap
-    "captum_cmap_heatmap": 'RdYlGn',
+    "captum_cmap_heatmap": 'viridis',
+    # Color map for overlay heatmap
+    "captum_cmap_overlay": 'coolwarm',
     # Show color bar for different images
     "captum_show_color_bar_orig": True,
     "captum_show_color_bar_heatmap": True,
@@ -148,13 +150,21 @@ setting = {
     # With too few steps (e.g., 5), attributions may appear pixelated or noisy
     # With more steps (e.g., 50), heatmaps become smoother but take longer to compute
     # Default: 50
-    "captum_n_steps_ig": 50,
+    "captum_n_steps_ig": 25,
     # Image size of the result output
     "captum_output_size": 8,
     # Control transparency of the heatmap
     # 0.0: Heatmap completely transparent (only original image visible)
     # 1.0: Heatmap fully opaque (original image barely visible under intense colors)
-    "captum_alpha_overlay": 0.5, 
+    "captum_alpha_overlay": 0.7,
+    # Controls how aggressively visualization focuses on the most important features by filtering out weaker attributions
+    # e.g., 80 = top 20% most important pixels
+    'captum_threshold_percentile': 80, 
+    # Gaussian blur strength (lower = sharper)
+    'captum_sigma': 0.5,
+    # Output figure size and resolution
+    'captum_output_size': 6,
+    'captum_dpi': 300,     
 
     ###########
     # GradCAM #
