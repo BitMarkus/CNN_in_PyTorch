@@ -155,7 +155,7 @@ class ConfidenceAnalyzer:
                 try:
                     # Load checkpoint
                     tqdm.write(f"Loading checkpoint: {checkpoint_file}")
-                    self.cnn_wrapper.model.load_state_dict(
+                    self.cnn.load_state_dict(
                         torch.load(checkpoint_path, map_location=self.device)
                     )
                     self.cnn.eval()
@@ -248,7 +248,7 @@ class ConfidenceAnalyzer:
                         if images.dim() == 3:
                             images = images.unsqueeze(0)
                         # Make prediction - fixed model access
-                        outputs = self.cnn.model(images)
+                        outputs = self.cnn(images)
                         # Use softmax to get confidence
                         probs = torch.nn.functional.softmax(outputs, dim=1)
                         max_prob, pred_idx = torch.max(probs, 1)

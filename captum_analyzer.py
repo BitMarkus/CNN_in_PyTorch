@@ -88,7 +88,7 @@ class CaptumAnalyzer:
                         output_folder.mkdir(exist_ok=True, parents=True)
                         
                         # Compute Integrated Gradients
-                        ig = IntegratedGradients(self.cnn.model)
+                        ig = IntegratedGradients(self.cnn)
                         attributions = ig.attribute(
                             img,
                             target=label.item(),

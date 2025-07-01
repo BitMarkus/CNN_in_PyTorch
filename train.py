@@ -18,11 +18,11 @@ class Train():
     #############################################################################################################
     # CONSTRUCTOR:
     
-    def __init__(self, cnn, dataset):
+    def __init__(self, cnn_wrapper, dataset):
         # CNN object for methods
-        self.cnn = cnn
+        self.cnn_wrapper = cnn_wrapper
         # Model
-        self.model = cnn.model
+        self.cnn = cnn_wrapper.model
         # Pretrained
         self.is_pretrained = setting["cnn_is_pretrained"] 
         # Datasets
@@ -52,7 +52,7 @@ class Train():
         
         # SGD:
         self.optimizer = SGD(
-            self.model.parameters(), 
+            self.cnn.parameters(), 
             lr=self.init_lr, 
             momentum=self.train_momentum,
             weight_decay=self.weight_decay
@@ -143,7 +143,7 @@ class Train():
             #################        
 
             # Switch model to train mode
-            self.model.train()
+            self.cnn.train()
             # Set variables for train accuracy and loss
             train_accuracy = 0.0
             train_loss = 0.0
@@ -163,7 +163,7 @@ class Train():
                     # Enable mixed precision
                     with autocast():
                         # Forward          
-                        outputs = self.model(images)
+                        outputs = self.cnn(images)
                         loss = self.loss_function(outputs, labels)
                     # Scales loss and backprops scaled gradients
                     self.scaler.scale(loss).backward()
@@ -196,7 +196,7 @@ class Train():
             ###################
 
             # Switch model to evaluation mode
-            self.model.eval()
+            self.cnn.eval()
             # Set variables for validation accuracy and loss
             validation_accuracy = 0.0
             validation_loss = 0.0
@@ -216,7 +216,7 @@ class Train():
                             images, labels = images.cuda(), labels.cuda()
                         
                         # Explicit FP32 validation (no autocast)
-                        outputs = self.model(images) # Let PyTorch handle dtype automatically
+                        outputs = self.cnn(images) # Let PyTorch handle dtype automatically
                         loss = self.loss_function(outputs, labels)
                         
                         validation_loss += loss.cpu().data * images.size(0)
@@ -236,7 +236,7 @@ class Train():
             # Save best model #
             ###################
 
-            best_accuracy = self.cnn.save_weights(validation_accuracy, best_accuracy, epoch, chckpt_pth)
+            best_accuracy = self.cnn_wrapper.save_weights(validation_accuracy, best_accuracy, epoch, chckpt_pth)
 
         ################
         # Metircs plot #
