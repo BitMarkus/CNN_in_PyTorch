@@ -41,10 +41,10 @@ class CaptumAnalyzer:
         self.n_steps_ig = setting['captum_n_steps_ig']
         self.output_size = setting['captum_output_size']
         self.alpha_overlay = setting['captum_alpha_overlay']
-
         self.threshold_percentile = setting['captum_threshold_percentile']
         self.dpi = setting['captum_dpi']
         self.sigma = setting['captum_sigma']
+        self.outlier_perc = setting['captum_outlier_perc']
 
         # Aggregate across channels (recommended for heatmaps): Use aggregate_channels=True (default)
         # For channel-specific analysis (process per-channel independently): Use aggregate_channels=False
@@ -157,6 +157,7 @@ class CaptumAnalyzer:
                             show_colorbar=self.show_color_bar_heatmap,
                             cmap=self.cmap_heatmap,
                             plt_fig_axis=(fig, ax2),
+                            outlier_perc=self.outlier_perc,
                             title="Feature Importance"
                         )
                         
@@ -172,6 +173,7 @@ class CaptumAnalyzer:
                                 cmap=self.cmap_overlay,
                                 alpha_overlay=self.alpha_overlay,
                                 plt_fig_axis=(fig, ax3),
+                                outlier_perc=self.outlier_perc,
                                 title="Important Cell Regions"
                             )
                         

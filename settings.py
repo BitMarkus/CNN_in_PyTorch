@@ -160,6 +160,11 @@ setting = {
     # Controls how aggressively visualization focuses on the most important features by filtering out weaker attributions
     # e.g., 80 = top 20% most important pixels
     'captum_threshold_percentile': 80, 
+    # Clips the top/bottom X% of attribution values before visualization to:
+    # Improve contrast by ignoring extreme outliers
+    # Make heatmaps more comparable across images
+    # Default: 1
+    'captum_outlier_perc': 1, 
     # Gaussian blur strength (lower = sharper)
     'captum_sigma': 0.5,
     # Output figure size and resolution
