@@ -124,11 +124,9 @@ setting = {
 
     # Show overlay image in addidion to original and heatmap image
     "captum_show_overlay": True,
-    # Determines how to handle positive/negative attributions. Options:
-    # "absolute_value" (default): Uses absolute values
-    # "positive": Only positive attributions
-    # "negative": Only negative attributions
-    # "all": Shows both positive and negative
+    # Determines how to handle positive/negative attributions. 
+    # Options: "positive": Only positive attributions
+    # The options "all", "negative" and "absolute_value" DO NOT WORK YET!
     "captum_sign": 'positive',
     # Colormap for the heatmap. Common options:
     # "viridis", "plasma", "magma", "inferno" (default), "cividis", etc
@@ -136,7 +134,7 @@ setting = {
     # Color map for original image
     "captum_cmap_orig": 'gray',
     # Color map for heatmap
-    "captum_cmap_heatmap": 'viridis',
+    "captum_cmap_heatmap": 'coolwarm',   # viridis
     # Color map for overlay heatmap
     "captum_cmap_overlay": 'coolwarm',
     # Show color bar for different images
@@ -150,13 +148,15 @@ setting = {
     # With too few steps (e.g., 5), attributions may appear pixelated or noisy
     # With more steps (e.g., 50), heatmaps become smoother but take longer to compute
     # Default: 50
-    "captum_n_steps_ig": 25,
+    "captum_n_steps_ig": 50,
     # Image size of the result output
     "captum_output_size": 8,
+    # Output figure resolution
+    'captum_dpi': 300,   
     # Control transparency of the heatmap
     # 0.0: Heatmap completely transparent (only original image visible)
     # 1.0: Heatmap fully opaque (original image barely visible under intense colors)
-    "captum_alpha_overlay": 0.7,
+    "captum_alpha_overlay": 0.6,
     # Controls how aggressively visualization focuses on the most important features by filtering out weaker attributions
     # e.g., 80 = top 20% most important pixels
     'captum_threshold_percentile': 80, 
@@ -166,10 +166,7 @@ setting = {
     # Default: 1
     'captum_outlier_perc': 1, 
     # Gaussian blur strength (lower = sharper)
-    'captum_sigma': 0.5,
-    # Output figure size and resolution
-    'captum_output_size': 6,
-    'captum_dpi': 300,     
+    'captum_sigma': 0.5, 
 
     ###########
     # GradCAM #
