@@ -148,7 +148,7 @@ setting = {
     # With too few steps (e.g., 5), attributions may appear pixelated or noisy
     # With more steps (e.g., 50), heatmaps become smoother but take longer to compute
     # Default: 50
-    "captum_n_steps_ig": 50,
+    "captum_n_steps_ig": 25,
     # Image size of the result output
     "captum_output_size": 8,
     # Output figure resolution
@@ -156,10 +156,10 @@ setting = {
     # Control transparency of the heatmap
     # 0.0: Heatmap completely transparent (only original image visible)
     # 1.0: Heatmap fully opaque (original image barely visible under intense colors)
-    "captum_alpha_overlay": 0.6,
+    "captum_alpha_overlay": 0.5,
     # Controls how aggressively visualization focuses on the most important features by filtering out weaker attributions
     # e.g., 80 = top 20% most important pixels
-    'captum_threshold_percentile': 80, 
+    'captum_threshold_percentile': 70, 
     # Clips the top/bottom X% of attribution values before visualization to:
     # Improve contrast by ignoring extreme outliers
     # Make heatmaps more comparable across images

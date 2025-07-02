@@ -17,7 +17,7 @@ from dataset import Dataset
 from model import CNN_Model
 
 class CaptumAnalyzer:
-
+  
     #############################################################################################################
     # CONSTRUCTOR:
 
