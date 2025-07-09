@@ -156,7 +156,7 @@ data/
 #### Output Metrics
 | Metric | Description | Visualization |
 |--------|-------------|---------------|
-| Training Loss | CrossEntropyLoss | ![Loss Curve](https://i.imgur.com/XYzKv1l.png) |
+| Training Loss | CrossEntropyLoss | Green/red curves |
 | Validation Accuracy | Per-class balanced accuracy | Green/red curves |
 | Learning Rate | Scheduled values | Blue curve |
 
@@ -283,6 +283,7 @@ data/
    | ID | Checkpoint Name                  |
    +----+----------------------------------+
    | 1  | ckpt_densenet121_e50_vacc92.model|
+   +----+----------------------------------+
    Select a checkpoint: 1
    Successfully loaded weights (92% val acc)
    ```
@@ -576,13 +577,13 @@ Found 32 images meeting criteria:
   - No images match filter criteria
 
 ### 10. Captum Analyzer  
-**Description**: Visualizes model decision-making using Integrated Gradients to highlight biologically relevant image regions.
+**Description**: Still under construction! Visualizes model decision-making using Integrated Gradients to highlight biologically relevant image regions. Currently only works with sign "positive"!
 
 #### Key Settings (from `settings.py`)
 | Setting | Type | Description | Example Value |
 |---------|------|-------------|---------------|
 | `captum_n_steps_ig` | int | Integration steps for gradient calculation | `50` |
-| `captum_sign` | str | Attribution sign (`all`/`positive`/`negative`) | `"positive"` |
+| `captum_sign` | str | Only `positive` for now | `"positive"` |
 | `captum_sigma` | float | Gaussian blur radius (pixels) | `2.0` |
 | `captum_alpha_overlay` | float | Heatmap opacity (0-1) | `0.7` |
 | `captum_threshold_percentile` | int | Min percentile for feature importance | `90` |
@@ -640,7 +641,7 @@ data/
   - CUDA OOM (reduce batch size)
 
 ### 11. GradCAM Analyzer (DenseNet-121)  
-**Description**: Visualizes class-specific activation patterns using gradient-weighted class activation mapping.
+**Description**: Visualizes class-specific activation patterns using gradient-weighted class activation mapping. Only works with DenseNet-121 architecture for now!
 
 #### Key Settings (from `settings.py`)
 | Setting | Type | Description | Example Value |
