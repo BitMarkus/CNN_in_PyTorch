@@ -1,4 +1,17 @@
 
+# Filter types in settings file:
+# Filter Type	    Confidence Range	    Considers Correctness?	        Typical Use Case
+# correct	        [min_conf, max_conf]	Must be correct in all folds	Reliable predictions
+# incorrect	        [min_conf, max_conf]	Must be wrong in all folds	    High-confidence errors
+# low_confidence	Below min_conf	        Ignores correctness	            Ambiguous/poor-quality images
+# unsure	        [min_conf, max_conf]	Ignores correctness	            Intermediate-confidence cases
+
+# Confidence interpretation
+# 50%:	The model is completely uncertain (equivalent to random guessing).
+# <50%:	The model is less confident than a coin flip (rare, but possible if predictions are miscalibrated).
+# >50%:	The model favors one class over the other. Higher values indicate stronger certainty.
+# ~100%:The model is extremely confident (may indicate overfitting or easy examples).
+
 import os
 import shutil
 import torch
@@ -14,6 +27,7 @@ from dataset import Dataset
 from model import CNN_Model
 from settings import setting
 
+# Confidence analyzer
 class ConfidenceAnalyzer:
 
     #############################################################################################################
@@ -33,8 +47,12 @@ class ConfidenceAnalyzer:
         self.classes = setting['classes']
         self.wt_lines = setting['wt_lines']
         self.ko_lines = setting['ko_lines']
-        # Min conf for sorting
+
+        # Confidence intervals and filter types
         self.min_conf = setting['ca_min_conf']
+        self.max_conf = setting['ca_max_conf']
+        self.filter_type = setting['ca_filter_type']
+
         # Maximum number of checkpoints which for a dataset
         self.max_ckpts = setting['ca_max_ckpts']
         # Selection method for selecting the "best" checkpoints
@@ -283,26 +301,45 @@ class ConfidenceAnalyzer:
             'aggregated_stats': aggregated
         }
     
-    # Find consistently correctly classified high-confidence images
-    def find_high_confidence_images(self, results):
+    def find_filtered_images(self, results):
+        """Find images matching the specified confidence filter criteria.
+        
+        Returns:
+            dict: {class_name: [(img_path, avg_confidence, correctness_rate)]}
+        """
         self._build_image_history(results)
-        consistent_images = {cls: [] for cls in self.classes}
-        # Iterate over image history and sort out images, which
-        # 1) are correctly classified
-        # 2) have a confidence > min_conf
-        # in all datasets and checkpoints where they were part of the test dataset
-        self._build_image_history(results)
-        consistent_images = {cls: [] for cls in self.classes}
+        filtered_images = {cls: [] for cls in self.classes}
         
         for img_path, predictions in self.image_history.items():
-            if all((p['pred_class'] == p['true_class']) and 
-                (p['confidence'] >= self.min_conf) 
-                for p in predictions):
-                true_class = predictions[0]['true_class']
-                avg_confidence = sum(p['confidence'] for p in predictions) / len(predictions)
-                consistent_images[true_class].append((img_path, avg_confidence))  # img_path is already original path
+            # Calculate average confidence and correctness rate
+            confidences = [p['confidence'] for p in predictions]
+            correct = [p['pred_class'] == p['true_class'] for p in predictions]
+            avg_confidence = sum(confidences) / len(confidences)
+            correctness_rate = sum(correct) / len(correct)
+            true_class = predictions[0]['true_class']
+            
+            # Apply filters based on filter type
+            if self.filter_type.lower() == 'correct':
+                # Correct in all cases AND within confidence range
+                if all(correct) and all(self.min_conf <= c <= self.max_conf for c in confidences):
+                    filtered_images[true_class].append((img_path, avg_confidence, correctness_rate))
+                    
+            elif self.filter_type.lower() == 'incorrect':
+                # Incorrect in all cases AND within confidence range
+                if not any(correct) and all(self.min_conf <= c <= self.max_conf for c in confidences):
+                    filtered_images[true_class].append((img_path, avg_confidence, correctness_rate))
+                    
+            elif self.filter_type.lower() == 'low_confidence':
+                # Below min confidence in all cases
+                if all(c < self.min_conf for c in confidences):
+                    filtered_images[true_class].append((img_path, avg_confidence, correctness_rate))
+                    
+            elif self.filter_type.lower() == 'unsure':
+                # In middle confidence range (could be correct or incorrect)
+                if all(self.min_conf <= c <= self.max_conf for c in confidences):
+                    filtered_images[true_class].append((img_path, avg_confidence, correctness_rate))
         
-        return consistent_images
+        return filtered_images
     
     # Build history of all image predictions
     def _build_image_history(self, results):
@@ -329,9 +366,17 @@ class ConfidenceAnalyzer:
                 return str(candidate)
         raise FileNotFoundError(f"Original image not found for {img_key}")
 
-    # Organize high-confidence images into folder structure
-    def organize_high_confidence_images(self, consistent_images):
-        output_subdir = "high_confidence_examples"
+
+    def organize_filtered_images(self, filtered_images):
+        """Organize filtered images into appropriate folder structure."""
+        # Create appropriate output subdirectory based on filter type
+        output_subdir = {
+            'correct': "high_confidence_correct",
+            'incorrect': "high_confidence_incorrect", 
+            'low_confidence': "low_confidence",
+            'unsure': "medium_confidence_unsure"
+        }.get(self.filter_type.lower(), "filtered_images")
+        
         output_dir = self.pth_conf_analizer_results / output_subdir
         
         # Track copied files to prevent duplicates
@@ -341,16 +386,17 @@ class ConfidenceAnalyzer:
             class_dir = output_dir / class_name
             class_dir.mkdir(parents=True, exist_ok=True)
             
-            for img_path, confidence in consistent_images[class_name]:
+            for img_path, avg_confidence, correctness_rate in filtered_images[class_name]:
                 if img_path in copied_files:
                     continue
                     
                 try:
-                    # Create new filename with confidence
+                    # Create new filename with confidence and correctness info
                     original_name = Path(img_path).name
                     base, ext = os.path.splitext(original_name)
-                    confidence_pct = int(round(confidence * 100))
-                    new_filename = f"{base}_conf{confidence_pct}{ext}"
+                    confidence_pct = int(round(avg_confidence * 100))
+                    correctness_pct = int(round(correctness_rate * 100))
+                    new_filename = f"{base}_conf{confidence_pct}_corr{correctness_pct}{ext}"
                     dest_path = class_dir / new_filename
                     
                     shutil.copy2(img_path, dest_path)
@@ -358,7 +404,7 @@ class ConfidenceAnalyzer:
                 except Exception as e:
                     print(f"Error copying {img_path}: {str(e)}")
         
-        self._create_readme(output_dir, consistent_images)
+        self._create_filter_readme(output_dir, filtered_images)
         return output_dir
 
     # Save analysis results to CSV
@@ -440,12 +486,22 @@ class ConfidenceAnalyzer:
         return False
 
     # Create README file for output folder
-    def _create_readme(self, output_dir, consistent_images):
+    def _create_filter_readme(self, output_dir, filtered_images):
+        """Create README file explaining the filtering criteria."""
+        filter_descriptions = {
+            'correct': f"Correctly classified in all cases with confidence between {self.min_conf:.0%}-{self.max_conf:.0%}",
+            'incorrect': f"Incorrectly classified in all cases with confidence between {self.min_conf:.0%}-{self.max_conf:.0%}",
+            'low_confidence': f"Low confidence (below {self.min_conf:.0%}) in all cases",
+            'unsure': f"Medium confidence ({self.min_conf:.0%}-{self.max_conf:.0%}) in all cases"
+        }
+        
         with open(output_dir / "README.txt", 'w') as f:
-            f.write("High-Confidence Image Classification Results\n")
+            f.write("Filtered Image Classification Results\n")
             f.write("="*50 + "\n\n")
-            f.write(f"Images meeting confidence threshold: {sum(len(v) for v in consistent_images.values())}\n")
-            for class_name, images in consistent_images.items():
+            f.write(f"Filter type: {self.filter_type}\n")
+            f.write(f"Description: {filter_descriptions.get(self.filter_type.lower(), 'Custom filter')}\n\n")
+            f.write(f"Images meeting criteria: {sum(len(v) for v in filtered_images.values())}\n")
+            for class_name, images in filtered_images.items():
                 f.write(f"{class_name}: {len(images)} images\n")
 
     # Clean up the test folder after analysis
@@ -497,13 +553,13 @@ class ConfidenceAnalyzer:
         # Get results from all datasets
         results = self.analyze_all_datasets()
         
-        # Find and organize high-confidence images
-        tqdm.write("\n>> SAVING HIGH CONFIDENCE IMAGES:")
-        consistent_images = self.find_high_confidence_images(results)
+        # Find and organize filtered images
+        tqdm.write(f"\n>> SAVING {self.filter_type.upper()} IMAGES:")
+        filtered_images = self.find_filtered_images(results)
         
-        tqdm.write("Organizing high-confidence images...")
-        output_dir = self.organize_high_confidence_images(consistent_images)
-        tqdm.write(f"High-confidence images saved to: {output_dir}")
+        tqdm.write(f"Organizing {self.filter_type} images...")
+        output_dir = self.organize_filtered_images(filtered_images)
+        tqdm.write(f"Filtered images saved to: {output_dir}")
 
         # Export checkpoint usage report
         self._export_used_checkpoints(results)

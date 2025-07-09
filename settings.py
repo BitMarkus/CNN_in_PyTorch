@@ -112,11 +112,19 @@ setting = {
 
     # Min confidence for image sorting
     "ca_min_conf": 0.8,     # 80%
-    # Meximum number of checkpoints which are analyzed for a dataset
-    "ca_max_ckpts": 2,
+    # Max confidence for image sorting
+    'ca_max_conf': 1.0,
+    # Filter type for image sorting
+    # "correct": Images correctly classified in all test folds, with confidence within [min_conf, max_conf] -> Reliable predictions for downstream analysis
+    # "incorrect": Images incorrectly classified in all test folds, with confidence within [min_conf, max_conf] -> Systematic errors to investigate
+    # "low_confidence": Images with confidence below min_conf in all test folds (ignores max_conf)(regardless of correctness) -> Ambiguous cases needing manual review
+    # "unsure": Images with confidence within [min_conf, max_conf] (regardless of correctness) -> Intermediate-confidence predictions
+    'ca_filter_type': 'incorrect',
+    # Maximum number of checkpoints which are analyzed for a dataset
+    "ca_max_ckpts": 1,
     # Method for best checkpoint selection
     # Options: balanced_sum, f1_score, min_difference, balanced_accuracy
-    "ca_ckpt_select_method": 'balanced_sum',
+    "ca_ckpt_select_method": 'balanced_accuracy',
 
     ##########
     # CAPTUM #
