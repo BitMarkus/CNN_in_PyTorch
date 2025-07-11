@@ -4,10 +4,10 @@ A CNN (convolutional neural network, different architectures) for classification
 ## System Requirements  
 The program runs on the following environment:  
 - **GPU**: NVIDIA RTX 4090 or RTX A5000 (24 GB VRAM)  
-- **Python**: 3.8.19  
-- **PyTorch**: 2.3.1  
-- **CUDA**: 12.1  
-- **cuDNN**: 8907  
+- **Python**: 3.8.19 - 3.11.11
+- **PyTorch**: 2.3.1 - 2.7.0+cu126 
+- **CUDA**: 12.1 - 12.6  
+- **cuDNN**: 8907 - 90701  
 
 ## 1. Create CNN Network
 **Description**: Initializes a new convolutional neural network based on predefined or custom architectures.

@@ -214,12 +214,28 @@ class ConfidenceAnalyzer:
                 overall_acc = cm_data['overall_accuracy']
                 
                 # Calculate score based on selection method
+                # balanced_sum:
+                # This rewards models with both high accuracy and balanced performance across classes
+                # Effectively gives more weight to the lower of the two accuracies
+                # Simple calculation without needing true/predicted labels
                 if method == 'balanced_sum':
                     score = (wt_acc + ko_acc) - abs(wt_acc - ko_acc)
+                # f1_score:
+                # Harmonic mean of the two class accuracies
+                # Strongly penalizes large disparities between class performances
+                # Can be unstable when one accuracy is very low             
                 elif method == 'f1_score':
                     score = 2 * (wt_acc * ko_acc) / (wt_acc + ko_acc) if (wt_acc + ko_acc) > 0 else 0
+                # min_difference:
+                # Most conservative approach - selects based on worst-performing class
+                # Ensures no single class is neglected
+                # May reject models with one strong and one moderate class performance   
                 elif method == 'min_difference':
                     score = min(wt_acc, ko_acc)
+                # balanced_accuracy:
+                # Gold standard for imbalanced classification
+                # Requires true/predicted labels (not just class accuracies)
+                # Calculates the average of recall obtained on each class                    
                 elif method == 'balanced_accuracy':
                     # Get true and predicted labels if available
                     if 'true_labels' not in cm_data or 'predicted_labels' not in cm_data:

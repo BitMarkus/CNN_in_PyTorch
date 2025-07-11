@@ -54,7 +54,9 @@ setting = {
     "wt_lines": ["WT_1618-02", "WT_JG", "WT_JT", "WT_KM", "WT_MS"],
     "ko_lines": ["KO_1096-01", "KO_1618-01", "KO_BR2986", "KO_BR3075"],
     # Define classes
+    # 2 classes (WT and KO):
     "classes": ["KO", "WT"],
+    # 9 classes (one for each cell line):
     # "classes": ["KO_1096-01", "KO_1618-01", "KO_BR2986", "KO_BR3075", "WT_1618-02", "WT_JG", "WT_JT", "WT_KM", "WT_MS"],
 
     #########
@@ -119,9 +121,9 @@ setting = {
     # "incorrect": Images incorrectly classified in all test folds, with confidence within [min_conf, max_conf] -> Systematic errors to investigate
     # "low_confidence": Images with confidence below min_conf in all test folds (ignores max_conf)(regardless of correctness) -> Ambiguous cases needing manual review
     # "unsure": Images with confidence within [min_conf, max_conf] (regardless of correctness) -> Intermediate-confidence predictions
-    'ca_filter_type': 'incorrect',
+    'ca_filter_type': 'correct',
     # Maximum number of checkpoints which are analyzed for a dataset
-    "ca_max_ckpts": 1,
+    "ca_max_ckpts": 2,
     # Method for best checkpoint selection
     # Options: balanced_sum, f1_score, min_difference, balanced_accuracy
     "ca_ckpt_select_method": 'balanced_accuracy',
@@ -187,7 +189,6 @@ setting = {
     # Gaussian blur strength
     "gradcam_blurr_sigma": 15,
 
-
     #########
     # PATHS #
     #########
@@ -205,5 +206,4 @@ setting = {
     "pth_acv_results": BASE_DIR / "acv_results/",
     # Confidence analyzer results
     "pth_conf_analizer_results": BASE_DIR / "ca_results/",
- 
 }
