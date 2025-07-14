@@ -28,7 +28,10 @@ setting = {
     "train_weight_decay": 1e-4,  
     # Momentum
     # SGD: 0.9 
-    "train_momentum": 0.9,       
+    "train_momentum": 0.9,   
+    # Nesterov momentum for SGD
+    # Nesterov only works if momentum > 0
+    "train_use_nesterov": False,
 
     # Learning rate scheduler:
     # No of steps after which he lr is multiplied by the lr multiplier

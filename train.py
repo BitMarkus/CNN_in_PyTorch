@@ -44,6 +44,8 @@ class Train():
         self.weight_decay = setting["train_weight_decay"] 
         # Optimizer momentum
         self.train_momentum = setting["train_momentum"] 
+        # Nesterov momentum for SGD
+        self.use_nesterov = setting["train_use_nesterov"] 
 
         # Optmizer, learning rate scheduler and loss function
         # ADAM:
@@ -55,7 +57,8 @@ class Train():
             self.cnn.parameters(), 
             lr=self.init_lr, 
             momentum=self.train_momentum,
-            weight_decay=self.weight_decay
+            weight_decay=self.weight_decay,
+            nesterov=self.use_nesterov,
         )
         # This loss function combines nn.LogSoftmax() and nn.NLLLoss() in one single class
         self.loss_function = nn.CrossEntropyLoss()
@@ -67,19 +70,19 @@ class Train():
         self.scheduler_CA = torch.optim.lr_scheduler.CosineAnnealingLR(
             self.optimizer, 
             T_max=self.num_epochs - self.warmup_epochs, # Adjust for warmup
-            eta_min=self.lr_eta_min
+            eta_min=self.lr_eta_min,
         )
         # Warmup scheduler
         self.warmup_scheduler = torch.optim.lr_scheduler.LinearLR(
             self.optimizer, 
             start_factor=0.01,  # Start at 1% of target LR
-            total_iters=self.warmup_epochs       # Ramp over 5 epochs
+            total_iters=self.warmup_epochs ,      # Ramp over 5 epochs
         )
         # Then chain with your CosineAnnealingLR
         self.scheduler = torch.optim.lr_scheduler.SequentialLR(
             self.optimizer,
             schedulers=[self.warmup_scheduler, self.scheduler_CA],
-            milestones=[self.warmup_epochs]
+            milestones=[self.warmup_epochs],
         )
 
         # Add gradient scaler for mixed precision training
