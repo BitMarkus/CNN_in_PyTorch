@@ -29,6 +29,7 @@ class Train():
         # To use tensorboard for training, navigate to the root of the project folder
         # Type in CMD in the the adress line
         # Run the following command: tensorboard --logdir=logs/ --host=localhost
+        # Open http://localhost:6006/ in web browser
         self.writer = SummaryWriter(f"logs/{datetime.now().strftime('%Y%m%d-%H%M%S')}")
         # Pretrained
         self.is_pretrained = setting["cnn_is_pretrained"] 
