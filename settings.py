@@ -30,10 +30,10 @@ setting = {
     "train_weight_decay": 1e-4,  
     # Momentum
     # SGD: 0.9 
-    "train_momentum": 0.9,   
+    "train_sgd_momentum": 0.9,   
     # Nesterov momentum for SGD
     # Nesterov only works if momentum > 0
-    "train_use_nesterov": True,
+    "train_sgd_use_nesterov": True,
     # ADAM beta 1 and 2
     "train_adam_beta1": 0.9, 
     "train_adam_beta2": 0.999, 
@@ -46,7 +46,7 @@ setting = {
     "train_lr_eta_min": 1e-5,
 
     # Augmentations for training
-    "train_use_augment": False, 
+    "train_use_augment": True, 
     # Label smoothing
     # 0.0: No smoothing (default CrossEntropyLoss). Hard labels (0 or 1)
     # 0.1: 10% smoothing (e.g., correct class = 0.9, others share 0.1/classes)

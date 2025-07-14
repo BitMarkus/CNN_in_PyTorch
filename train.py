@@ -10,7 +10,9 @@ import torch
 import matplotlib.pyplot as plt
 from torch.cuda.amp import GradScaler, autocast 
 from torch.utils.tensorboard import SummaryWriter
+from sklearn.metrics import f1_score, confusion_matrix
 from datetime import datetime
+import numpy as np
 # Own modules
 from settings import setting
 import functions as fn
@@ -36,6 +38,8 @@ class Train():
         # Datasets
         self.ds_train = dataset.ds_train
         self.ds_val = dataset.ds_val
+        # Class names
+        self.classes = setting["classes"] 
         # Number of training and validation images in each dataset
         self.num_train_img = dataset.num_train_img
         self.num_val_img = dataset.num_val_img
@@ -50,14 +54,13 @@ class Train():
         self.lr_eta_min = setting["train_lr_eta_min"] 
         # Weight decay
         self.weight_decay = setting["train_weight_decay"] 
-        # Nesterov momentum for SGD
-        self.use_nesterov = setting["train_use_nesterov"] 
         # Label smoothing
         self.label_smoothing = setting["train_label_smoothing"] 
         # Optimizer specific
         # Options: "SGD" and "ADAM"
         self.optimizer_type = setting["train_optimizer_type"]
-        self.train_momentum = setting["train_momentum"] # SGD
+        self.sgd_momentum = setting["train_sgd_momentum"] # SGD
+        self.sgd_use_nesterov = setting["train_sgd_use_nesterov"] # SGD
         self.adam_beta1 = setting["train_adam_beta1"]   # ADAM
         self.adam_beta2 = setting["train_adam_beta2"]   # ADAM 
 
@@ -77,9 +80,9 @@ class Train():
             self.optimizer = SGD(
                 self.cnn.parameters(), 
                 lr=self.init_lr, 
-                momentum=self.train_momentum,
+                momentum=self.sgd_momentum,
                 weight_decay=self.weight_decay,
-                nesterov=self.use_nesterov
+                nesterov=self.sgd_use_nesterov
             )
         # This loss function combines nn.LogSoftmax() and nn.NLLLoss() in one single class
         self.loss_function = nn.CrossEntropyLoss(label_smoothing=self.label_smoothing)
@@ -112,7 +115,7 @@ class Train():
     # METHODS:
 
     # Plots accuracy, loss, and learning rate after training
-    def plot_metrics(self, history, plot_path, show_plot=True, save_plot=True):
+    def _plot_metrics(self, history, plot_path, show_plot=True, save_plot=True):
         # Number of epochs
         epochs_range = range(1, len(history["train_loss"]) + 1)
         # Draw plots
@@ -148,12 +151,52 @@ class Train():
         if(show_plot):
             plt.show()
 
+    # Creates a styled confusion matrix plot
+    def _plot_confusion_matrix(self, cm, class_names=None, epoch=None):
+        fig, ax = plt.subplots(figsize=(12, 12))  # Larger figure size
+        
+        # Normalize and plot
+        cm_normalized = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis]
+        im = ax.imshow(cm_normalized, interpolation='nearest', cmap=plt.cm.Blues)
+        
+        # Customize fonts
+        title_font = {'size': 16, 'weight': 'bold'}
+        label_font = {'size': 14}
+        tick_font = {'size': 12}
+        
+        # Add labels with larger fonts
+        ax.set_xlabel('Predicted Label', fontdict=label_font)
+        ax.set_ylabel('True Label', fontdict=label_font)
+        ax.set_title(f'Confusion Matrix (Epoch {epoch+1})' if epoch else 'Confusion Matrix', 
+                    fontdict=title_font)
+        
+        # Class names (if provided)
+        if class_names:
+            ax.set_xticks(np.arange(len(class_names)))
+            ax.set_yticks(np.arange(len(class_names)))
+            ax.set_xticklabels(class_names, rotation=45, ha="right", fontdict=tick_font)
+            ax.set_yticklabels(class_names, fontdict=tick_font)
+        
+        # Annotations (larger font)
+        thresh = cm_normalized.max() / 2.
+        for i in range(cm.shape[0]):
+            for j in range(cm.shape[1]):
+                ax.text(j, i, 
+                    f"{cm_normalized[i,j]:.1%}\n({cm[i,j]})", 
+                    ha="center", va="center",
+                    color="white" if cm_normalized[i,j] > thresh else "black",
+                    fontsize=12)  # Increased from 8 to 12
+        
+        plt.colorbar(im, fraction=0.046, pad=0.04)
+        plt.tight_layout()
+        return fig
+
     def train(self, chckpt_pth, plot_pth):
 
         # Save best accuracy for model saving
         best_accuracy = 0.0
         # Track train and validation accuracy, train and accuracy loss and learning rate every epoch
-        history = {"train_acc": [], "train_loss": [], "val_acc": [], "val_loss": [], "lr": []}
+        history = {"train_acc": [], "train_loss": [], "val_acc": [], "val_loss": [], "lr": [], "f1": []}  # Added "f1" to history
 
         # Iterate over epochs
         for epoch in range(self.num_epochs):
@@ -231,7 +274,9 @@ class Train():
             # Set variables for validation accuracy and loss
             validation_accuracy = 0.0
             validation_loss = 0.0
-
+            all_preds = []  # Store all predictions for advanced metrics
+            all_labels = []  # Store all ground truth labels
+            
             # Clear cache before validation to save V-RAM
             torch.cuda.empty_cache()
 
@@ -253,19 +298,33 @@ class Train():
                         validation_loss += loss.cpu().data * images.size(0)
                         _, prediction = torch.max(outputs.data, 1)
                         validation_accuracy += int(torch.sum(prediction==labels.data))
+                        
+                        # Store predictions and labels for advanced metrics
+                        all_preds.extend(prediction.cpu().numpy())
+                        all_labels.extend(labels.cpu().numpy())
             
+            # Calculate standard metrics
             validation_accuracy = validation_accuracy / self.num_val_img
             validation_loss = validation_loss / self.num_val_img
+            
+            # Calculate F1 score and confusion matrix
+            f1 = f1_score(all_labels, all_preds, average='macro')
+            cm = confusion_matrix(all_labels, all_preds)
+            
+            # Log advanced metrics to TensorBoard
+            self.writer.add_scalar('Metrics/F1', f1, epoch)
+            
+            # Create and log confusion matrix figure using your method
+            cm_fig = self._plot_confusion_matrix(cm, class_names=self.classes, epoch=epoch)
+            self.writer.add_figure('Confusion Matrix', cm_fig, epoch)
+            plt.close(cm_fig)
 
-            # Tensorboard: Log validation metrics
-            self.writer.add_scalar('Accuracy/val', validation_accuracy, epoch)
-            self.writer.add_scalar('Loss/val', validation_loss, epoch)
-
-            print(f"> val_loss: {validation_loss:.5f}, val_acc: {validation_accuracy:.2f}")
+            print(f"> val_loss: {validation_loss:.5f}, val_acc: {validation_accuracy:.2f}, F1: {f1:.4f}")  # Added F1 to print
 
             # Save validation loss and accuracy
             history["val_loss"].append(validation_loss)
             history["val_acc"].append(validation_accuracy)
+            history["f1"].append(f1)  # Store F1 score in history
 
             ###################
             # Save best model #
@@ -279,11 +338,11 @@ class Train():
 
         # Tensorboard: Log hyperparameters and close writer
         self.writer.add_hparams(
-            {"lr": self.init_lr, "batch_size": setting["ds_batch_size"], "momentum": self.train_momentum},
+            {"lr": self.init_lr, "batch_size": setting["ds_batch_size"], "momentum": self.sgd_momentum},
             {"hparam/val_accuracy": max(history["val_acc"]), "hparam/val_loss": min(history["val_loss"])},
         )
         self.writer.close()
 
-        self.plot_metrics(history, plot_pth, show_plot=False, save_plot=True)
+        self._plot_metrics(history, plot_pth, show_plot=False, save_plot=True)
 
         return history
