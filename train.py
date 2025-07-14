@@ -28,7 +28,7 @@ class Train():
         # Initialize TensorBoard writer
         # To use tensorboard for training, navigate to the root of the project folder
         # Type in CMD in the the adress line
-        # Run the following command: tensorboard --logdir=logs/ --host=localhost
+        # Run the following command: tensorboard --logdir=logs/ --host=localhost (Optional: --reload_interval 30)
         # Open http://localhost:6006/ in web browser
         self.writer = SummaryWriter(f"logs/{datetime.now().strftime('%Y%m%d-%H%M%S')}")
         # Pretrained
@@ -50,26 +50,37 @@ class Train():
         self.lr_eta_min = setting["train_lr_eta_min"] 
         # Weight decay
         self.weight_decay = setting["train_weight_decay"] 
-        # Optimizer momentum
-        self.train_momentum = setting["train_momentum"] 
         # Nesterov momentum for SGD
         self.use_nesterov = setting["train_use_nesterov"] 
         # Label smoothing
         self.label_smoothing = setting["train_label_smoothing"] 
+        # Optimizer specific
+        # Options: "SGD" and "ADAM"
+        self.optimizer_type = setting["train_optimizer_type"]
+        self.train_momentum = setting["train_momentum"] # SGD
+        self.adam_beta1 = setting["train_adam_beta1"]   # ADAM
+        self.adam_beta2 = setting["train_adam_beta2"]   # ADAM 
 
         # Optmizer, learning rate scheduler and loss function
-        # ADAM:
-        # amsgrad=True: Avoids LR instability
-        # self.optimizer = Adam(model.parameters(), lr=self.init_lr, weight_decay=self.weight_decay, amsgrad=True)
-        
-        # SGD:
-        self.optimizer = SGD(
-            self.cnn.parameters(), 
-            lr=self.init_lr, 
-            momentum=self.train_momentum,
-            weight_decay=self.weight_decay,
-            nesterov=self.use_nesterov,
-        )
+        if(self.optimizer_type == "ADAM"):
+            # ADAM:
+            # amsgrad=True: Avoids LR instability
+            self.optimizer = Adam(
+                self.cnn.parameters(),
+                lr=self.init_lr, 
+                weight_decay=self.weight_decay, 
+                betas=(0.9, 0.999),
+                amsgrad=True
+            )
+        elif(self.optimizer_type == "SGD"):
+            # SGD:
+            self.optimizer = SGD(
+                self.cnn.parameters(), 
+                lr=self.init_lr, 
+                momentum=self.train_momentum,
+                weight_decay=self.weight_decay,
+                nesterov=self.use_nesterov
+            )
         # This loss function combines nn.LogSoftmax() and nn.NLLLoss() in one single class
         self.loss_function = nn.CrossEntropyLoss(label_smoothing=self.label_smoothing)
 
@@ -188,7 +199,8 @@ class Train():
                     train_accuracy += int(torch.sum(prediction==labels.data))
 
                     # Tensorboard: Log batch-level metrics
-                    self.writer.add_scalar('Loss/train_batch', loss.item(), epoch * len(self.ds_train) + batch_idx)
+                    if batch_idx % 10 == 0:  # Log every 10 batches
+                        self.writer.add_scalar('Loss/train_batch', loss.item(), epoch * len(self.ds_train) + batch_idx)
 
                 # Set learning rate scheduler
                 self.scheduler.step()

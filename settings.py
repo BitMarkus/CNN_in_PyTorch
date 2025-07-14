@@ -14,11 +14,13 @@ setting = {
     ############
 
     # Number of epochs
-    "train_num_epochs": 40,  # 30
+    "train_num_epochs": 50,  # 30
     # Batch size for training and validation datasets
     "ds_batch_size": 50, 
 
     # Optimizer:
+    # Options: "SGD" and "ADAM"
+    "train_optimizer_type": "ADAM",  
     # Initial learning rate (later determined by lr scheduler)
     # ADAM: 0.0001-0.0003 (3e-4), 
     # SGD: 0.01-0.001, 0.0001 for pretrained weights!
@@ -32,6 +34,9 @@ setting = {
     # Nesterov momentum for SGD
     # Nesterov only works if momentum > 0
     "train_use_nesterov": True,
+    # ADAM beta 1 and 2
+    "train_adam_beta1": 0.9, 
+    "train_adam_beta2": 0.999, 
 
     # Learning rate scheduler:
     # No of steps after which he lr is multiplied by the lr multiplier
