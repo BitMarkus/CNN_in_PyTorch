@@ -9,6 +9,8 @@ from tqdm import tqdm
 import torch
 import matplotlib.pyplot as plt
 from torch.cuda.amp import GradScaler, autocast 
+from torch.utils.tensorboard import SummaryWriter
+from datetime import datetime
 # Own modules
 from settings import setting
 import functions as fn
@@ -23,6 +25,11 @@ class Train():
         self.cnn_wrapper = cnn_wrapper
         # Model
         self.cnn = cnn_wrapper.model
+        # Initialize TensorBoard writer
+        # To use tensorboard for training, navigate to the root of the project folder
+        # Type in CMD in the the adress line
+        # Run the following command: tensorboard --logdir=logs/ --host=localhost
+        self.writer = SummaryWriter(f"logs/{datetime.now().strftime('%Y%m%d-%H%M%S')}")
         # Pretrained
         self.is_pretrained = setting["cnn_is_pretrained"] 
         # Datasets
@@ -154,7 +161,7 @@ class Train():
             # Iterate over batches
             # https://towardsdatascience.com/training-models-with-a-progress-a-bar-2b664de3e13e
             with tqdm(self.ds_train, unit="batch") as tepoch:
-                for images, labels in tepoch:
+                for batch_idx, (images, labels) in enumerate(tepoch):
                     tepoch.set_description("Train")
 
                     # Send images and labels to gpu or cpu
@@ -179,6 +186,9 @@ class Train():
                     _, prediction = torch.max(outputs.data, 1)           
                     train_accuracy += int(torch.sum(prediction==labels.data))
 
+                    # Tensorboard: Log batch-level metrics
+                    self.writer.add_scalar('Loss/train_batch', loss.item(), epoch * len(self.ds_train) + batch_idx)
+
                 # Set learning rate scheduler
                 self.scheduler.step()
 
@@ -186,6 +196,11 @@ class Train():
                 train_accuracy = train_accuracy / self.num_train_img
                 train_loss = train_loss / self.num_train_img
                 lr = self.scheduler.get_last_lr()[0]
+
+                # Tensorboard: Log epoch-level training metrics
+                self.writer.add_scalar('Accuracy/train', train_accuracy, epoch)
+                self.writer.add_scalar('Loss/train', train_loss, epoch)
+                self.writer.add_scalar('Learning Rate', lr, epoch)               
 
                 print(f"> train_loss: {train_loss:.5f}, train_acc: {train_accuracy:.2f}, lr: {lr:.6f}")
 
@@ -229,6 +244,10 @@ class Train():
             validation_accuracy = validation_accuracy / self.num_val_img
             validation_loss = validation_loss / self.num_val_img
 
+            # Tensorboard: Log validation metrics
+            self.writer.add_scalar('Accuracy/val', validation_accuracy, epoch)
+            self.writer.add_scalar('Loss/val', validation_loss, epoch)
+
             print(f"> val_loss: {validation_loss:.5f}, val_acc: {validation_accuracy:.2f}")
 
             # Save validation loss and accuracy
@@ -244,6 +263,13 @@ class Train():
         ################
         # Metircs plot #
         ################
+
+        # Tensorboard: Log hyperparameters and close writer
+        self.writer.add_hparams(
+            {"lr": self.init_lr, "batch_size": setting["ds_batch_size"], "momentum": self.train_momentum},
+            {"hparam/val_accuracy": max(history["val_acc"]), "hparam/val_loss": min(history["val_loss"])},
+        )
+        self.writer.close()
 
         self.plot_metrics(history, plot_pth, show_plot=False, save_plot=True)
 

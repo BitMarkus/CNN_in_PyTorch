@@ -31,7 +31,7 @@ setting = {
     "train_momentum": 0.9,   
     # Nesterov momentum for SGD
     # Nesterov only works if momentum > 0
-    "train_use_nesterov": False,
+    "train_use_nesterov": True,
 
     # Learning rate scheduler:
     # No of steps after which he lr is multiplied by the lr multiplier
@@ -43,7 +43,10 @@ setting = {
     # Augmentations for training
     "train_use_augment": False, 
     # Label smoothing
-    "train_label_smoothing": 0.0, 
+    # 0.0: No smoothing (default CrossEntropyLoss). Hard labels (0 or 1)
+    # 0.1: 10% smoothing (e.g., correct class = 0.9, others share 0.1/classes)
+    # 0.2: 20% smoothing, etc.
+    "train_label_smoothing": 0.1, 
 
     ###########
     # DATASET #
