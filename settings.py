@@ -42,6 +42,8 @@ setting = {
 
     # Augmentations for training
     "train_use_augment": False, 
+    # Label smoothing
+    "train_label_smoothing": 0.0, 
 
     ###########
     # DATASET #

@@ -46,6 +46,8 @@ class Train():
         self.train_momentum = setting["train_momentum"] 
         # Nesterov momentum for SGD
         self.use_nesterov = setting["train_use_nesterov"] 
+        # Label smoothing
+        self.label_smoothing = setting["train_label_smoothing"] 
 
         # Optmizer, learning rate scheduler and loss function
         # ADAM:
@@ -61,9 +63,7 @@ class Train():
             nesterov=self.use_nesterov,
         )
         # This loss function combines nn.LogSoftmax() and nn.NLLLoss() in one single class
-        self.loss_function = nn.CrossEntropyLoss()
-        # With label smoothing:
-        # self.loss_function = nn.CrossEntropyLoss(label_smoothing=0.1)
+        self.loss_function = nn.CrossEntropyLoss(label_smoothing=self.label_smoothing)
 
         # Learning rate scheduler:
         # CosineAnnealingLR:
