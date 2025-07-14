@@ -308,18 +308,33 @@ class Train():
             validation_loss = validation_loss / self.num_val_img
             
             # Calculate F1 score and confusion matrix
+            # Options for parameter average:
+            # 'binary': 
+            # Only reports F1 for the positive class in binary classification. Uses pos_label to specify which class is "positive".
+            # Binary classification only (not for multiclass).
+            # 'micro': 
+            # Calculates global F1 by summing all TPs, FPs, FNs across classes, then computes F1. Class-agnostic. 
+            # Imbalanced data where you care about overall performance (favors majority classes).
+            # 'weighted': 
+            # Like 'macro', but weights each class’s F1 by its support (number of true instances). 
+            # Imbalanced data where you want to reflect class frequencies.
+            # None: Returns F1 per class as an array. Debugging per-class performance.
+            # 'macro': 
+            # Computes F1 for each class independently, then takes the unweighted mean. Treats all classes equally.
+            # Multiclass data where you want equal importance for all classes (ignores imbalance).
+
             f1 = f1_score(all_labels, all_preds, average='macro')
             cm = confusion_matrix(all_labels, all_preds)
-            
+
             # Log advanced metrics to TensorBoard
             self.writer.add_scalar('Metrics/F1', f1, epoch)
-            
-            # Create and log confusion matrix figure using your method
-            cm_fig = self._plot_confusion_matrix(cm, class_names=self.classes, epoch=epoch)
-            self.writer.add_figure('Confusion Matrix', cm_fig, epoch)
-            plt.close(cm_fig)
 
-            print(f"> val_loss: {validation_loss:.5f}, val_acc: {validation_accuracy:.2f}, F1: {f1:.4f}")  # Added F1 to print
+            # Create and log confusion matrix figure
+            cm_fig = self._plot_confusion_matrix(cm, class_names=self.classes, epoch=epoch)
+            self.writer.add_figure('Confusion Matrix', cm_fig, epoch, close=True)  # Added close=True
+            plt.close(cm_fig)  # Extra safety to prevent memory leaks
+
+            print(f"> val_loss: {validation_loss:.5f}, val_acc: {validation_accuracy:.2f}, F1: {f1:.4f}")
 
             # Save validation loss and accuracy
             history["val_loss"].append(validation_loss)
