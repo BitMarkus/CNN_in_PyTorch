@@ -304,6 +304,9 @@ class Train():
             # Calculate standard metrics
             validation_accuracy = validation_accuracy / self.num_val_img
             validation_loss = validation_loss / self.num_val_img
+            # Log validation metrics to TensorBoard
+            self.writer.add_scalar('Accuracy/val', validation_accuracy, epoch)
+            self.writer.add_scalar('Loss/val', validation_loss, epoch)
             
             # Calculate F1 score and confusion matrix
             # Options for parameter average:
