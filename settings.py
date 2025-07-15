@@ -20,7 +20,7 @@ setting = {
 
     # Optimizer:
     # Options: "SGD" and "ADAM"
-    "train_optimizer_type": "ADAM",  
+    "train_optimizer_type": "SGD",  
     # Initial learning rate (later determined by lr scheduler)
     # ADAM: 0.0001-0.0003 (3e-4), 
     # SGD: 0.01-0.001, 0.0001 for pretrained weights!
@@ -68,9 +68,9 @@ setting = {
     "ko_lines": ["KO_1096-01", "KO_1618-01", "KO_BR2986", "KO_BR3075"],
     # Define classes
     # 2 classes (WT and KO):
-    "classes": ["KO", "WT"],
+    # "classes": ["KO", "WT"],
     # 9 classes (one for each cell line):
-    # "classes": ["KO_1096-01", "KO_1618-01", "KO_BR2986", "KO_BR3075", "WT_1618-02", "WT_JG", "WT_JT", "WT_KM", "WT_MS"],
+    "classes": ["KO_1096-01", "KO_1618-01", "KO_BR2986", "KO_BR3075", "WT_1618-02", "WT_JG", "WT_JT", "WT_KM", "WT_MS"],
 
     #########
     # MODEL #

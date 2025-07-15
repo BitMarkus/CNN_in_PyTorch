@@ -153,31 +153,27 @@ class Train():
 
     # Creates a styled confusion matrix plot
     def _plot_confusion_matrix(self, cm, class_names=None, epoch=None):
-        fig, ax = plt.subplots(figsize=(12, 12))  # Larger figure size
-        
+        fig, ax = plt.subplots(figsize=(8, 8))
         # Normalize and plot
         cm_normalized = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis]
         im = ax.imshow(cm_normalized, interpolation='nearest', cmap=plt.cm.Blues)
-        
         # Customize fonts
-        title_font = {'size': 16, 'weight': 'bold'}
-        label_font = {'size': 14}
-        tick_font = {'size': 12}
-        
-        # Add labels with larger fonts
+        title_font = {'size': 20, 'weight': 'bold'}
+        label_font = {'size': 20}
+        tick_font = {'size': 20}
+        text_font = {'size': 20}
+        # Add labels/title
         ax.set_xlabel('Predicted Label', fontdict=label_font)
         ax.set_ylabel('True Label', fontdict=label_font)
         ax.set_title(f'Confusion Matrix (Epoch {epoch+1})' if epoch else 'Confusion Matrix', 
                     fontdict=title_font)
-        
-        # Class names (if provided)
+        # Class names
         if class_names:
             ax.set_xticks(np.arange(len(class_names)))
             ax.set_yticks(np.arange(len(class_names)))
             ax.set_xticklabels(class_names, rotation=45, ha="right", fontdict=tick_font)
             ax.set_yticklabels(class_names, fontdict=tick_font)
-        
-        # Annotations (larger font)
+        # Annotations
         thresh = cm_normalized.max() / 2.
         for i in range(cm.shape[0]):
             for j in range(cm.shape[1]):
@@ -185,9 +181,11 @@ class Train():
                     f"{cm_normalized[i,j]:.1%}\n({cm[i,j]})", 
                     ha="center", va="center",
                     color="white" if cm_normalized[i,j] > thresh else "black",
-                    fontsize=12)  # Increased from 8 to 12
+                    fontdict=text_font)
+        # Colorbar
+        cbar = plt.colorbar(im, fraction=0.046, pad=0.04)
+        cbar.ax.tick_params(labelsize=20)
         
-        plt.colorbar(im, fraction=0.046, pad=0.04)
         plt.tight_layout()
         return fig
 
@@ -196,7 +194,7 @@ class Train():
         # Save best accuracy for model saving
         best_accuracy = 0.0
         # Track train and validation accuracy, train and accuracy loss and learning rate every epoch
-        history = {"train_acc": [], "train_loss": [], "val_acc": [], "val_loss": [], "lr": [], "f1": []}  # Added "f1" to history
+        history = {"train_acc": [], "train_loss": [], "val_acc": [], "val_loss": [], "lr": [], "f1": []}
 
         # Iterate over epochs
         for epoch in range(self.num_epochs):
