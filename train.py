@@ -35,17 +35,19 @@ class Train():
         self.writer = SummaryWriter(f"logs/{datetime.now().strftime('%Y%m%d-%H%M%S')}")
         # Create a custom layout for TensorBoard
         custom_layout = {
-            'Loss': {
-                'TrainingLoss': ['Scalar', 'Loss/train'],
-                'ValidationLoss': ['Scalar', 'Loss/val'],
-            },
             'Accuracy': {
-                'TrainingAccuracy': ['Scalar', 'Accuracy/train'],
-                'ValidationAccuracy': ['Scalar', 'Accuracy/val'],
+                'Training Accuracy': ['Scalar', 'Accuracy/Train'],
+                'Validation Accuracy': ['Scalar', 'Accuracy/Val'],
+            },
+            'Loss': {
+                'Training Loss': ['Scalar', 'Loss/Train'],
+                'Validation Loss': ['Scalar', 'Loss/Val'],
             },
             'Metrics': {
-                'LearningRate': ['Scalar', 'Learning Rate'],
-                'F1Score': ['Scalar', 'Metrics/F1'],
+                'F1 Score': ['Scalar', 'Metrics/F1'],
+            },
+            'Learning_Rate': {
+                'Learning Rate': ['Scalar', '00_LR/learning_rate'],
             }
         }
         self.writer.add_custom_scalars(custom_layout)
@@ -204,8 +206,8 @@ class Train():
         # Colorbar
         cbar = plt.colorbar(im, fraction=0.046, pad=0.04)
         cbar.ax.tick_params(labelsize=20)
-        
         plt.tight_layout()
+
         return fig
 
     def train(self, chckpt_pth, plot_pth):
@@ -259,8 +261,8 @@ class Train():
                     train_accuracy += int(torch.sum(prediction==labels.data))
 
                     # Tensorboard: Log batch-level metrics
-                    if batch_idx % 50 == 0:  # Log every 50 batches
-                        self.writer.add_scalar('Loss/train_batch', loss.item(), epoch * len(self.ds_train) + batch_idx)
+                    # if batch_idx % 50 == 0:  # Log every 50 batches
+                    #     self.writer.add_scalar('Loss/train_batch', loss.item(), epoch * len(self.ds_train) + batch_idx)
 
                 # Set learning rate scheduler
                 self.scheduler.step()
@@ -273,7 +275,7 @@ class Train():
                 # Tensorboard: Log epoch-level training metrics
                 self.writer.add_scalar('Loss/train', train_loss, epoch)
                 self.writer.add_scalar('Accuracy/train', train_accuracy, epoch)
-                self.writer.add_scalar('Learning Rate', lr, epoch)              
+                self.writer.add_scalar('00_LR/learning_rate', lr, epoch)             
 
                 print(f"> train_loss: {train_loss:.5f}, train_acc: {train_accuracy:.2f}, lr: {lr:.6f}")
 
@@ -331,17 +333,19 @@ class Train():
             # Options for parameter average:
             # 'binary': 
             # Only reports F1 for the positive class in binary classification. Uses pos_label to specify which class is "positive".
-            # Binary classification only (not for multiclass).
+            # -> Binary classification only (not for multiclass).
             # 'micro': 
             # Calculates global F1 by summing all TPs, FPs, FNs across classes, then computes F1. Class-agnostic. 
-            # Imbalanced data where you care about overall performance (favors majority classes).
-            # 'weighted': 
-            # Like 'macro', but weights each class’s F1 by its support (number of true instances). 
-            # Imbalanced data where you want to reflect class frequencies.
-            # None: Returns F1 per class as an array. Debugging per-class performance.
+            # -> Imbalanced data where you care about overall performance (favors majority classes).
             # 'macro': 
             # Computes F1 for each class independently, then takes the unweighted mean. Treats all classes equally.
-            # Multiclass data where you want equal importance for all classes (ignores imbalance).
+            # -> Multiclass data where you want equal importance for all classes (ignores imbalance).
+            # 'weighted': 
+            # Like 'macro', but weights each class’s F1 by its support (number of true instances). 
+            # -> Imbalanced data where you want to reflect class frequencies.
+            # 'None': 
+            # Returns F1 per class as an array. 
+            # -> Debugging per-class performance.
             f1 = f1_score(all_labels, all_preds, average='macro')
             cm = confusion_matrix(all_labels, all_preds)
 
@@ -372,8 +376,17 @@ class Train():
 
         # Tensorboard: Log hyperparameters and close writer
         self.writer.add_hparams(
-            {"lr": self.init_lr, "batch_size": setting["ds_batch_size"], "momentum": self.sgd_momentum},
-            {"hparam/val_accuracy": max(history["val_acc"]), "hparam/val_loss": min(history["val_loss"])},
+            # Hyperparameters (inputs being tested)
+            {
+                "lr": self.init_lr,                     # Learning rate
+                "batch_size": setting["ds_batch_size"], # Batch size from config
+                "momentum": self.sgd_momentum           # SGD momentum (if using SGD)
+            },
+            # Metrics (outputs to evaluate)
+            {
+                "hparam/val_accuracy": max(history["val_acc"]),  # Best validation accuracy
+                "hparam/val_loss": min(history["val_loss"])      # Lowest validation loss
+            },
         )
         self.writer.close()
 
