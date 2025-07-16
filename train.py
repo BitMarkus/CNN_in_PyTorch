@@ -201,7 +201,7 @@ class Train():
                     f"{cm_normalized[i,j]:.1%}\n({cm[i,j]})", 
                     ha="center", va="center",
                     color="white" if cm_normalized[i,j] > thresh else "black",
-                    fontdict=text_font)
+                    fontsize=text_font['size'])
         # Colorbar
         cbar = plt.colorbar(im, fraction=0.046, pad=0.04)
         cbar.ax.tick_params(labelsize=10)
