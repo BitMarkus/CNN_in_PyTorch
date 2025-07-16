@@ -8,7 +8,7 @@ from torch import nn
 from tqdm import tqdm
 import torch
 import matplotlib.pyplot as plt
-from torch.cuda.amp import GradScaler, autocast 
+from torch.amp import GradScaler, autocast 
 from torch.utils.tensorboard import SummaryWriter
 from sklearn.metrics import f1_score, confusion_matrix
 from datetime import datetime
@@ -22,7 +22,8 @@ class Train():
     #############################################################################################################
     # CONSTRUCTOR:
     
-    def __init__(self, cnn_wrapper, dataset):
+    def __init__(self, cnn_wrapper, dataset, device):
+        self.device = device
         # CNN object for methods
         self.cnn_wrapper = cnn_wrapper
         # Model
@@ -243,7 +244,7 @@ class Train():
                     # Clear gradients
                     self.optimizer.zero_grad() 
                     # Enable mixed precision
-                    with autocast():
+                    with autocast(device_type='cuda', enabled=self.device.type == 'cuda'):
                         # Forward          
                         outputs = self.cnn(images)
                         loss = self.loss_function(outputs, labels)

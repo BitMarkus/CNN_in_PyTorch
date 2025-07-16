@@ -109,7 +109,7 @@ def main():
             else:
                 print("Start training...")
                 # Create a training object
-                train = Train(cnn_wrapper, ds)
+                train = Train(cnn_wrapper, ds, device)
                 # Train network
                 train.train(setting["pth_checkpoint"], setting["pth_plots"])
                 print("\nTraining finished!")

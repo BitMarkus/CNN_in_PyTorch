@@ -22,6 +22,7 @@ from itertools import product
 import json
 from sklearn.metrics import balanced_accuracy_score
 from pathlib import Path
+from torch.amp import autocast 
 # Own modules
 from dataset import Dataset
 from model import CNN_Model
@@ -267,7 +268,7 @@ class ConfidenceAnalyzer:
         total_images = len(ds.ds_test.dataset)
         
         with torch.no_grad():
-            with torch.cuda.amp.autocast():  # Mixed precision if using CUDA
+            with autocast(device_type='cuda', enabled=self.device.type == 'cuda'):  # Mixed precision if using CUDA
                 # Add progress bar for image predictions
                 with tqdm(
                     ds.ds_test,
