@@ -178,10 +178,10 @@ class Train():
         cm_normalized = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis]
         im = ax.imshow(cm_normalized, interpolation='nearest', cmap=plt.cm.Blues)
         # Customize fonts
-        title_font = {'size': 20, 'weight': 'bold'}
-        label_font = {'size': 20}
-        tick_font = {'size': 20}
-        text_font = {'size': 20}
+        title_font = {'size': 14, 'weight': 'bold'}
+        label_font = {'size': 12}
+        tick_font = {'size': 10}
+        text_font = {'size': 8}
         # Add labels/title
         ax.set_xlabel('Predicted Label', fontdict=label_font)
         ax.set_ylabel('True Label', fontdict=label_font)
@@ -204,7 +204,7 @@ class Train():
                     fontdict=text_font)
         # Colorbar
         cbar = plt.colorbar(im, fraction=0.046, pad=0.04)
-        cbar.ax.tick_params(labelsize=20)
+        cbar.ax.tick_params(labelsize=10)
         plt.tight_layout()
 
         return fig
