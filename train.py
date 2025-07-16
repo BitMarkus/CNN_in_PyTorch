@@ -45,10 +45,8 @@ class Train():
             },
             'Metrics': {
                 'F1 Score': ['Scalar', 'Metrics/F1'],
+                'Learning Rate': ['Scalar', 'Metrics/LR'],
             },
-            'Learning_Rate': {
-                'Learning Rate': ['Scalar', '00_LR/learning_rate'],
-            }
         }
         self.writer.add_custom_scalars(custom_layout)
         # Pretrained
@@ -275,7 +273,7 @@ class Train():
                 # Tensorboard: Log epoch-level training metrics
                 self.writer.add_scalar('Loss/train', train_loss, epoch)
                 self.writer.add_scalar('Accuracy/train', train_accuracy, epoch)
-                self.writer.add_scalar('00_LR/learning_rate', lr, epoch)             
+                self.writer.add_scalar('Metrics/LR', lr, epoch)             
 
                 print(f"> train_loss: {train_loss:.5f}, train_acc: {train_accuracy:.2f}, lr: {lr:.6f}")
 
