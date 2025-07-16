@@ -33,6 +33,22 @@ class Train():
         # Run the following command: tensorboard --logdir=logs/ --host=localhost (Optional: --reload_interval 30)
         # Open http://localhost:6006/ in web browser
         self.writer = SummaryWriter(f"logs/{datetime.now().strftime('%Y%m%d-%H%M%S')}")
+        # Create a custom layout for TensorBoard
+        custom_layout = {
+            'Loss': {
+                'TrainingLoss': ['Scalar', 'Loss/train'],
+                'ValidationLoss': ['Scalar', 'Loss/val'],
+            },
+            'Accuracy': {
+                'TrainingAccuracy': ['Scalar', 'Accuracy/train'],
+                'ValidationAccuracy': ['Scalar', 'Accuracy/val'],
+            },
+            'Metrics': {
+                'LearningRate': ['Scalar', 'Learning Rate'],
+                'F1Score': ['Scalar', 'Metrics/F1'],
+            }
+        }
+        self.writer.add_custom_scalars(custom_layout)
         # Pretrained
         self.is_pretrained = setting["cnn_is_pretrained"] 
         # Datasets
@@ -114,41 +130,44 @@ class Train():
     #############################################################################################################
     # METHODS:
 
-    # Plots accuracy, loss, and learning rate after training
+    # Plots accuracy, loss, f1 score, and learning rate after training
     def _plot_metrics(self, history, plot_path, show_plot=True, save_plot=True):
         # Number of epochs
         epochs_range = range(1, len(history["train_loss"]) + 1)
-        # Draw plots
-        plt.figure(figsize=(15, 5))
-        # Accuracy plot:
-        plt.subplot(1, 3, 1)
+        # Create 2x2 grid layout
+        plt.figure(figsize=(15, 12))  # Increased height for 2x2 layout
+        # Accuracy plot (top-left)
+        plt.subplot(2, 2, 1)
         plt.plot(epochs_range, history["train_acc"], label='Training Accuracy', color='green')
         plt.plot(epochs_range, history["val_acc"], label='Validation Accuracy', color='red')
         plt.legend(loc='lower right')
         plt.title('Training and Validation Accuracy')
-        # Loss plot:
-        plt.subplot(1, 3, 2)
-        # Set the range of y-axis
-        plt.ylim(0, 5)
+        # Loss plot (top-right)
+        plt.subplot(2, 2, 2)
+        plt.ylim(0, 5)  # Set the range of y-axis
         plt.plot(epochs_range, history["train_loss"], label='Training Loss', color='green')
         plt.plot(epochs_range, history["val_loss"], label='Validation Loss', color='red')
         plt.legend(loc='upper right')
         plt.title('Training and Validation Loss')
-        # Learning rate plot:
-        plt.subplot(1, 3, 3)
-        # convert y-axis to Logarithmic scale
-        # plt.yscale("log")
+        # Learning rate plot (bottom-left)
+        plt.subplot(2, 2, 3)
         plt.plot(epochs_range, history["lr"], label='Learning Rate', color='blue')
         plt.legend(loc='upper right')
         plt.title('Learning Rate')
-        # Reduce unnecessary whitespaces around the plots
-        # https://stackoverflow.com/questions/4042192/reduce-left-and-right-margins-in-matplotlib-plot
+        # F1 score plot (bottom-right)
+        plt.subplot(2, 2, 4)
+        plt.plot(epochs_range, history["f1"], label='F1 Score', color='red')
+        plt.ylim(0, 1)  # F1 score ranges between 0 and 1
+        plt.legend(loc='lower right')
+        plt.title('F1 Score (Macro)')
+        
+        # Adjust layout
         plt.tight_layout()
         # Save plot
-        if(save_plot):
-            plt.savefig(str(plot_path / "train_metrics"), bbox_inches='tight')  # Modified path handling
-        # Show and save plot
-        if(show_plot):
+        if save_plot:
+            plt.savefig(str(plot_path / "train_metrics"), bbox_inches='tight', dpi=300)
+        # Show plot
+        if show_plot:
             plt.show()
 
     # Creates a styled confusion matrix plot
@@ -240,7 +259,7 @@ class Train():
                     train_accuracy += int(torch.sum(prediction==labels.data))
 
                     # Tensorboard: Log batch-level metrics
-                    if batch_idx % 10 == 0:  # Log every 10 batches
+                    if batch_idx % 50 == 0:  # Log every 50 batches
                         self.writer.add_scalar('Loss/train_batch', loss.item(), epoch * len(self.ds_train) + batch_idx)
 
                 # Set learning rate scheduler
@@ -252,9 +271,9 @@ class Train():
                 lr = self.scheduler.get_last_lr()[0]
 
                 # Tensorboard: Log epoch-level training metrics
-                self.writer.add_scalar('Accuracy/train', train_accuracy, epoch)
                 self.writer.add_scalar('Loss/train', train_loss, epoch)
-                self.writer.add_scalar('Learning Rate', lr, epoch)               
+                self.writer.add_scalar('Accuracy/train', train_accuracy, epoch)
+                self.writer.add_scalar('Learning Rate', lr, epoch)              
 
                 print(f"> train_loss: {train_loss:.5f}, train_acc: {train_accuracy:.2f}, lr: {lr:.6f}")
 
@@ -305,8 +324,8 @@ class Train():
             validation_accuracy = validation_accuracy / self.num_val_img
             validation_loss = validation_loss / self.num_val_img
             # Log validation metrics to TensorBoard
-            self.writer.add_scalar('Accuracy/val', validation_accuracy, epoch)
             self.writer.add_scalar('Loss/val', validation_loss, epoch)
+            self.writer.add_scalar('Accuracy/val', validation_accuracy, epoch)
             
             # Calculate F1 score and confusion matrix
             # Options for parameter average:
@@ -323,7 +342,6 @@ class Train():
             # 'macro': 
             # Computes F1 for each class independently, then takes the unweighted mean. Treats all classes equally.
             # Multiclass data where you want equal importance for all classes (ignores imbalance).
-
             f1 = f1_score(all_labels, all_preds, average='macro')
             cm = confusion_matrix(all_labels, all_preds)
 
