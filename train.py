@@ -89,7 +89,7 @@ class Train():
                 self.cnn.parameters(),
                 lr=self.init_lr, 
                 weight_decay=self.weight_decay, 
-                betas=(0.9, 0.999),
+                betas=(self.adam_beta1, self.adam_beta2),
                 amsgrad=True
             )
         elif(self.optimizer_type == "SGD"):
