@@ -95,7 +95,9 @@ def main():
                 print("Training and validation datasets successfully loaded.")
                 print(f"Number training images/batches: {ds.num_train_img}/{ds.num_train_batches}")
                 print(f"Number validation images/batches: {ds.num_val_img}/{ds.num_val_batches}") 
-                ds.show_training_examples(setting["pth_plots"])
+                # Save training examples
+                ds.show_training_examples(setting["pth_plots"], num_images=25, rows=5, cols=5, figsize=(12, 12))
+                print(f"Training image examples were saved to {str(setting['pth_plots'])}.")
 
         #################
         # Train Network #  

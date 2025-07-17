@@ -79,7 +79,7 @@ class Dataset():
                 mean=[0.485, 0.456, 0.406], 
                 std=[0.229, 0.224, 0.225]
             ))
-            
+
         else:
             raise ValueError(f"Unsupported input_channels: {self.input_channels}. Use 1 (grayscale) or 3 (RGB).")
 
@@ -107,7 +107,11 @@ class Dataset():
                     transforms.RandomRotation(degrees=[180, 180]),
                     transforms.RandomRotation(degrees=[270, 270]),
                 ]),
-                transforms.RandomRotation(degrees=10, fill=0),  # Small-angle (PIL fill=0 is black)
+
+                # Small angle rotations
+                # fill=0: black background, 
+                # fill=255: white background, 
+                transforms.RandomRotation(degrees=10, fill=100), 
 
                 # Convert to tensor early for torch-based ops
                 transforms.ToTensor(),
@@ -293,7 +297,7 @@ class Dataset():
         else:
             plt.imshow(grid.permute(1, 2, 0))  # CHW -> HWC for matplotlib
         plt.axis('off')
-        plt.title(f"Transformed Images (Normalized → Denormalized)\nGrid: {rows}x{cols}")
+        plt.title(f"Training Image Examples")
 
         # Adjust layout
         plt.tight_layout()
