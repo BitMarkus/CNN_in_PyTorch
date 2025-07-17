@@ -167,6 +167,7 @@ class Train():
         # Save plot
         if save_plot:
             plt.savefig(str(plot_path / "train_metrics"), bbox_inches='tight', dpi=300)
+            plt.close()
         # Show plot
         if show_plot:
             plt.show()

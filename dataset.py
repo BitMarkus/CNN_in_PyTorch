@@ -2,11 +2,15 @@
 # Dataset handling #
 ####################
 
+import torch
 from torchvision.transforms import transforms
 import torchvision
 import numpy as np
+import random 
 from torch.utils.data.sampler import SubsetRandomSampler
 from torch.utils.data import DataLoader
+import matplotlib.pyplot as plt
+import torchvision.utils as vutils
 # Own modules
 from settings import setting
 
@@ -61,28 +65,25 @@ class Dataset():
 
     # Transformer for testing and predicting WITHOUT AUGMENTATIONS
     def get_transformer_test(self):
-        # Transformer for Grayscale images
-        # https://stackoverflow.com/questions/60116208/pytorch-load-dataset-of-grayscale-images
-        if(self.input_channels == 1):
-            transformer = transforms.Compose([        
-                # 0-255 to 0-1, numpy to tensors:
-                transforms.ToTensor(), 
-                # Normalization
-                transforms.Grayscale(num_output_channels=1), # <- Grayscale
-            ])
-            return transformer
+        # Common base for both grayscale and RGB
+        base_transforms = [transforms.ToTensor()] 
 
-        # Transformer for RGB images
-        # https://pytorch.org/hub/pytorch_vision_resnet/
-        elif(self.input_channels == 3):
-            transformer = transforms.Compose([
-                transforms.ToTensor(), 
-                transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]), # <- RGB
-            ])
-            return transformer
+        if self.input_channels == 1:
+            # Grayscale pipeline
+            base_transforms.insert(0, transforms.Grayscale(num_output_channels=1))  # Early conversion
+            base_transforms.append(transforms.Normalize(mean=[0.5], std=[0.5]))  # [-1, 1]
 
+        elif self.input_channels == 3:
+            # RGB pipeline (using ImageNet stats)
+            base_transforms.append(transforms.Normalize(
+                mean=[0.485, 0.456, 0.406], 
+                std=[0.229, 0.224, 0.225]
+            ))
+            
         else:
-            return False
+            raise ValueError(f"Unsupported input_channels: {self.input_channels}. Use 1 (grayscale) or 3 (RGB).")
+
+        return transforms.Compose(base_transforms)
 
     # Transformer for training WITH AUGMENTATIONS
     def get_transformer_train(self):
@@ -93,32 +94,34 @@ class Dataset():
 
                 # No resize needed as the images are already 512x512
                 # transforms.Resize((self.input_height, self.input_width)),
-                
-                # Augmentations (DIC specific):
-                # Random 90° rotations (0°, 90°, 180°, 270°)
+
+                # Convert to grayscale first (1 channel)
+                transforms.Grayscale(num_output_channels=1),
+
+                # Spatial augmentations (PIL-level)
+                transforms.RandomHorizontalFlip(p=0.5),
+                transforms.RandomVerticalFlip(p=0.5),
                 transforms.RandomChoice([
-                    transforms.RandomRotation(degrees=[0, 0]),    # 0° (25% chance)
-                    transforms.RandomRotation(degrees=[90, 90]),  # 90° (25% chance)
-                    transforms.RandomRotation(degrees=[180, 180]), # 180° (25% chance)
-                    transforms.RandomRotation(degrees=[270, 270]), # 270° (25% chance)
+                    transforms.RandomRotation(degrees=[0, 0]),
+                    transforms.RandomRotation(degrees=[90, 90]),
+                    transforms.RandomRotation(degrees=[180, 180]),
+                    transforms.RandomRotation(degrees=[270, 270]),
                 ]),
+                transforms.RandomRotation(degrees=10, fill=0),  # Small-angle (PIL fill=0 is black)
 
-                # Small-angle rotations (±10°)
-                # The two rotation steps will compound (e.g., an image might get 5° + 90° rotation)
-                # transforms.RandomRotation(degrees=10, expand=False, fill=0),
+                # Convert to tensor early for torch-based ops
+                transforms.ToTensor(),
 
-                # Brightness/contrast adjustments
-                # Values of 0.2 (~±20% change) are conservative to avoid unrealistic images
-                transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0, hue=0),
+                # Intensity augmentations (tensor-level)
+                transforms.ColorJitter(brightness=0.2, contrast=0.2),
+                transforms.Lambda(lambda x: x ** random.uniform(0.8, 1.2)),  # Gamma correction
 
-                # DIC images are sensitive to focus shifts. Add slight blur to simulate focal plane variability
-                transforms.RandomApply([transforms.GaussianBlur(kernel_size=3, sigma=(0.1, 0.5))], p=0.3),                
+                # Optical augmentations (tensor-level)
+                transforms.RandomApply([transforms.GaussianBlur(kernel_size=5, sigma=(0.1, 0.5))], p=0.5),
+                transforms.Lambda(lambda x: torch.clamp(x + (torch.poisson(x * 0.05) * 0.1), 0, 1)),
 
-                # 0-255 to 0-1, numpy to tensors:
-                transforms.ToTensor(), 
-
-                # Normalization
-                transforms.Grayscale(num_output_channels=1), # <- Grayscale
+                # Normalize to [-1, 1] (mean=0.5, std=0.5)
+                transforms.Normalize(mean=[0.5], std=[0.5]),
             ])
             return transformer
 
@@ -127,18 +130,31 @@ class Dataset():
         elif(self.input_channels == 3):
             transformer = transforms.Compose([
                 # transforms.Resize((self.input_height, self.input_width)),
-                # Augmentations (DIC specific):
+
+                # Spatial augmentations (PIL-level)
+                transforms.RandomHorizontalFlip(p=0.5),
+                transforms.RandomVerticalFlip(p=0.5),
                 transforms.RandomChoice([
                     transforms.RandomRotation(degrees=[0, 0]),
                     transforms.RandomRotation(degrees=[90, 90]),
                     transforms.RandomRotation(degrees=[180, 180]),
                     transforms.RandomRotation(degrees=[270, 270]),
                 ]),
-                # transforms.RandomRotation(degrees=10, expand=False, fill=0),
-                transforms.ColorJitter(brightness=0.3, contrast=0.3, saturation=0, hue=0),
-                transforms.RandomApply([transforms.GaussianBlur(kernel_size=3, sigma=(0.1, 0.5))], p=0.3),   
-                transforms.ToTensor(), 
-                transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]), # <- RGB
+                transforms.RandomRotation(degrees=10, fill=0),  # Small-angle rotation
+                
+                # Convert to tensor
+                transforms.ToTensor(),
+                
+                # Intensity augmentations
+                transforms.ColorJitter(brightness=0.3, contrast=0.2, saturation=0.2),
+                transforms.Lambda(lambda x: x ** random.uniform(0.8, 1.2)),  # Gamma correction
+                
+                # Optical augmentations
+                transforms.RandomApply([transforms.GaussianBlur(kernel_size=5, sigma=(0.1, 0.5))], p=0.5),
+                transforms.Lambda(lambda x: torch.clamp(x + (torch.poisson(x * 0.05) * 0.1, 0, 1))),  # Fixed this line
+                
+                # Normalization
+                transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
             ])
             return transformer
 
@@ -238,4 +254,54 @@ class Dataset():
         else:
             print("Loading of dataset failed! Input images must have either one (grayscale) or three (RGB) channels.")
             return False
+        
+    # Show dataset examples after normalization
+    def show_training_examples(self, plot_path, num_images=9, rows=3, cols=3, figsize=(10, 10), show_plot=False, save_plot=True):
+
+        if not self.ds_loaded:
+            print("Error: Dataset not loaded. Call load_training_dataset() first.")
+            return
+        
+        # Get a batch of images from the training loader
+        data_iter = iter(self.ds_train)
+        images, _ = next(data_iter)  # Assumes batch_size >= num_images
+        
+        # If batch_size < num_images, pad with empty tensors
+        if images.shape[0] < num_images:
+            empty_images = torch.zeros((num_images - images.shape[0], *images.shape[1:]))
+            images = torch.cat([images, empty_images], dim=0)
+        else:
+            images = images[:num_images]
+        
+        # Denormalize images back to [0,1] range for visualization
+        if self.input_channels == 1:
+            # Grayscale: mean=0.5, std=0.5
+            images = images * 0.5 + 0.5
+        elif self.input_channels == 3:
+            # RGB: ImageNet stats
+            mean = torch.tensor([0.485, 0.456, 0.406]).view(1, 3, 1, 1)
+            std = torch.tensor([0.229, 0.224, 0.225]).view(1, 3, 1, 1)
+            images = images * std + mean
+        
+        # Create grid
+        grid = vutils.make_grid(images, nrow=cols, padding=2, normalize=False)
+        
+        # Plot
+        plt.figure(figsize=figsize)
+        if self.input_channels == 1:
+            plt.imshow(grid[0], cmap='gray')
+        else:
+            plt.imshow(grid.permute(1, 2, 0))  # CHW -> HWC for matplotlib
+        plt.axis('off')
+        plt.title(f"Transformed Images (Normalized → Denormalized)\nGrid: {rows}x{cols}")
+
+        # Adjust layout
+        plt.tight_layout()
+        # Save plot
+        if save_plot:
+            plt.savefig(str(plot_path / "training_examples"), bbox_inches='tight', dpi=300)
+            plt.close()
+        # Show plot
+        if show_plot:
+            plt.show()
 
