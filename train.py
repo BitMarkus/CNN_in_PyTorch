@@ -181,8 +181,8 @@ class Train():
         # Customize fonts
         title_font = {'size': 14, 'weight': 'bold'}
         label_font = {'size': 12}
-        tick_font = {'size': 10}
-        text_font = {'size': 8}
+        tick_font = {'size': 12}
+        text_font = {'size': 12}
         # Add labels/title
         ax.set_xlabel('Predicted Label', fontdict=label_font)
         ax.set_ylabel('True Label', fontdict=label_font)
@@ -205,7 +205,7 @@ class Train():
                     fontsize=text_font['size'])
         # Colorbar
         cbar = plt.colorbar(im, fraction=0.046, pad=0.04)
-        cbar.ax.tick_params(labelsize=10)
+        cbar.ax.tick_params(labelsize=12)
         plt.tight_layout()
 
         return fig

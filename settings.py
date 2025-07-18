@@ -44,9 +44,61 @@ setting = {
     # SGD: 1e-5, ADAM: 1e-4 
     "train_lr_eta_min": 1e-4,
 
-    # Augmentations for training
+    #################
+    # AUGMENTATIONS #
+    #################
+
+    # Use augmentations
     "train_use_augment": True, 
-    # Label smoothing
+
+    # FLIP AND ROTATION AUGMENTATIONS:
+    # Horizontal flip probability
+    "aug_hori_flip_prob": 0.5, 
+    # Vertical flip probability
+    "aug_vert_flip_prob": 0.5,
+    # Probability of 90° angle rotations
+    "aug_90_angle_rot_prob": 0.5,
+    # Probability of small angle rotations 
+    "aug_small_angle_rot_prob": 0.5,
+    # Small-angle rotation
+    "aug_small_angle_rot": 10, 
+    # Fill color for gaps due to small angle rotation
+    # fill=0: black background, fill=255: white background
+    "aug_small_angle_fill_gray": 100,
+    "aug_small_angle_fill_rgb": (255, 255, 255),
+
+    # INTENSITY AUGMENTATIONS:
+    "aug_intense_prob": 0.5,
+    "aug_brightness": 0.2,
+    "aug_contrast": 0.2,
+    "aug_saturation": 0.2, # only for RGB images
+    # Gamma correction
+    # Gamma = 1: No change. The image looks "natural" (linear brightness)
+    # Gamma < 1 (e.g., 0.5): Dark areas get brighter, bright areas stay mostly the same
+    # Gamma > 1 (e.g., 2.0): Bright areas get darker, dark areas stay mostly the same
+    "aug_gamma_prob": 0.5,
+    "aug_gamma_min": 0.8,
+    "aug_gamma_max": 1.2,
+
+    # OPTICAL AUGMENTATIONS:
+    # Gaussian Blur Parameters
+    # Probability
+    "aug_gauss_prob": 0.5,
+    # Kernel size
+    "aug_gauss_kernel_size": 5,
+    # Sigma: ontrols the "spread" of the blur (how intense/smooth it is)
+    "aug_gauss_sigma_min": 0.1,
+    "aug_gauss_sigma_max": 0.5,
+    # Poisson noise
+    # Probability
+    "aug_poiss_prob": 1.0, 
+    # Controls how much the noise depends on image brightness
+    # Suggested range: 0.01-0.1 (higher = more noise)
+    "aug_poiss_scaling": 0.05,  # 5% of pixel value
+    # Noise Strength: Final noise intensity multiplier
+    "aug_poiss_noise_strength": 0.1,
+
+    # LABEL SMOOTHING
     # 0.0: No smoothing (default CrossEntropyLoss). Hard labels (0 or 1)
     # 0.1: 10% smoothing (e.g., correct class = 0.9, others share 0.1/classes)
     # 0.2: 20% smoothing, etc.

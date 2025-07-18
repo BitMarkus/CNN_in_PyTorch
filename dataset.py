@@ -57,8 +57,60 @@ class Dataset():
         self.ds_val = None
         self.ds_test = None
         self.ds_pred = None
-        # Augentatioms for dataset
+
+        ################
+        # Augentations #
+        ################
+
+        # Use augmentations
         self.train_use_augment = setting["train_use_augment"]
+
+        # FLIP AND ROTATION AUGMENTATIONS:
+        # Horizontal flip probability
+        self.hori_flip_prob = setting["aug_hori_flip_prob"]
+        # Vertical flip probability
+        self.vert_flip_prob = setting["aug_vert_flip_prob"]
+        # Probability of 90° angle rotations
+        self.aug_90_angle_rot_prob = setting["aug_90_angle_rot_prob"]
+        # Probability of small angle rotations
+        self.small_angle_rot_prob = setting["aug_small_angle_rot_prob"] 
+        # Small-angle rotation
+        self.small_angle_rot = setting["aug_small_angle_rot"] 
+        # Fill color for gaps due to small angle rotation
+        # fill=0: black background, fill=255: white background
+        self.small_angle_fill_gray = setting["aug_small_angle_fill_gray"] # For grayscale images
+        self.small_angle_fill_rgb = setting["aug_small_angle_fill_rgb"] # For RGB images
+
+        # INTENSITY AUGMENTATIONS:
+        self.intense_prob = setting["aug_intense_prob"]
+        self.brightness = setting["aug_brightness"]
+        self.contrast = setting["aug_contrast"]
+        self.saturation = setting["aug_saturation"] # only for RGB images
+        # Gamma correction
+        # Gamma = 1: No change. The image looks "natural" (linear brightness)
+        # Gamma < 1 (e.g., 0.5): Dark areas get brighter, bright areas stay mostly the same
+        # Gamma > 1 (e.g., 2.0): Bright areas get darker, dark areas stay mostly the same
+        self.gamma_prob = setting["aug_gamma_prob"]
+        self.gamma_min = setting["aug_gamma_min"]
+        self.gamma_max = setting["aug_gamma_max"]
+
+        # OPTICAL AUGMENTATIONS:
+        # Gaussian Blur Parameters
+        # Probability
+        self.gauss_prob = setting["aug_gauss_prob"]
+        # Kernel size
+        self.gauss_kernel_size = setting["aug_gauss_kernel_size"]
+        # Sigma: ontrols the "spread" of the blur (how intense/smooth it is)
+        self.gauss_sigma_min = setting["aug_gauss_sigma_min"]
+        self.gauss_sigma_max = setting["aug_gauss_sigma_max"]
+        # Poisson noise
+        # Probability
+        self.poiss_prob = setting["aug_poiss_prob"]
+        # Controls how much the noise depends on image brightness
+        # Suggested range: 0.01-0.1 (higher = more noise)
+        self.poiss_scaling = setting["aug_poiss_scaling"]
+        # Noise Strength: Final noise intensity multiplier
+        self.poiss_noise_strength = setting["aug_poiss_noise_strength"]
 
     #############################################################################################################
     # METHODS:
@@ -75,10 +127,7 @@ class Dataset():
 
         elif self.input_channels == 3:
             # RGB pipeline (using ImageNet stats)
-            base_transforms.append(transforms.Normalize(
-                mean=[0.485, 0.456, 0.406], 
-                std=[0.229, 0.224, 0.225]
-            ))
+            base_transforms.append(transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]))
 
         else:
             raise ValueError(f"Unsupported input_channels: {self.input_channels}. Use 1 (grayscale) or 3 (RGB).")
@@ -99,31 +148,61 @@ class Dataset():
                 transforms.Grayscale(num_output_channels=1),
 
                 # Spatial augmentations (PIL-level)
-                transforms.RandomHorizontalFlip(p=0.5),
-                transforms.RandomVerticalFlip(p=0.5),
-                transforms.RandomChoice([
-                    transforms.RandomRotation(degrees=[0, 0]),
-                    transforms.RandomRotation(degrees=[90, 90]),
-                    transforms.RandomRotation(degrees=[180, 180]),
-                    transforms.RandomRotation(degrees=[270, 270]),
-                ]),
+                # Flip the image horizontally and vertically with 50% probability
+                transforms.RandomHorizontalFlip(p=self.hori_flip_prob),
+                transforms.RandomVerticalFlip(p=self.vert_flip_prob),
 
-                # Small angle rotations
+                # Applies one of four fixed rotations (0°, 90°, 180°, 270°) at random
+                transforms.RandomApply(
+                    [
+                        transforms.RandomChoice([
+                            transforms.RandomRotation(degrees=[0, 0]),    # 0°
+                            transforms.RandomRotation(degrees=[90, 90]),  # 90°
+                            transforms.RandomRotation(degrees=[180, 180]),# 180°
+                            transforms.RandomRotation(degrees=[270, 270]) # 270°
+                        ])
+                    ],
+                    p=self.aug_90_angle_rot_prob 
+                ),
+                # Rotates the image by a small random angle (±10°) with a gray background
                 # fill=0: black background, 
                 # fill=255: white background, 
-                transforms.RandomRotation(degrees=10, fill=100), 
+                transforms.RandomApply(
+                    [transforms.RandomRotation(degrees=self.small_angle_rot , fill=self.small_angle_fill_gray)],
+                    p=self.small_angle_rot_prob
+                ),
 
-                # Convert to tensor early for torch-based ops
+                # Convert PIL image to a PyTorch tensor (shape: [1, H, W]) and scales pixel values to [0, 1]
                 transforms.ToTensor(),
 
-                # Intensity augmentations (tensor-level)
-                transforms.ColorJitter(brightness=0.2, contrast=0.2),
-                # Gamma correction
-                transforms.Lambda(lambda x: x ** random.uniform(0.8, 1.2)),  
+                # Intensity augmentations (tensor-level):
+                # Randomly adjust brightness and contrast by up to ±20% to
+                # simulate variations in lighting/staining intensity across samples
+                transforms.RandomApply(
+                    [transforms.ColorJitter(brightness=self.brightness, contrast=self.contrast)],
+                    p=self.intense_prob
+                ),
+                # Gamma correction: Mimics nonlinear microscope/camera responses
+                # Gamma = 1: No change. The image looks "natural" (linear brightness)
+                # Gamma < 1 (e.g., 0.5): Dark areas get brighter, bright areas stay mostly the same
+                # Gamma > 1 (e.g., 2.0): Bright areas get darker, dark areas stay mostly the same
+                transforms.RandomApply(
+                    [transforms.Lambda(lambda x: (x + 1e-6) ** random.uniform(self.gamma_min, self.gamma_max))],
+                    p=self.gamma_prob
+                ),
 
                 # Optical augmentations (tensor-level)
-                transforms.RandomApply([transforms.GaussianBlur(kernel_size=5, sigma=(0.1, 0.5))], p=0.5),
-                transforms.Lambda(lambda x: torch.clamp(x + (torch.poisson(x * 0.05) * 0.1), 0, 1)),
+                # Apply mild Gaussian blur
+                # Simulates slight defocus or motion blur in microscopy
+                transforms.RandomApply(
+                    [transforms.GaussianBlur(kernel_size=self.gauss_kernel_size, sigma=(self.gauss_sigma_min, self.gauss_sigma_max))], 
+                    p=self.gauss_prob
+                ),
+                # Adds Poisson noise (a type of noise common in microscopy/imaging) scaled to 5% of pixel values
+                transforms.RandomApply(
+                    [transforms.Lambda(lambda x: torch.clamp(x + torch.poisson(x * self.poiss_scaling) * self.poiss_noise_strength, 0, 1))],
+                    p=self.poiss_prob
+                ),
 
                 # Normalize to [-1, 1] (mean=0.5, std=0.5)
                 transforms.Normalize(mean=[0.5], std=[0.5]),
@@ -136,29 +215,52 @@ class Dataset():
             transformer = transforms.Compose([
                 # transforms.Resize((self.input_height, self.input_width)),
 
-                # Spatial augmentations (PIL-level)
-                transforms.RandomHorizontalFlip(p=0.5),
-                transforms.RandomVerticalFlip(p=0.5),
-                transforms.RandomChoice([
-                    transforms.RandomRotation(degrees=[0, 0]),
-                    transforms.RandomRotation(degrees=[90, 90]),
-                    transforms.RandomRotation(degrees=[180, 180]),
-                    transforms.RandomRotation(degrees=[270, 270]),
-                ]),
-                # Small-angle rotation
-                transforms.RandomRotation(degrees=10, fill=0),  
+                transforms.RandomHorizontalFlip(p=self.hori_flip_prob),
+                transforms.RandomVerticalFlip(p=self.vert_flip_prob),
+
+                # Applies one of four fixed rotations (0°, 90°, 180°, 270°) at random
+                transforms.RandomApply(
+                    [
+                        transforms.RandomChoice([
+                            transforms.RandomRotation(degrees=[0, 0]),    # 0°
+                            transforms.RandomRotation(degrees=[90, 90]),  # 90°
+                            transforms.RandomRotation(degrees=[180, 180]),# 180°
+                            transforms.RandomRotation(degrees=[270, 270]) # 270°
+                        ])
+                    ],
+                    p=self.aug_90_angle_rot_prob 
+                ),
+                # Rotates the image by a small random angle (±10°) with a gray background
+                transforms.RandomApply(
+                    [transforms.RandomRotation(degrees=self.small_angle_rot , fill=self.small_angle_fill_rgb)],
+                    p=self.small_angle_rot_prob
+                ),
                 
                 # Convert to tensor
                 transforms.ToTensor(),
                 
                 # Intensity augmentations
-                transforms.ColorJitter(brightness=0.3, contrast=0.2, saturation=0.2),
-                 # Gamma correction
-                transforms.Lambda(lambda x: x ** random.uniform(0.8, 1.2)), 
+                transforms.RandomApply(
+                    [transforms.ColorJitter(brightness=self.brightness, contrast=self.contrast, saturation=self.saturation)],
+                    p=self.intense_prob
+                ),
+                # Gamma correction
+                transforms.RandomApply(
+                    [transforms.Lambda(lambda x: (x + 1e-6) ** random.uniform(self.gamma_min, self.gamma_max))],
+                    p=self.gamma_prob
+                ),
                 
                 # Optical augmentations
-                transforms.RandomApply([transforms.GaussianBlur(kernel_size=5, sigma=(0.1, 0.5))], p=0.5),
-                transforms.Lambda(lambda x: torch.clamp(x + (torch.poisson(x * 0.05) * 0.1, 0, 1))), 
+                # Gaussian blurr
+                transforms.RandomApply(
+                    [transforms.GaussianBlur(kernel_size=self.gauss_kernel_size, sigma=(self.gauss_sigma_min, self.gauss_sigma_max))], 
+                    p=self.gauss_prob
+                ),
+                # Poisson noise 
+                transforms.RandomApply(
+                    [transforms.Lambda(lambda x: torch.clamp(x + torch.poisson(x * self.poiss_scaling) * self.poiss_noise_strength, 0, 1))],
+                    p=self.poiss_prob
+                ),
                 
                 # Normalization
                 transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
