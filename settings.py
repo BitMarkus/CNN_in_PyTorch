@@ -16,7 +16,7 @@ setting = {
     # Number of epochs
     "train_num_epochs": 30,  # 30
     # Batch size for training and validation datasets
-    "ds_batch_size": 100, 
+    "ds_batch_size": 50, 
 
     # Optimizer:
     # Options: "SGD" and "ADAM"

@@ -118,7 +118,8 @@ class Dataset():
 
                 # Intensity augmentations (tensor-level)
                 transforms.ColorJitter(brightness=0.2, contrast=0.2),
-                transforms.Lambda(lambda x: x ** random.uniform(0.8, 1.2)),  # Gamma correction
+                # Gamma correction
+                transforms.Lambda(lambda x: x ** random.uniform(0.8, 1.2)),  
 
                 # Optical augmentations (tensor-level)
                 transforms.RandomApply([transforms.GaussianBlur(kernel_size=5, sigma=(0.1, 0.5))], p=0.5),
@@ -144,18 +145,20 @@ class Dataset():
                     transforms.RandomRotation(degrees=[180, 180]),
                     transforms.RandomRotation(degrees=[270, 270]),
                 ]),
-                transforms.RandomRotation(degrees=10, fill=0),  # Small-angle rotation
+                # Small-angle rotation
+                transforms.RandomRotation(degrees=10, fill=0),  
                 
                 # Convert to tensor
                 transforms.ToTensor(),
                 
                 # Intensity augmentations
                 transforms.ColorJitter(brightness=0.3, contrast=0.2, saturation=0.2),
-                transforms.Lambda(lambda x: x ** random.uniform(0.8, 1.2)),  # Gamma correction
+                 # Gamma correction
+                transforms.Lambda(lambda x: x ** random.uniform(0.8, 1.2)), 
                 
                 # Optical augmentations
                 transforms.RandomApply([transforms.GaussianBlur(kernel_size=5, sigma=(0.1, 0.5))], p=0.5),
-                transforms.Lambda(lambda x: torch.clamp(x + (torch.poisson(x * 0.05) * 0.1, 0, 1))),  # Fixed this line
+                transforms.Lambda(lambda x: torch.clamp(x + (torch.poisson(x * 0.05) * 0.1, 0, 1))), 
                 
                 # Normalization
                 transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
