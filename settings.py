@@ -14,17 +14,17 @@ setting = {
     ############
 
     # Number of epochs
-    "train_num_epochs": 30,  # 30
+    "train_num_epochs": 60,  # 30
     # Batch size for training and validation datasets
     "ds_batch_size": 50, 
 
     # Optimizer:
     # Options: "SGD" and "ADAM"
-    "train_optimizer_type": "ADAM",  
+    "train_optimizer_type": "SGD",  
     # Initial learning rate (later determined by lr scheduler)
     # ADAM: 0.0001-0.0003 (3e-4), 
     # SGD: 0.01-0.001, 0.0001 for pretrained weights!
-    "train_init_lr": 0.0003,    
+    "train_init_lr": 0.0001,    
     # Weight decay = L2 regularization
     # ADAM and SGD: 1e-4 
     "train_weight_decay": 1e-4,  
@@ -39,10 +39,10 @@ setting = {
     # Learning rate scheduler:
     # No of steps after which he lr is multiplied by the lr multiplier
     # Warmup scheduler:
-    "train_lr_warmup_epochs": 3, # 5
+    "train_lr_warmup_epochs": 5, # 5
     # CosineAnnealingLR
     # SGD: 1e-5, ADAM: 1e-4 
-    "train_lr_eta_min": 1e-4,
+    "train_lr_eta_min": 1e-5,
 
     #################
     # AUGMENTATIONS #
@@ -76,14 +76,14 @@ setting = {
     # Gamma = 1: No change. The image looks "natural" (linear brightness)
     # Gamma < 1 (e.g., 0.5): Dark areas get brighter, bright areas stay mostly the same
     # Gamma > 1 (e.g., 2.0): Bright areas get darker, dark areas stay mostly the same
-    "aug_gamma_prob": 0.5,
-    "aug_gamma_min": 0.8,
-    "aug_gamma_max": 1.2,
+    "aug_gamma_prob": 0.4,
+    "aug_gamma_min": 0.7,
+    "aug_gamma_max": 1.3,
 
     # OPTICAL AUGMENTATIONS:
     # Gaussian Blur Parameters
     # Probability
-    "aug_gauss_prob": 0.5,
+    "aug_gauss_prob": 0.3,
     # Kernel size
     "aug_gauss_kernel_size": 5,
     # Sigma: ontrols the "spread" of the blur (how intense/smooth it is)
@@ -91,7 +91,7 @@ setting = {
     "aug_gauss_sigma_max": 0.5,
     # Poisson noise
     # Probability
-    "aug_poiss_prob": 1.0, 
+    "aug_poiss_prob": 0.4, 
     # Controls how much the noise depends on image brightness
     # Suggested range: 0.01-0.1 (higher = more noise)
     "aug_poiss_scaling": 0.05,  # 5% of pixel value
@@ -111,7 +111,7 @@ setting = {
     # Shuffle dataset
     "ds_shuffle": True,
     # Shuffle seed
-    "ds_shuffle_seed": 246,
+    "ds_shuffle_seed": 369,
     # Fraction of images which go into the validation dataset 
     "ds_val_split": 0.1, 
     # Define cell lines (for dataset generator)
