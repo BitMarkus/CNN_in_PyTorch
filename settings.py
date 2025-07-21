@@ -14,25 +14,28 @@ setting = {
     ############
 
     # Number of epochs
-    "train_num_epochs": 60,  # 30
+    "train_num_epochs": 50,  # 30
     # Batch size for training and validation datasets
-    "ds_batch_size": 50, 
+    "ds_batch_size": 100, 
 
     # Optimizer:
-    # Options: "SGD" and "ADAM"
-    "train_optimizer_type": "SGD",  
+    # Options: "SGD", "ADAM", and "ADAMW"
+    "train_optimizer_type": "ADAMW",  
     # Initial learning rate (later determined by lr scheduler)
-    # ADAM: 0.0001-0.0003 (3e-4), 
-    # SGD: 0.01-0.001, 0.0001 for pretrained weights!
-    "train_init_lr": 0.0001,    
+    # ADAM: 0.0001 (1e-4) - 0.0003 (3e-4), 
+    # ADAMW: 0.0001 (3e-4) - 0.0005 (5e-4)
+    # SGD: 0.01-0.001, 0.0001 (1e-4) for pretrained weights!
+    "train_init_lr": 1e-4,    
     # Weight decay = L2 regularization
-    # ADAM and SGD: 1e-4 
-    "train_weight_decay": 1e-4,  
+    # ADAM: 1e-4 (0.0001) - 1e-3 (0.001): 1e-4
+    # ADAMW: 1e-3 (0.001) - 1e-2 (0.01): 1e-3
+    # SGD: 1e-4
+    "train_weight_decay": 1e-3,  
     # Momentum
     "train_sgd_momentum": 0.9,  # 0.9   
     # Nesterov momentum for SGD (Nesterov only works if momentum > 0)
     "train_sgd_use_nesterov": True,
-    # ADAM beta 1 and 2
+    # ADAM/ADAMW beta 1 and 2
     "train_adam_beta1": 0.9, # 0.9
     "train_adam_beta2": 0.99, # 0.99
 
@@ -41,7 +44,9 @@ setting = {
     # Warmup scheduler:
     "train_lr_warmup_epochs": 5, # 5
     # CosineAnnealingLR
-    # SGD: 1e-5, ADAM: 1e-4 
+    # SGD: 1e-5 
+    # ADAM: 1e-4 
+    # ADAMW: 1e-5 - 1e-6
     "train_lr_eta_min": 1e-5,
 
     #################
@@ -111,7 +116,7 @@ setting = {
     # Shuffle dataset
     "ds_shuffle": True,
     # Shuffle seed
-    "ds_shuffle_seed": 369,
+    "ds_shuffle_seed": 111,
     # Fraction of images which go into the validation dataset 
     "ds_val_split": 0.1, 
     # Define cell lines (for dataset generator)

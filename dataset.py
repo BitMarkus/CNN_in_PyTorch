@@ -414,3 +414,59 @@ class Dataset():
         if show_plot:
             plt.show()
 
+"""
+def load_test_dataset(self):
+    transformer = self.get_transformer_test()
+    if transformer:
+        dataset = torchvision.datasets.ImageFolder(self.pth_test, transform=transformer)
+        
+        # Split test data into validation and final test portions
+        dataset_size = len(dataset)
+        indices = list(range(dataset_size))
+        split = int(np.floor(0.5 * dataset_size))  # 50% for validation, 50% for final test
+        
+        if self.shuffle:
+            np.random.seed(self.shuffle_seed)
+            np.random.shuffle(indices)
+            
+        val_indices, test_indices = indices[:split], indices[split:]
+        
+        val_sampler = SubsetRandomSampler(val_indices)
+        test_sampler = SubsetRandomSampler(test_indices)
+        
+        val_loader = DataLoader(
+            dataset,
+            batch_size=self.batch_size,
+            sampler=val_sampler
+        )
+        
+        test_loader = DataLoader(
+            dataset,
+            batch_size=self.batch_size_pred,
+            sampler=test_sampler
+        )
+        
+        self.num_val_img = len(val_indices)
+        self.num_pred_img = len(test_indices)
+        self.ds_val = val_loader  # Use this for validation during training
+        self.ds_test = test_loader  # Use this for final evaluation
+        self.ds_loaded = True
+        return True
+    else:
+        print("Loading failed! Images must be grayscale or RGB.")
+        return False
+
+# Suggested workflow:
+dataset = Dataset()
+dataset.load_training_dataset()  # For initial exploration only
+dataset.load_test_dataset()  # Splits test data into validation and final test
+
+# Then during training:
+for epoch in epochs:
+    # Training loop using ds_train
+    # Validation loop using ds_val (from test data)
+    
+# Final evaluation:
+test_model(ds_test)  # On the held-out portion of test data
+"""
+

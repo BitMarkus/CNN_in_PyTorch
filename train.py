@@ -2,7 +2,7 @@
 # Class for training #
 ######################
 
-from torch.optim import Adam, SGD
+from torch.optim import Adam, SGD, AdamW
 from torch.optim.lr_scheduler import StepLR
 from torch import nn
 from tqdm import tqdm
@@ -74,12 +74,12 @@ class Train():
         # Label smoothing
         self.label_smoothing = setting["train_label_smoothing"] 
         # Optimizer specific
-        # Options: "SGD" and "ADAM"
+        # Options: "SGD" and "ADAM/ADAMW"
         self.optimizer_type = setting["train_optimizer_type"]
         self.sgd_momentum = setting["train_sgd_momentum"] # SGD
         self.sgd_use_nesterov = setting["train_sgd_use_nesterov"] # SGD
-        self.adam_beta1 = setting["train_adam_beta1"]   # ADAM
-        self.adam_beta2 = setting["train_adam_beta2"]   # ADAM 
+        self.adam_beta1 = setting["train_adam_beta1"]   # ADAM/ADAMW
+        self.adam_beta2 = setting["train_adam_beta2"]   # ADAM/ADAMW 
 
         # Optmizer, learning rate scheduler and loss function
         if(self.optimizer_type == "ADAM"):
@@ -90,7 +90,16 @@ class Train():
                 lr=self.init_lr, 
                 weight_decay=self.weight_decay, 
                 betas=(self.adam_beta1, self.adam_beta2),
-                amsgrad=True
+                amsgrad=False
+            )
+        elif(self.optimizer_type == "ADAMW"):
+            # ADAMW:
+            self.optimizer = AdamW(
+                self.cnn.parameters(),
+                lr=self.init_lr, 
+                weight_decay=self.weight_decay, 
+                betas=(self.adam_beta1, self.adam_beta2),
+                amsgrad=False
             )
         elif(self.optimizer_type == "SGD"):
             # SGD:
