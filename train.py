@@ -55,6 +55,7 @@ class Train():
         # Datasets
         self.ds_train = dataset.ds_train
         self.ds_val = dataset.ds_val
+
         # Class names
         self.classes = setting["classes"] 
         # Number of training and validation images in each dataset

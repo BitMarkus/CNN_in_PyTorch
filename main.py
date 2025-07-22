@@ -90,7 +90,16 @@ def main():
         
         elif(menu1 == 3):       
             print("\n:LOAD TRAINING DATA:") 
+            # Check for correct settings in settings file
+            ds.validate_validation_settings()
+            # Load training dataset AND
+            # validation dataset if validation set comes from training images
             ds.load_training_dataset()
+            # Load validation dataset if validation set comes from test images
+            if ds.validation_from_test:
+                ds.load_test_dataset()
+            # Print dataset info
+            ds.print_dataset_info()
             if(ds.ds_loaded):
                 print("Training and validation datasets successfully loaded.")
                 print(f"Number training images/batches: {ds.num_train_img}/{ds.num_train_batches}")

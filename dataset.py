@@ -11,6 +11,7 @@ from torch.utils.data.sampler import SubsetRandomSampler
 from torch.utils.data import DataLoader
 import matplotlib.pyplot as plt
 import torchvision.utils as vutils
+import warnings
 # Own modules
 from settings import setting
 
@@ -36,13 +37,14 @@ class Dataset():
         # Batch size for prediction dataset
         # Always needs to be 1! Or calculation of confusion matrix parameters are more complicated
         self.batch_size_pred = 1
-        # Fraction of images which go into the validation dataset 
-        self.val_split = setting["ds_val_split"]
-        # Number of channels of training images 
-        self.input_channels = setting["img_channels"]
-        # Image width and height for training
-        self.input_height = setting["img_height"]
-        self.input_width = setting["img_width"]
+
+        # Validation split settings (False or percentage 0.0-1.0)
+        # Validation split from training dataset
+        self.val_from_train_split = setting["ds_val_from_train_split"]
+        # Validation split from test dataset
+        self.val_from_test_split = setting["ds_val_from_test_split"]
+        # Add a flag to track where validation data comes from
+        self.validation_from_test = (self.val_from_test_split is not False and self.val_from_train_split is False)
         # Variable to save if the dataset was alread loaded or not
         self.ds_loaded = False   
         # Number of training and validation images in each dataset
@@ -57,6 +59,12 @@ class Dataset():
         self.ds_val = None
         self.ds_test = None
         self.ds_pred = None
+
+        # Number of channels of training images 
+        self.input_channels = setting["img_channels"]
+        # Image width and height for training
+        self.input_height = setting["img_height"]
+        self.input_width = setting["img_width"]
 
         ################
         # Augentations #
@@ -114,6 +122,25 @@ class Dataset():
 
     #############################################################################################################
     # METHODS:
+
+    # Validate the validation split settings and issue warnings if needed
+    def validate_validation_settings(self):
+        if self.val_from_train_split is False and self.val_from_test_split is False:
+            print("WARNING: Both ds_val_from_train_split and ds_val_from_test_split in settings are set to False!")
+            print("Defaulting to 0.1 validation split from training data.")
+            self.val_from_train_split = 0.1  # Default value
+            
+        elif self.val_from_train_split is not False and self.val_from_test_split is not False:
+            print("WARNING: Both ds_val_from_train_split and ds_val_from_test_split in settings are set!")
+            print("Using only the training data split and ignoring test data split.")
+            self.val_from_test_split = False 
+
+    # Prints validation strategy
+    def print_dataset_info(self):
+        if self.validation_from_test:
+            print(f"Validation strategy: Using test set images for validation ({self.val_from_test_split*100}%)")
+        else:
+            print(f"Validation strategy: Using training set split for validation ({self.val_from_train_split*100}%)")
 
     # Transformer for testing and predicting WITHOUT AUGMENTATIONS
     def get_transformer_test(self):
@@ -270,78 +297,123 @@ class Dataset():
         else:
             return False
 
-    # Loads and splits images in a folder into 2 datasets (train, validation)
-    # https://stackoverflow.com/questions/50544730/how-do-i-split-a-custom-dataset-into-training-and-test-datasets/50544887#50544887
+    # Load dataset for training
     def load_training_dataset(self):
         # Training dataset with or without augmentations
-        if(self.train_use_augment):
+        if self.train_use_augment:
             transformer = self.get_transformer_train()
         else:
             transformer = self.get_transformer_test()
-        # Check if training images have either one or three channels
-        if(transformer):
-            # No change needed here - ImageFolder accepts Path objects
-            dataset = torchvision.datasets.ImageFolder(self.pth_train, transform=transformer)
-            dataset_size = len(dataset)
-            indices = list(range(dataset_size))
-            split = int(np.floor(self.val_split * dataset_size))
+            
+        if not transformer:
+            print("Loading of dataset failed! Input images must have either one (grayscale) or three (RGB) channels.")
+            return False
+
+        dataset = torchvision.datasets.ImageFolder(self.pth_train, transform=transformer)
+        dataset_size = len(dataset)
+        indices = list(range(dataset_size))
+        
+        # Only split training data if val_from_train_split is set
+        if self.val_from_train_split is not False:
+            split = int(np.floor(self.val_from_train_split * dataset_size))
             if self.shuffle:
                 np.random.seed(self.shuffle_seed)
                 np.random.shuffle(indices)
             train_indices, val_indices = indices[split:], indices[:split]
-            # Set number of images in each dataset
+            
             self.num_train_img = len(train_indices)
             self.num_val_img = len(val_indices)        
-            # Take a subset of indices
-            # This should lead to a dataset, which contains always the same images (dependent on shuffle seed)
-            # However, the order of the images within the dataset should be different
-            # Maybe torch.utils.data.SequentialSampler would be better here?
+            
             train_sampler = SubsetRandomSampler(train_indices)
             valid_sampler = SubsetRandomSampler(val_indices)       
-            # Create train dataloader object
-            train_loader = DataLoader(
-                dataset, 
-                batch_size=self.batch_size, 
-                sampler=train_sampler,
-            )
-            # Create validation dataloader object
+        else:
+            # All training data is used for training if validation comes from test set
+            self.num_train_img = dataset_size
+            self.num_val_img = 0  # No validation from training set
+            train_sampler = SubsetRandomSampler(indices)
+            valid_sampler = None
+
+        # Create train dataloader object
+        train_loader = DataLoader(
+            dataset, 
+            batch_size=self.batch_size, 
+            sampler=train_sampler,
+        )
+        
+        # Create validation dataloader from training set if needed
+        validation_loader = None
+        if valid_sampler is not None:
             validation_loader = DataLoader(
                 dataset, 
                 batch_size=self.batch_size,
-                sampler=valid_sampler)
-            # Set batch sizes of each dataset
-            self.num_train_batches = len(train_loader)
-            self.num_val_batches = len(validation_loader)
-            # Set datasets to loaded
-            self.ds_loaded = True  
-            # Set datasets as member variable
-            self.ds_train = train_loader
-            self.ds_val = validation_loader
-            return True
-        else:
-            print("Loading of dataset failed! Input images must have either one (grayscale) or three (RGB) channels.")
-            return False
+                sampler=valid_sampler
+            )
+
+        self.num_train_batches = len(train_loader)
+        self.num_val_batches = len(validation_loader) if validation_loader else 0
+        
+        self.ds_loaded = True  
+        self.ds_train = train_loader
+        self.ds_val = validation_loader  # Will be None if val_from_train_split is False
+        return True
 
     # Loads test dataset for prediction
     def load_test_dataset(self):
         transformer = self.get_transformer_test()
-        # Check if training images have either one or three channels
-        if(transformer):
-            dataset = torchvision.datasets.ImageFolder(self.pth_test, transform=transformer)
-            # Create dataloader object
-            prediction_loader = DataLoader(
-                dataset, 
-                batch_size=self.batch_size_pred, 
-            )
-            # Get number of images in test dataset
-            self.num_pred_img = len(prediction_loader)
-            self.ds_test = prediction_loader  
-            # Set datasets to loaded
-            self.ds_loaded = True  
-            return True  
-        else:
+        if not transformer:
             print("Loading of dataset failed! Input images must have either one (grayscale) or three (RGB) channels.")
             return False
+
+        dataset = torchvision.datasets.ImageFolder(self.pth_test, transform=transformer)
+        dataset_size = len(dataset)
+        self.num_test_img = dataset_size
+        
+        # If we're using test set for validation and training set isn't being used for validation
+        if (self.val_from_test_split is not False) and (self.val_from_train_split is False):
+            val_split_point = int(np.floor(self.val_from_test_split * dataset_size))
+            
+            indices = list(range(dataset_size))
+            if self.shuffle:
+                np.random.seed(self.shuffle_seed)
+                np.random.shuffle(indices)
+                
+            val_indices, test_indices = indices[:val_split_point], indices[val_split_point:]
+            
+            self.num_val_from_test_img = len(val_indices)
+            self.num_test_after_val_img = len(test_indices)
+            
+            # Create samplers and dataloaders
+            val_sampler = SubsetRandomSampler(val_indices)
+            test_sampler = SubsetRandomSampler(test_indices)
+            
+            self.ds_test_for_val = DataLoader(
+                dataset,
+                batch_size=self.batch_size,
+                sampler=val_sampler
+            )
+            self.ds_test_for_test = DataLoader(
+                dataset,
+                batch_size=self.batch_size_pred,
+                sampler=test_sampler
+            )
+            
+            # Use the test-for-val as the validation set
+            self.ds_val = self.ds_test_for_val
+            self.num_val_img = self.num_val_from_test_img
+            self.num_val_batches = len(self.ds_val)
+        else:
+            # Normal test loader when not using test set for validation
+            self.ds_test_for_test = DataLoader(
+                dataset,
+                batch_size=self.batch_size_pred
+            )
+            self.num_test_after_val_img = dataset_size
+        
+        # For backward compatibility
+        self.ds_test = self.ds_test_for_test
+        self.num_pred_img = self.num_test_after_val_img
+        
+        return True
         
     # Loads prediction dataset for captum
     def load_pred_dataset(self):
@@ -415,58 +487,75 @@ class Dataset():
             plt.show()
 
 """
-def load_test_dataset(self):
-    transformer = self.get_transformer_test()
-    if transformer:
-        dataset = torchvision.datasets.ImageFolder(self.pth_test, transform=transformer)
-        
-        # Split test data into validation and final test portions
-        dataset_size = len(dataset)
-        indices = list(range(dataset_size))
-        split = int(np.floor(0.5 * dataset_size))  # 50% for validation, 50% for final test
-        
-        if self.shuffle:
-            np.random.seed(self.shuffle_seed)
-            np.random.shuffle(indices)
-            
-        val_indices, test_indices = indices[:split], indices[split:]
-        
-        val_sampler = SubsetRandomSampler(val_indices)
-        test_sampler = SubsetRandomSampler(test_indices)
-        
-        val_loader = DataLoader(
-            dataset,
-            batch_size=self.batch_size,
-            sampler=val_sampler
-        )
-        
-        test_loader = DataLoader(
-            dataset,
-            batch_size=self.batch_size_pred,
-            sampler=test_sampler
-        )
-        
-        self.num_val_img = len(val_indices)
-        self.num_pred_img = len(test_indices)
-        self.ds_val = val_loader  # Use this for validation during training
-        self.ds_test = test_loader  # Use this for final evaluation
-        self.ds_loaded = True
-        return True
-    else:
-        print("Loading failed! Images must be grayscale or RGB.")
-        return False
+    # Loads and splits images in a folder into 2 datasets (train, validation)
+    # https://stackoverflow.com/questions/50544730/how-do-i-split-a-custom-dataset-into-training-and-test-datasets/50544887#50544887
+    def load_training_dataset(self):
+        # Training dataset with or without augmentations
+        if(self.train_use_augment):
+            transformer = self.get_transformer_train()
+        else:
+            transformer = self.get_transformer_test()
+        # Check if training images have either one or three channels
+        if(transformer):
+            # No change needed here - ImageFolder accepts Path objects
+            dataset = torchvision.datasets.ImageFolder(self.pth_train, transform=transformer)
+            dataset_size = len(dataset)
+            indices = list(range(dataset_size))
+            split = int(np.floor(self.val_split * dataset_size))
+            if self.shuffle:
+                np.random.seed(self.shuffle_seed)
+                np.random.shuffle(indices)
+            train_indices, val_indices = indices[split:], indices[:split]
+            # Set number of images in each dataset
+            self.num_train_img = len(train_indices)
+            self.num_val_img = len(val_indices)        
+            # Take a subset of indices
+            # This should lead to a dataset, which contains always the same images (dependent on shuffle seed)
+            # However, the order of the images within the dataset should be different
+            # Maybe torch.utils.data.SequentialSampler would be better here?
+            train_sampler = SubsetRandomSampler(train_indices)
+            valid_sampler = SubsetRandomSampler(val_indices)       
+            # Create train dataloader object
+            train_loader = DataLoader(
+                dataset, 
+                batch_size=self.batch_size, 
+                sampler=train_sampler,
+            )
+            # Create validation dataloader object
+            validation_loader = DataLoader(
+                dataset, 
+                batch_size=self.batch_size,
+                sampler=valid_sampler)
+            # Set batch sizes of each dataset
+            self.num_train_batches = len(train_loader)
+            self.num_val_batches = len(validation_loader)
+            # Set datasets to loaded
+            self.ds_loaded = True  
+            # Set datasets as member variable
+            self.ds_train = train_loader
+            self.ds_val = validation_loader
+            return True
+        else:
+            print("Loading of dataset failed! Input images must have either one (grayscale) or three (RGB) channels.")
+            return False
 
-# Suggested workflow:
-dataset = Dataset()
-dataset.load_training_dataset()  # For initial exploration only
-dataset.load_test_dataset()  # Splits test data into validation and final test
-
-# Then during training:
-for epoch in epochs:
-    # Training loop using ds_train
-    # Validation loop using ds_val (from test data)
-    
-# Final evaluation:
-test_model(ds_test)  # On the held-out portion of test data
+    def load_test_dataset(self):
+        transformer = self.get_transformer_test()
+        # Check if training images have either one or three channels
+        if(transformer):
+            dataset = torchvision.datasets.ImageFolder(self.pth_test, transform=transformer)
+            # Create dataloader object
+            prediction_loader = DataLoader(
+                dataset, 
+                batch_size=self.batch_size_pred, 
+            )
+            # Get number of images in test dataset
+            self.num_pred_img = len(prediction_loader)
+            self.ds_test = prediction_loader  
+            # Set datasets to loaded
+            self.ds_loaded = True  
+            return True  
+        else:
+            print("Loading of dataset failed! Input images must have either one (grayscale) or three (RGB) channels.")
+            return False
 """
-
