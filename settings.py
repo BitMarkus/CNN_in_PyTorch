@@ -33,14 +33,14 @@ setting = {
     "train_weight_decay": 1e-3,  
     # Momentum
     "train_sgd_momentum": 0.9,  # 0.9   
-    # Nesterov momentum for SGD (Nesterov only works if momentum > 0)
+    # Nesterov momentum for SGD (only works if momentum > 0)
     "train_sgd_use_nesterov": True,
     # ADAM/ADAMW beta 1 and 2
     "train_adam_beta1": 0.9, # 0.9
     "train_adam_beta2": 0.99, # 0.99
 
     # Learning rate scheduler:
-    # No of steps after which he lr is multiplied by the lr multiplier
+    # Number of steps after which the lr is multiplied by the lr multiplier
     # Warmup scheduler:
     "train_lr_warmup_epochs": 5, # 5
     # CosineAnnealingLR
@@ -121,7 +121,7 @@ setting = {
     # Validation split from training dataset (False or percentage 0.0-1.0)
     "ds_val_from_train_split": False, # 0.1
     # Validation split from test dataset (False or percentage 0.0-1.0)
-    "ds_val_from_test_split": 0.5, # 0.25
+    "ds_val_from_test_split": 0.3, # 0.25
     # Define cell lines (for dataset generator)
     "wt_lines": ["WT_1618-02", "WT_JG", "WT_JT", "WT_KM", "WT_MS"],
     "ko_lines": ["KO_1096-01", "KO_1618-01", "KO_BR2986", "KO_BR3075"],
