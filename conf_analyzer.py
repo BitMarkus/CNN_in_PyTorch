@@ -260,6 +260,7 @@ class ConfidenceAnalyzer:
 
     # Get predictions with confidence scores
     def _get_predictions_with_confidence(self):
+
         # Load test dataset
         ds = Dataset()
         ds.load_test_dataset()
@@ -318,43 +319,66 @@ class ConfidenceAnalyzer:
             'aggregated_stats': aggregated
         }
     
+    # Find images matching the specified confidence filter criteria.
+    # Returns dict: {class_name: [(img_path, avg_confidence, correctness_rate)]}
     def find_filtered_images(self, results):
-        """Find images matching the specified confidence filter criteria.
-        
-        Returns:
-            dict: {class_name: [(img_path, avg_confidence, correctness_rate)]}
-        """
+
         self._build_image_history(results)
         filtered_images = {cls: [] for cls in self.classes}
         
         for img_path, predictions in self.image_history.items():
-            # Calculate average confidence and correctness rate
+            # Get the true class from the original image path
+            img_key = Path(img_path).name
+            true_class = None
+            
+            # Determine true class by checking original locations
+            for wt_line in self.wt_lines:
+                if (self.pth_ds_gen_input / wt_line / img_key).exists():
+                    true_class = 'WT'
+                    break
+                    
+            if true_class is None:  # If not found in WT, check KO lines
+                for ko_line in self.ko_lines:
+                    if (self.pth_ds_gen_input / ko_line / img_key).exists():
+                        true_class = 'KO'
+                        break
+            
+            if true_class is None:
+                continue  # Skip if we can't determine origin
+                
+            # Calculate statistics
             confidences = [p['confidence'] for p in predictions]
-            correct = [p['pred_class'] == p['true_class'] for p in predictions]
+            correct = [p['pred_class'] == true_class for p in predictions]  # Compare to true_class
             avg_confidence = sum(confidences) / len(confidences)
             correctness_rate = sum(correct) / len(correct)
-            true_class = predictions[0]['true_class']
             
-            # Apply filters based on filter type
+            # Apply filters
             if self.filter_type.lower() == 'correct':
-                # Correct in all cases AND within confidence range
-                if all(correct) and all(self.min_conf <= c <= self.max_conf for c in confidences):
-                    filtered_images[true_class].append((img_path, avg_confidence, correctness_rate))
-                    
+                # Must be: correct in all cases AND confidence in range AND consistent prediction
+                if (all(correct) and 
+                    all(self.min_conf <= c <= self.max_conf for c in confidences)):
+                    # All predictions should agree on the class
+                    pred_classes = {p['pred_class'] for p in predictions}
+                    if len(pred_classes) == 1:  # All predictions agree
+                        filtered_images[pred_classes.pop()].append(
+                            (img_path, avg_confidence, correctness_rate)
+                        )
+                        
             elif self.filter_type.lower() == 'incorrect':
-                # Incorrect in all cases AND within confidence range
-                if not any(correct) and all(self.min_conf <= c <= self.max_conf for c in confidences):
-                    filtered_images[true_class].append((img_path, avg_confidence, correctness_rate))
-                    
+                if (not any(correct) and 
+                    all(self.min_conf <= c <= self.max_conf for c in confidences)):
+                    filtered_images[true_class].append(
+                        (img_path, avg_confidence, correctness_rate))
+                        
             elif self.filter_type.lower() == 'low_confidence':
-                # Below min confidence in all cases
                 if all(c < self.min_conf for c in confidences):
-                    filtered_images[true_class].append((img_path, avg_confidence, correctness_rate))
-                    
+                    filtered_images[true_class].append(
+                        (img_path, avg_confidence, correctness_rate))
+                        
             elif self.filter_type.lower() == 'unsure':
-                # In middle confidence range (could be correct or incorrect)
                 if all(self.min_conf <= c <= self.max_conf for c in confidences):
-                    filtered_images[true_class].append((img_path, avg_confidence, correctness_rate))
+                    filtered_images[true_class].append(
+                        (img_path, avg_confidence, correctness_rate))
         
         return filtered_images
     
@@ -383,9 +407,9 @@ class ConfidenceAnalyzer:
                 return str(candidate)
         raise FileNotFoundError(f"Original image not found for {img_key}")
 
-
+    # Organize filtered images into appropriate folder structure
     def organize_filtered_images(self, filtered_images):
-        """Organize filtered images into appropriate folder structure."""
+
         # Create appropriate output subdirectory based on filter type
         output_subdir = {
             'correct': "high_confidence_correct",
@@ -502,9 +526,9 @@ class ConfidenceAnalyzer:
             return True
         return False
 
-    # Create README file for output folder
+    # Create README file explaining the filtering criteria
     def _create_filter_readme(self, output_dir, filtered_images):
-        """Create README file explaining the filtering criteria."""
+
         filter_descriptions = {
             'correct': f"Correctly classified in all cases with confidence between {self.min_conf:.0%}-{self.max_conf:.0%}",
             'incorrect': f"Incorrectly classified in all cases with confidence between {self.min_conf:.0%}-{self.max_conf:.0%}",
