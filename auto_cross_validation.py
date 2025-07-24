@@ -1,5 +1,6 @@
 from pathlib import Path
-import warnings
+import json
+from collections import defaultdict
 # Own modules
 from dataset import Dataset
 from settings import setting
@@ -42,6 +43,35 @@ class AutoCrossValidation:
     #############################################################################################################
     # METHODS:
 
+    # Record which images were used for validation vs testing
+    # Record validation/test split only when validation comes from test dataset
+    def _record_val_test_split(self, dataset_idx):
+
+        if self.val_from_test_split is False:  # Explicit check against False
+            return
+            
+        val_images = [x[0] for x in self.ds.ds_val.samples] if hasattr(self.ds.ds_val, 'samples') else []
+        test_images = [x[0] for x in self.ds.ds_test.samples] if hasattr(self.ds.ds_test, 'samples') else []
+        
+        split_info = {
+            'validation': {
+                'WT': sorted(list({Path(p).name for p in val_images if 'WT' in str(p)})),
+                'KO': sorted(list({Path(p).name for p in val_images if 'KO' in str(p)}))
+            },
+            'test': {
+                'WT': sorted(list({Path(p).name for p in test_images if 'WT' in str(p)})),
+                'KO': sorted(list({Path(p).name for p in test_images if 'KO' in str(p)}))
+            }
+        }
+        
+        output_path = Path(self.acv_results_dir) / f"dataset_{dataset_idx}" / "split_info.json"
+        
+        with open(output_path, 'w') as f:
+            json.dump(split_info, f, indent=2)
+
+    #############################################################################################################
+    # CALL:
+
     def __call__(self):
 
         # Clean up folders train and test in the data directory (old training and test data)
@@ -72,8 +102,8 @@ class AutoCrossValidation:
             dataset_dir = self.ds_gen.generate_dataset(**config) # Unpacks dict as kwargs
 
             # Create a subfolder for checkpoints
-            ckeckpoint_dir = dataset_dir / "checkpoints"
-            ckeckpoint_dir.mkdir(exist_ok=True)
+            checkpoint_dir = dataset_dir / "checkpoints"  # MODIFIED: Fixed typo in variable name
+            checkpoint_dir.mkdir(exist_ok=True)
             # Create a subfolder for plots
             plot_dir = dataset_dir / "plots"
             plot_dir.mkdir(exist_ok=True)
@@ -86,11 +116,14 @@ class AutoCrossValidation:
             
             # Check for correct settings in settings file
             self.ds.validate_validation_settings()
+
             # Load training dataset (always needed)
             self.ds.load_training_dataset()
+
             # Load test dataset if validation should come from test images
-            if self.ds.validation_from_test:
+            if self.val_from_test_split is not False:  # MODIFIED: Consistent use of val_from_test_split
                 self.ds.load_test_dataset()
+                self._record_val_test_split(config['dataset_idx'])  # MODIFIED: Moved recording here
             
             # Print dataset info
             self.ds.print_dataset_info()
@@ -112,7 +145,7 @@ class AutoCrossValidation:
             ####################
             self.train = Train(self.cnn_wrapper, self.ds, self.device)
             print(f"\n> Start training on dataset {config['dataset_idx']}...")
-            self.train.train(ckeckpoint_dir, plot_dir)
+            self.train.train(checkpoint_dir, plot_dir)  # MODIFIED: Fixed variable name
             print(f"\nTraining on dataset {config['dataset_idx']} successfully finished.")
 
             ################
@@ -121,16 +154,34 @@ class AutoCrossValidation:
             # Always load fresh test dataset for final evaluation
             print(f"\n> Load test images for final evaluation...")
             self.ds.load_test_dataset()
+
+            # Update test images in split info (in case final evaluation uses different images)
+            if self.val_from_test_split is not False:
+                test_images = [x[0] for x in self.ds.ds_test.samples]
+                split_file = Path(self.acv_results_dir) / f"dataset_{config['dataset_idx']}" / "split_info.json"
+                try:
+                    if split_file.exists():
+                        with open(split_file, 'r') as f:
+                            split_info = json.load(f)
+                        split_info['test'] = {
+                            'WT': sorted(list({Path(p).name for p in test_images if 'WT' in str(p)})),
+                            'KO': sorted(list({Path(p).name for p in test_images if 'KO' in str(p)}))
+                        }
+                        with open(split_file, 'w') as f:
+                            json.dump(split_info, f, indent=2)
+                except Exception as e:
+                    print(f"Warning: Could not update split info - {str(e)}")
+
             print(f"Test images for dataset {config['dataset_idx']} successfully loaded.")             
             print(f"Number test images/batch size: {self.ds.num_pred_img}/1")
             
-            checkpoint_list = self.cnn_wrapper.get_checkpoints_list(ckeckpoint_dir)
+            checkpoint_list = self.cnn_wrapper.get_checkpoints_list(checkpoint_dir)
             if not checkpoint_list:
                 print("No checkpoint for this dataset!")
             else:
                 for checkpoint_file in checkpoint_list:
                     print(f"\n> Load weight file {checkpoint_file[1]} for dataset {config['dataset_idx']}...")
-                    self.cnn_wrapper.load_weights(ckeckpoint_dir, checkpoint_file[1]) 
+                    self.cnn_wrapper.load_weights(checkpoint_dir, checkpoint_file[1])
 
                     print('\n> Starting prediction...')
                     _, cm = self.cnn_wrapper.predict(self.ds.ds_test)

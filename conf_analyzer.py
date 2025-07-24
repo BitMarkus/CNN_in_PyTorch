@@ -264,6 +264,12 @@ class ConfidenceAnalyzer:
         # Load test dataset
         ds = Dataset()
         ds.load_test_dataset()
+
+        # Log if we're using a filtered test set
+        test_images = {Path(x[0]).name for x in ds.ds_test.dataset.samples}
+        if len(test_images) != len(ds.ds_test.dataset):
+            tqdm.write(f"Using filtered test set ({len(test_images)} images)")
+
         # Iterate over test images
         confidences = {}
         total_images = len(ds.ds_test.dataset)
@@ -384,12 +390,25 @@ class ConfidenceAnalyzer:
     
     # Build history of all image predictions
     def _build_image_history(self, results):
+
         for dataset_num, checkpoints in results.items():
-            config = self._get_available_datasets()[int(dataset_num)]
+            test_only_images = self._get_test_only_images(int(dataset_num))
+            
+            processed_images = 0
+            skipped_images = 0
+            
             for checkpoint_name, pred_data in checkpoints.items():
                 for img_path, pred in pred_data['per_image_results'].items():
+                    img_name = Path(img_path).name
+                    
+                    # Skip validation images when split info exists
+                    if test_only_images is not None and img_name not in test_only_images:
+                        skipped_images += 1
+                        continue
+                    processed_images += (test_only_images is not None)
+                    
                     try:
-                        original_path = self._find_original_image_path(Path(img_path).name)
+                        original_path = self._find_original_image_path(img_name)
                         self.image_history[original_path].append({
                             'dataset': dataset_num,
                             'checkpoint': checkpoint_name,
@@ -398,6 +417,12 @@ class ConfidenceAnalyzer:
                     except FileNotFoundError as e:
                         tqdm.write(f"Warning: {str(e)}")
                         continue
+            
+            if test_only_images is not None:
+                tqdm.write(
+                    f"Dataset {dataset_num}: Processed {processed_images} test images, "
+                    f"skipped {skipped_images} validation images"
+                )
 
     # Find original image path by checking all possible locations
     def _find_original_image_path(self, img_key):
@@ -554,11 +579,18 @@ class ConfidenceAnalyzer:
         all_results = {}
         available_datasets = self._get_available_datasets()
         total_datasets = len(available_datasets)
-        # Path and name of output csv file
         output_csv = self.pth_conf_analizer_results / 'confidence_analysis.csv'
         
         tqdm.write("Starting confidence analysis...")
         tqdm.write(f"Found {total_datasets} datasets to analyze")
+        
+        # Check if any datasets use test-only filtering
+        test_only_count = sum(
+            1 for dataset_num in available_datasets 
+            if (self.pth_acv_results / f"dataset_{dataset_num}" / "split_info.json").exists()
+        )
+        if test_only_count > 0:
+            tqdm.write(f"Note: {test_only_count} datasets will use test-only images (excluding validation)")
         tqdm.write(f"Results will be saved to: {output_csv}")
         
         # Use context manager for main progress bar
@@ -585,6 +617,20 @@ class ConfidenceAnalyzer:
                 else:
                     tqdm.write("Warning: No results to save in current batch")
         return all_results
+    
+    # Returns set of test-only image names if split info exists, else None
+    def _get_test_only_images(self, dataset_num):
+
+        split_file = self.pth_acv_results / f"dataset_{dataset_num}" / "split_info.json"
+        if not split_file.exists():
+            tqdm.write(f"Dataset {dataset_num}: No split info found - will use all available images")
+            return None
+            
+        with open(split_file, 'r') as f:
+            split_info = json.load(f)
+        test_images = set(split_info['test']['WT'] + split_info['test']['KO'])
+        tqdm.write(f"Dataset {dataset_num}: Found split info - using {len(test_images)} test-only images")
+        return test_images
     
     #############################################################################################################
     # CALL:

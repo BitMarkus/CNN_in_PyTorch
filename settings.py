@@ -195,7 +195,7 @@ setting = {
     # "unsure": Images with confidence within [min_conf, max_conf] (regardless of correctness) -> Intermediate-confidence predictions
     'ca_filter_type': 'correct',
     # Maximum number of checkpoints which are analyzed for a dataset
-    "ca_max_ckpts": 1,
+    "ca_max_ckpts": 2,
     # Method for best checkpoint selection
     # Options: balanced_sum, f1_score, min_difference, balanced_accuracy
     "ca_ckpt_select_method": 'balanced_accuracy',
