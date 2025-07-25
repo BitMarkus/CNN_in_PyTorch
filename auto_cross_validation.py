@@ -47,11 +47,15 @@ class AutoCrossValidation:
     # Record validation/test split only when validation comes from test dataset
     def _record_val_test_split(self, dataset_idx):
 
-        if self.val_from_test_split is False:  # Explicit check against False
+        if self.val_from_test_split is False:
             return
             
-        val_images = [x[0] for x in self.ds.ds_val.samples] if hasattr(self.ds.ds_val, 'samples') else []
-        test_images = [x[0] for x in self.ds.ds_test.samples] if hasattr(self.ds.ds_test, 'samples') else []
+        try:
+            val_images = [x[0] for x in self.ds.ds_val.dataset.samples] if hasattr(self.ds.ds_val.dataset, 'samples') else []
+            test_images = [x[0] for x in self.ds.ds_test.dataset.samples] if hasattr(self.ds.ds_test.dataset, 'samples') else []
+        except AttributeError as e:
+            print(f"Warning: Could not access dataset samples - {str(e)}")
+            return
         
         split_info = {
             'validation': {
@@ -157,7 +161,11 @@ class AutoCrossValidation:
 
             # Update test images in split info (in case final evaluation uses different images)
             if self.val_from_test_split is not False:
-                test_images = [x[0] for x in self.ds.ds_test.samples]
+                try:
+                    test_images = [x[0] for x in self.ds.ds_test.dataset.samples]
+                except AttributeError as e:
+                    print(f"Warning: Could not access test dataset samples - {str(e)}")
+                    test_images = []
                 split_file = Path(self.acv_results_dir) / f"dataset_{config['dataset_idx']}" / "split_info.json"
                 try:
                     if split_file.exists():
