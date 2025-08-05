@@ -41,16 +41,22 @@ class GradCAMAnalyzer:
         self.sigma = setting['gradcam_blurr_sigma']
 
         # Initialize dataset and model
+        # Initialize dataset and load prediction data
         self.ds = Dataset()
-        self.transform = self.ds.get_transformer_test()
-        if not self.transform:
-            raise ValueError("Failed to get image transformer")
+        if not self.ds.load_pred_dataset():
+            raise ValueError("Failed to load prediction dataset")
         
-        print("\nCreating DenseNet-121 model...")
-        self.cnn = CNN_Model()
-        self.cnn.model = self.cnn.load_model(self.device)
-        self.cnn.model = self.cnn.model.to(self.device)
-        print(f"Network {self.cnn.cnn_type} created successfully.")
+        # Create model wrapper
+        self.cnn_wrapper = CNN_Model()  
+        # Load model wrapper with model information
+        print(f"Creating new {self.cnn_wrapper.cnn_type} network...")
+        # Get actual model (nn.Module)
+        self.cnn = self.cnn_wrapper.load_model(device).to(device)
+        print("New network was successfully created.")   
+
+        # Checkpoints
+        self.checkpoint_loaded = False
+        self.loaded_checkpoint_name = None
 
         # For faster convolutions
         torch.backends.cudnn.benchmark = True  
@@ -58,37 +64,73 @@ class GradCAMAnalyzer:
     #############################################################################################################
     # METHODS:
 
-    def generate_heatmap(self, input_tensor, target_class=None):
-        self.cnn.model.zero_grad()
+    def load_checkpoint(self):
+        # First get checkpoints without printing table
+        silent_checkpoints = self.cnn_wrapper.print_checkpoints_table(self.pth_checkpoint, print_table=False)
         
-        # Forward pass while retaining activations
-        with torch.no_grad():
-            features = self.cnn.model.features(input_tensor.unsqueeze(0))
-            activations = features.detach().requires_grad_(True)
+        if not silent_checkpoints:
+            print("The checkpoint folder is empty!")
+            return False
         
-        # Get model output
-        output = self.cnn.model.classifier(F.relu(F.adaptive_avg_pool2d(activations, (1, 1)).view(1, -1)))
+        # If only one checkpoint exists
+        if len(silent_checkpoints) == 1:
+            # Extract filename from the tuple
+            checkpoint_file = silent_checkpoints[0][1]  # (id, name) -> get name
+            print(f"\nFound single checkpoint: {checkpoint_file}")
+            print("Loading automatically...")
+        else:
+            # Show interactive table for multiple checkpoints
+            self.cnn_wrapper.print_checkpoints_table(self.pth_checkpoint)  # prints table
+            checkpoint_file = self.cnn_wrapper.select_checkpoint(silent_checkpoints, "Select a checkpoint: ")
+            if not checkpoint_file:
+                return False
         
-        if target_class is None:
-            target_class = torch.argmax(output).item()
+        try:
+            full_path = self.pth_checkpoint / checkpoint_file
+            self.cnn.load_state_dict(torch.load(full_path))
+            self.checkpoint_loaded = True
+            self.loaded_checkpoint_name = full_path.stem
+            print(f"Successfully loaded weights from {checkpoint_file}")
+            return True
+        except FileNotFoundError as e:
+            print(f"\nError loading checkpoint: {str(e)}")
+            print(f"Full path attempted: {full_path}")
+            return False
+        except Exception as e:
+            print(f"\nError loading checkpoint: {str(e)}")
+            return False
+
+    def generate_heatmap(self, input_tensor, target_class):
+        """Generate GradCAM heatmap for SPECIFIED target class"""
+        self.cnn.zero_grad()
         
-        # Backward pass
+        # Forward pass - get features
+        features = self.cnn.features(input_tensor.unsqueeze(0))
+        features.retain_grad()  # Keep gradients for backprop
+        
+        # Forward through classifier
+        pooled = F.adaptive_avg_pool2d(features, (1, 1))
+        flattened = pooled.view(1, -1)
+        output = self.cnn.classifier(flattened)
+        
+        # Force backward pass for TARGET CLASS
         one_hot = torch.zeros_like(output)
         one_hot[0][target_class] = 1
         output.backward(gradient=one_hot, retain_graph=True)
-        torch.cuda.empty_cache()  # Clean up unused memory
         
-        # Compute Grad-CAM
-        with torch.no_grad():
-            weights = torch.mean(activations.grad, dim=[2, 3], keepdim=True)
-            cam = torch.sum(weights * activations, dim=1)
-            cam = F.relu(cam)
-            cam = F.interpolate(cam.unsqueeze(0), input_tensor.shape[1:], 
-                            mode='bilinear', align_corners=False)
-            cam = cam - cam.min()
-            cam = cam / (cam.max() + 1e-10)
+        # Grad-CAM calculation
+        grads = features.grad
+        pooled_grads = torch.mean(grads, dim=[2, 3], keepdim=True)
+        cam = (pooled_grads * features).sum(dim=1, keepdim=True)
+        cam = F.relu(cam)
+        cam = F.interpolate(cam, input_tensor.shape[-2:], mode='bilinear', align_corners=False)
         
-        return cam.squeeze().cpu().numpy(), target_class
+        # Normalize and detach
+        cam = cam - cam.min()
+        cam = cam / (cam.max() + 1e-10)
+        
+        # Detach from computation graph before converting to numpy
+        return cam.squeeze().detach().cpu().numpy(), target_class
     
     # Apply blur to the most prominent regions identified by the heatmap
     # Args:
@@ -130,124 +172,157 @@ class GradCAMAnalyzer:
                 return torch.from_numpy(image_np).permute(2, 0, 1).to(self.device)
         return image_np
 
-    def visualize_gradcam(self, image, heatmap, img_path, label, target_class, iteration=1):
-        # Convert tensors to numpy
+    def visualize_gradcam(self, image, heatmap, img_path, class_idx, target_class, iteration=1):
+        """Simplified visualization showing only folder-derived class"""
+        # Convert image to numpy
         if self.img_channels == 1:
             img_np = image.squeeze().cpu().numpy()
         else:
             img_np = image.permute(1, 2, 0).cpu().numpy()
         
         # Create output directory
-        relative_path = img_path.relative_to(self.pth_prediction)
-        output_folder = self.pth_prediction / f"{relative_path.parent.name}_gradcam"
+        output_folder = self.pth_prediction / f"{img_path.parent.name}_gradcam"
         output_folder.mkdir(exist_ok=True, parents=True)
         
-        # Create figure with adjusted layout
-        plt.ioff()
-        fig = plt.figure(figsize=(12, 4.5))  # Slightly adjusted height
+        # Create figure
+        fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(15, 5))
         
-        # Main grid: 2 rows (images and colorbars), 3 columns
-        gs_main = gridspec.GridSpec(2, 3, height_ratios=[20, 1], width_ratios=[1, 1, 1])
-        
-        # Subplot 1: Original Image
-        ax1 = plt.subplot(gs_main[0, 0])
-        img_vis = np.mean(img_np, axis=2) if self.img_channels != 1 else img_np
-        im1 = ax1.imshow(img_vis, cmap=self.cmap_orig)
-        title = f"Original: Class {self.classes[label.item()]}"
-        if iteration > 1:
-            title += f" (Iter {iteration})"
-        ax1.set_title(title)
+        # Original image
+        ax1.imshow(img_np if self.img_channels == 1 else np.mean(img_np, axis=2),
+                cmap=self.cmap_orig)
+        ax1.set_title(f"Original: {img_path.parent.name}")
         ax1.axis('off')
         
-        # Subplot 2: Heatmap
-        ax2 = plt.subplot(gs_main[0, 1])
-        im2 = ax2.imshow(heatmap, cmap='jet', vmin=0, vmax=1)
-        ax2.set_title(f"Grad-CAM: Target class {self.classes[target_class]}")
+        # Heatmap
+        ax2.imshow(heatmap, cmap='jet')
+        ax2.set_title(f"Grad-CAM for {self.classes[target_class]}")
         ax2.axis('off')
         
-        # Subplot 3: Overlay
-        ax3 = plt.subplot(gs_main[0, 2])
-        ax3.imshow(img_vis, cmap='gray' if self.img_channels == 1 else None)
-        im3 = ax3.imshow(heatmap, cmap='jet', vmin=0, vmax=1, alpha=self.alpha_overlay)
+        # Overlay
+        ax3.imshow(img_np if self.img_channels == 1 else np.mean(img_np, axis=2),
+                cmap='gray' if self.img_channels == 1 else None)
+        ax3.imshow(heatmap, cmap='jet', alpha=self.alpha_overlay)
         ax3.set_title("Overlay")
         ax3.axis('off')
         
-        # Color bars - now thinner
-        if self.show_color_bar_orig:
-            cax1 = fig.add_subplot(gs_main[1, 0])
-            cbar1 = plt.colorbar(im1, cax=cax1, orientation='horizontal')
-            cbar1.ax.tick_params(labelsize=6)  # Even smaller font
-        
-        cax2 = fig.add_subplot(gs_main[1, 1])
-        cbar2 = plt.colorbar(im2, cax=cax2, orientation='horizontal')
-        cbar2.ax.tick_params(labelsize=6, pad=0.1)  # Reduced padding
-        
-        cax3 = fig.add_subplot(gs_main[1, 2])
-        cbar3 = plt.colorbar(im3, cax=cax3, orientation='horizontal')
-        cbar3.ax.tick_params(labelsize=6, pad=0.1)
-        
-        # Make colorbars even more compact
-        for cbar in [cbar1, cbar2, cbar3] if self.show_color_bar_orig else [cbar2, cbar3]:
-            cbar.ax.xaxis.set_tick_params(pad=1)  # Reduce tick label padding
-            cbar.outline.set_linewidth(0.5)  # Thinner border
-        
-        # Adjust layout with less space for colorbars
-        plt.tight_layout()
-        plt.subplots_adjust(hspace=0.05, wspace=0.1)  # Reduced vertical space
-        
-        # Modify output filename for second iteration
+        # Save
         suffix = "_iter2" if iteration > 1 else ""
         output_path = output_folder / f"{img_path.stem}_gradcam{suffix}.png"
-        fig.savefig(output_path, bbox_inches='tight', dpi=100)
+        plt.tight_layout()
+        fig.savefig(output_path, bbox_inches='tight', dpi=150)
         plt.close(fig)
 
-    # Args:
-    #    second_iteration: if True, performs a second Grad-CAM after blurring prominent features
-    def predict_gradcam(self, dataset, second_iteration=False, threshold_percent=0.2, sigma=5):
-        self.cnn.model.eval()
+    def predict_gradcam(self, dataset, second_iteration=False):
+        self.cnn.eval()  # Ensure model is in eval mode
         
-        for batch_idx, (images, labels) in enumerate(tqdm(dataset, desc="Grad-CAM Analysis")):
+        for batch_idx, (images, _) in enumerate(tqdm(dataset, desc="Grad-CAM Analysis")):
             batch_paths = [Path(dataset.dataset.samples[i][0]) 
                         for i in range(batch_idx * dataset.batch_size,
                                     min((batch_idx + 1) * dataset.batch_size, len(dataset.dataset)))]
             
             for img_idx in range(len(images)):
                 try:
-                    # 1. First Grad-CAM pass
                     img = images[img_idx].to(self.device)
                     img_path = batch_paths[img_idx]
-                    label = labels[img_idx]
                     
-                    heatmap1, target_class1 = self.generate_heatmap(img, label.item())
-                    self.visualize_gradcam(img.detach(), heatmap1, img_path, label, target_class1, iteration=1)
+                    # Get target class DIRECTLY from folder name
+                    folder_name = img_path.parent.name
+                    target_class = self.classes.index(folder_name)  # Will raise ValueError if folder doesn't match classes
                     
-                    # 2. Second iteration with blurring
+                    # Generate heatmap FORCING the folder-derived class
+                    heatmap, _ = self.generate_heatmap(img, target_class=target_class)
+                    
+                    # Visualize - pass the same target_class for both predicted and target
+                    self.visualize_gradcam(img.detach(), heatmap, img_path, 
+                                        target_class, target_class, iteration=1)
+                    
                     if second_iteration:
-                        # Apply blur to prominent regions from first heatmap
-                        blurred_img = self.apply_blur_mask(img, heatmap1)
-                        
-                        # Generate new heatmap on blurred image
-                        heatmap2, target_class2 = self.generate_heatmap(blurred_img, label.item())
-                        
-                        # Visualize second iteration
-                        self.visualize_gradcam(blurred_img.detach(), heatmap2, img_path, label, target_class2, iteration=2)
+                        blurred_img = self.apply_blur_mask(img, heatmap)
+                        heatmap2, _ = self.generate_heatmap(blurred_img, target_class=target_class)
+                        self.visualize_gradcam(blurred_img.detach(), heatmap2, img_path,
+                                            target_class, target_class, iteration=2)
                     
                     torch.cuda.empty_cache()
                     
+                except ValueError as e:
+                    print(f"\nSkipping {img_path.name}: Folder '{folder_name}' not in classes {self.classes}")
+                    continue
                 except Exception as e:
                     print(f"\nError processing {img_path.name}: {str(e)}")
                     continue
 
+    def verify_folder_structure(self):
+        print("\nFolder Structure Verification:")
+        for class_idx, class_name in enumerate(self.classes):
+            class_path = self.pth_prediction / class_name
+            if not class_path.exists():
+                print(f"WARNING: Missing folder for class {class_name}")
+                continue
+                
+            sample_files = list(class_path.glob("*.png"))[:3]  # Check first 3 samples
+            print(f"\nClass {class_name} ({class_idx}): {class_path}")
+            for f in sample_files:
+                print(f"  {f.name}")
+
+    def verify_model_predictions(self, num_samples=10):
+        print("\nModel Prediction Verification:")
+        correct = 0
+        for i in range(min(num_samples, len(self.ds.ds_pred.dataset))):
+            img, label = self.ds.ds_pred.dataset[i]
+            img_path = Path(self.ds.ds_pred.dataset.samples[i][0])
+            
+            with torch.no_grad():
+                output = self.cnn(img.unsqueeze(0).to(self.device))
+                pred = torch.argmax(output).item()  # This is already a Python int
+                prob = torch.softmax(output, dim=1)[0][pred].item()
+                
+                # Remove .item() from label since it's already a plain int from dataset
+                status = "✅" if pred == label else "❌"  
+                if status == "✅": 
+                    correct += 1
+                
+                print(f"{status} {img_path.name}")
+                print(f"  Folder: {img_path.parent.name}")
+                print(f"  Pred: {self.classes[pred]} ({prob:.2%})")
+                print(f"  Label: {self.classes[label]}\n")
+        
+        print(f"Accuracy: {correct}/{num_samples}")
+        return correct == num_samples
+    
+    def debug_dataset_labels(self):
+        print("\nDataset Label Verification:")
+        for i, (img_path, label) in enumerate(self.ds.ds_pred.dataset.samples[:10]):  # Check first 10
+            folder_name = Path(img_path).parent.name
+            print(f"Image: {Path(img_path).name}")
+            print(f"Folder: {folder_name}")
+            print(f"Assigned label: {label} ({self.classes[label]})\n")
+
     #############################################################################################################
     # CALL:
+
     def __call__(self):
-        print("\nLoading dataset for prediction:")
+        print("\nInitializing GradCAM Analysis")
+        
+        # 1. Load dataset
         self.ds.load_pred_dataset()
-        if self.ds.ds_loaded:
-            print("Dataset loaded successfully!")
+        if not self.ds.ds_loaded:
+            print("Failed to load dataset")
+            return
+        # self.debug_dataset_labels()
+
+        # Load checkpoint
+        if not self.load_checkpoint():
+            print("WARNING: Using untrained weights!")
+            self.loaded_checkpoint_name = "untrained"
         
-        print("\nLoading model weights:")
-        self.cnn.load_checkpoint()
-        
-        print("\nRunning Grad-CAM analysis:")
+        # 2. Verify model predictions first
+        """
+        if not self.verify_model_predictions():
+            print("\nCRITICAL: Model predictions don't match dataset labels!")
+            print("Cannot proceed with GradCAM until predictions are correct")
+            return
+        """
+
+        # 3. Proceed with GradCAM
+        print("\nStarting GradCAM processing...")
         self.predict_gradcam(self.ds.ds_pred, self.second_iteration)

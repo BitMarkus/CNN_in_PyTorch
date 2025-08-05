@@ -46,32 +46,64 @@ class AutoCrossValidation:
     # Record which images were used for validation vs testing
     # Record validation/test split only when validation comes from test dataset
     def _record_val_test_split(self, dataset_idx):
-
         if self.val_from_test_split is False:
             return
-            
+
         try:
-            val_images = [x[0] for x in self.ds.ds_val.dataset.samples] if hasattr(self.ds.ds_val.dataset, 'samples') else []
-            test_images = [x[0] for x in self.ds.ds_test.dataset.samples] if hasattr(self.ds.ds_test.dataset, 'samples') else []
-        except AttributeError as e:
-            print(f"Warning: Could not access dataset samples - {str(e)}")
-            return
-        
-        split_info = {
-            'validation': {
-                'WT': sorted(list({Path(p).name for p in val_images if 'WT' in str(p)})),
-                'KO': sorted(list({Path(p).name for p in val_images if 'KO' in str(p)}))
-            },
-            'test': {
-                'WT': sorted(list({Path(p).name for p in test_images if 'WT' in str(p)})),
-                'KO': sorted(list({Path(p).name for p in test_images if 'KO' in str(p)}))
+            # Get both datasets (they should share the same underlying dataset)
+            val_loader = self.ds.ds_test_for_val
+            test_loader = self.ds.ds_test_for_test
+            
+            # Verify we have the expected structure
+            if not all(hasattr(loader, 'sampler') and hasattr(loader.sampler, 'indices') 
+                for loader in [val_loader, test_loader]):
+                raise ValueError("DataLoaders don't have proper sampler indices")
+
+            # Get the full dataset (should be the same for both)
+            full_dataset = val_loader.dataset
+            
+            # Convert to sets for proper comparison
+            val_indices = set(val_loader.sampler.indices)
+            test_indices = set(test_loader.sampler.indices)
+            
+            # Create guaranteed unique splits
+            true_val_indices = val_indices - test_indices
+            true_test_indices = test_indices - val_indices
+            
+            # Report any issues
+            if len(val_indices & test_indices) > 0:
+                print(f"Warning: Corrected {len(val_indices & test_indices)} overlapping images")
+            
+            # Get image paths from the guaranteed unique sets
+            val_images = [full_dataset.samples[i][0] for i in true_val_indices]
+            test_images = [full_dataset.samples[i][0] for i in true_test_indices]
+            
+            # Verify we've accounted for all images
+            total_images = len(full_dataset.samples)
+            recorded = len(val_images) + len(test_images)
+            if recorded != total_images:
+                print(f"Note: {total_images - recorded} images not in either set (may be intentional)")
+            
+            split_info = {
+                'validation': {
+                    'WT': sorted(list({Path(p).name for p in val_images if 'WT' in str(p)})),
+                    'KO': sorted(list({Path(p).name for p in val_images if 'KO' in str(p)}))
+                },
+                'test': {
+                    'WT': sorted(list({Path(p).name for p in test_images if 'WT' in str(p)})),
+                    'KO': sorted(list({Path(p).name for p in test_images if 'KO' in str(p)}))
+                }
             }
-        }
-        
-        output_path = Path(self.acv_results_dir) / f"dataset_{dataset_idx}" / "split_info.json"
-        
-        with open(output_path, 'w') as f:
-            json.dump(split_info, f, indent=2)
+            
+            output_path = Path(self.acv_results_dir) / f"dataset_{dataset_idx}" / "split_info.json"
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            
+            with open(output_path, 'w') as f:
+                json.dump(split_info, f, indent=2)
+                
+        except Exception as e:
+            print(f"Failed to record splits: {str(e)}")
+            raise
 
     #############################################################################################################
     # CALL:
@@ -125,9 +157,9 @@ class AutoCrossValidation:
             self.ds.load_training_dataset()
 
             # Load test dataset if validation should come from test images
-            if self.val_from_test_split is not False:  # MODIFIED: Consistent use of val_from_test_split
+            if self.val_from_test_split is not False: 
                 self.ds.load_test_dataset()
-                self._record_val_test_split(config['dataset_idx'])  # MODIFIED: Moved recording here
+                self._record_val_test_split(config['dataset_idx']) 
             
             # Print dataset info
             self.ds.print_dataset_info()
@@ -149,7 +181,7 @@ class AutoCrossValidation:
             ####################
             self.train = Train(self.cnn_wrapper, self.ds, self.device)
             print(f"\n> Start training on dataset {config['dataset_idx']}...")
-            self.train.train(checkpoint_dir, plot_dir)  # MODIFIED: Fixed variable name
+            self.train.train(checkpoint_dir, plot_dir)
             print(f"\nTraining on dataset {config['dataset_idx']} successfully finished.")
 
             ################
@@ -162,21 +194,35 @@ class AutoCrossValidation:
             # Update test images in split info (in case final evaluation uses different images)
             if self.val_from_test_split is not False:
                 try:
-                    test_images = [x[0] for x in self.ds.ds_test.dataset.samples]
-                except AttributeError as e:
-                    print(f"Warning: Could not access test dataset samples - {str(e)}")
-                    test_images = []
-                split_file = Path(self.acv_results_dir) / f"dataset_{config['dataset_idx']}" / "split_info.json"
-                try:
+                    # Load current split info
+                    split_file = Path(self.acv_results_dir) / f"dataset_{config['dataset_idx']}" / "split_info.json"
                     if split_file.exists():
                         with open(split_file, 'r') as f:
                             split_info = json.load(f)
+                        
+                        # Get the ORIGINAL validation set
+                        original_val_set = set(split_info['validation']['WT'] + split_info['validation']['KO'])
+                        
+                        # Get current test images
+                        test_images = [x[0] for x in self.ds.ds_test.dataset.samples]
+                        current_test_set = {Path(p).name for p in test_images}
+                        
+                        # Remove validation images from test set
+                        filtered_test_set = current_test_set - original_val_set
+                        
+                        # Update only the test portion while preserving validation
                         split_info['test'] = {
-                            'WT': sorted(list({Path(p).name for p in test_images if 'WT' in str(p)})),
-                            'KO': sorted(list({Path(p).name for p in test_images if 'KO' in str(p)}))
+                            'WT': sorted([name for name in split_info['test']['WT'] if name in filtered_test_set] + 
+                                        [Path(p).name for p in test_images 
+                                        if 'WT' in str(p) and Path(p).name in filtered_test_set]),
+                            'KO': sorted([name for name in split_info['test']['KO'] if name in filtered_test_set] + 
+                                        [Path(p).name for p in test_images 
+                                        if 'KO' in str(p) and Path(p).name in filtered_test_set])
                         }
+                        
                         with open(split_file, 'w') as f:
                             json.dump(split_info, f, indent=2)
+                            
                 except Exception as e:
                     print(f"Warning: Could not update split info - {str(e)}")
 

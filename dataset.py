@@ -65,6 +65,8 @@ class Dataset():
         # Image width and height for training
         self.input_height = setting["img_height"]
         self.input_width = setting["img_width"]
+        # List of classes 
+        self.classes = setting["classes"]
 
         ################
         # Augentations #
@@ -419,8 +421,10 @@ class Dataset():
         
         return True
         
+   
     # Loads prediction dataset for captum
     def load_pred_dataset(self):
+     
         transformer = self.get_transformer_test()
         # Check if training images have either one or three channels
         if(transformer):
@@ -439,7 +443,7 @@ class Dataset():
         else:
             print("Loading of dataset failed! Input images must have either one (grayscale) or three (RGB) channels.")
             return False
-        
+
     # Show dataset examples after normalization
     def show_training_examples(self, plot_path, num_images=9, rows=3, cols=3, figsize=(10, 10), show_plot=False, save_plot=True):
 

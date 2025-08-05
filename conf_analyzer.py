@@ -179,7 +179,7 @@ class ConfidenceAnalyzer:
                     )
                     self.cnn.eval()
                     # Get predictions
-                    confidences = self._get_predictions_with_confidence()
+                    confidences = self._get_predictions_with_confidence(dataset_num)
                     dataset_results[checkpoint_file] = self._organize_prediction_results(confidences)
                 except Exception as e:
                     tqdm.write(f"\nError processing {checkpoint_file}: {str(e)}")
@@ -259,42 +259,34 @@ class ConfidenceAnalyzer:
         return [x[0] for x in scores[:top_n]]
 
     # Get predictions with confidence scores
-    def _get_predictions_with_confidence(self):
-
-        # Load test dataset
-        ds = Dataset()
-        ds.load_test_dataset()
-
-        # Log if we're using a filtered test set
-        test_images = {Path(x[0]).name for x in ds.ds_test.dataset.samples}
-        if len(test_images) != len(ds.ds_test.dataset):
-            tqdm.write(f"Using filtered test set ({len(test_images)} images)")
-
+    def _get_predictions_with_confidence(self, dataset_num):
+        # Get filtered test loader
+        test_loader = self._create_filtered_dataset(dataset_num)
+        
         # Iterate over test images
         confidences = {}
-        total_images = len(ds.ds_test.dataset)
+        total_images = len(test_loader.dataset)
         
         with torch.no_grad():
-            with autocast(device_type='cuda', enabled=self.device.type == 'cuda'):  # Mixed precision if using CUDA
-                # Add progress bar for image predictions
+            with autocast(device_type='cuda', enabled=self.device.type == 'cuda'):
+                # Create progress bar with proper positioning
                 with tqdm(
-                    ds.ds_test,
+                    test_loader,
                     desc="Predicting images",
                     total=total_images,
-                    position=2,
+                    position=0,  # Changed to position 0
                     leave=False
                 ) as img_pbar:
                     for batch_idx, (images, labels) in enumerate(img_pbar):
-                        img_path = ds.ds_test.dataset.samples[batch_idx][0]
+                        img_path = test_loader.dataset.dataset.samples[
+                            test_loader.dataset.indices[batch_idx]
+                        ][0]
                         images = images.to(self.device)
                         if images.dim() == 3:
                             images = images.unsqueeze(0)
-                        # Make prediction - fixed model access
                         outputs = self.cnn(images)
-                        # Use softmax to get confidence
                         probs = torch.nn.functional.softmax(outputs, dim=1)
                         max_prob, pred_idx = torch.max(probs, 1)
-                        # Add data to confidences dict
                         confidences[img_path] = (
                             self.classes[labels.item()],
                             self.classes[pred_idx.item()],
@@ -390,12 +382,10 @@ class ConfidenceAnalyzer:
     
     # Build history of all image predictions
     def _build_image_history(self, results):
-
         for dataset_num, checkpoints in results.items():
-            test_only_images = self._get_test_only_images(int(dataset_num))
+            test_only_images, (test_count, val_count) = self._get_test_only_images(int(dataset_num))
             
             processed_images = 0
-            skipped_images = 0
             
             for checkpoint_name, pred_data in checkpoints.items():
                 for img_path, pred in pred_data['per_image_results'].items():
@@ -403,9 +393,9 @@ class ConfidenceAnalyzer:
                     
                     # Skip validation images when split info exists
                     if test_only_images is not None and img_name not in test_only_images:
-                        skipped_images += 1
                         continue
-                    processed_images += (test_only_images is not None)
+                    
+                    processed_images += 1
                     
                     try:
                         original_path = self._find_original_image_path(img_name)
@@ -421,7 +411,7 @@ class ConfidenceAnalyzer:
             if test_only_images is not None:
                 tqdm.write(
                     f"Dataset {dataset_num}: Processed {processed_images} test images, "
-                    f"skipped {skipped_images} validation images"
+                    f"skipped {val_count} validation images"
                 )
 
     # Find original image path by checking all possible locations
@@ -620,23 +610,84 @@ class ConfidenceAnalyzer:
     
     # Returns set of test-only image names if split info exists, else None
     def _get_test_only_images(self, dataset_num):
-
         split_file = self.pth_acv_results / f"dataset_{dataset_num}" / "split_info.json"
         if not split_file.exists():
             tqdm.write(f"Dataset {dataset_num}: No split info found - will use all available images")
-            return None
+            return None, (0, 0)  # Return None and (0,0) for counts
+        
+        try:
+            with open(split_file, 'r') as f:
+                split_info = json.load(f)
             
+            test_images = set(split_info['test']['WT'] + split_info['test']['KO'])
+            val_images = set(split_info['validation']['WT'] + split_info['validation']['KO'])
+            
+            test_count = len(test_images)
+            val_count = len(val_images)
+            
+            tqdm.write(f"Dataset {dataset_num}: Using {test_count} test-only images (excluding {val_count} validation)")
+            return test_images, (test_count, val_count)
+            
+        except Exception as e:
+            tqdm.write(f"Error loading split info for dataset {dataset_num}: {str(e)}")
+            return None, (0, 0)
+        
+    def _create_filtered_dataset(self, dataset_num):
+        """Create a test dataset filtered to only include images in the test split"""
+        # Load original test dataset
+        ds = Dataset()
+        ds.load_test_dataset()
+        
+        # Get test-only images from split info
+        split_file = self.pth_acv_results / f"dataset_{dataset_num}" / "split_info.json"
+        if not split_file.exists():
+            return ds.ds_test  # Return original if no split info
+        
         with open(split_file, 'r') as f:
             split_info = json.load(f)
         test_images = set(split_info['test']['WT'] + split_info['test']['KO'])
-        tqdm.write(f"Dataset {dataset_num}: Found split info - using {len(test_images)} test-only images")
-        return test_images
+        
+        # Filter the dataset samples
+        filtered_indices = [
+            i for i, sample in enumerate(ds.ds_test.dataset.samples)
+            if Path(sample[0]).name in test_images
+        ]
+        
+        # Create new dataset with filtered samples
+        filtered_dataset = torch.utils.data.dataset.Subset(
+            ds.ds_test.dataset,
+            indices=filtered_indices
+        )
+        
+        # Create new DataLoader
+        filtered_loader = torch.utils.data.DataLoader(
+            filtered_dataset,
+            batch_size=ds.ds_test.batch_size,
+            num_workers=ds.ds_test.num_workers,
+            pin_memory=ds.ds_test.pin_memory
+        )
+        
+        # Use tqdm.write() for cleaner output
+        tqdm.write(f"\nFiltered dataset: {len(test_images)} test images (originally {len(ds.ds_test.dataset)})", end=' ')
+        return filtered_loader
     
     #############################################################################################################
     # CALL:
 
     # Main analysis method
     def __call__(self):
+        """
+        # Add this temporary debug code to inspect your split_info.json
+        split_file = self.pth_acv_results / "dataset_1" / "split_info.json"
+        with open(split_file, 'r') as f:
+            split_info = json.load(f)
+        test_set = set(split_info['test']['WT'] + split_info['test']['KO'])
+        val_set = set(split_info['validation']['WT'] + split_info['validation']['KO'])
+        print(f"Total test images: {len(test_set)}")
+        print(f"Total validation images: {len(val_set)}")
+        print(f"Images in both sets: {len(test_set & val_set)}")
+        print("Examples of duplicates:", list(test_set & val_set)[:5])
+        """
         # Get results from all datasets
         results = self.analyze_all_datasets()
         
@@ -656,3 +707,5 @@ class ConfidenceAnalyzer:
         
         tqdm.write("\nAnalysis complete!\n")
         return results
+        
+        

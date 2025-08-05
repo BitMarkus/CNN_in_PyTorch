@@ -9,6 +9,7 @@ from train import Train
 from class_analyzer import ClassAnalyzer
 from captum_analyzer import CaptumAnalyzer
 from gradcam_analyzer import GradCAMAnalyzer
+from gradcampp_analyzer import GradCAMpp_Analyzer
 from settings import setting
 
 ###########
@@ -46,9 +47,10 @@ def main():
         print("7) Dataset Generator")
         print("8) Automatic Cross Validation (ACV)")
         print("9) Confidence Analyzer (based on ACV)")
-        print("10) Captum Analyzer")
+        print("10) Captum (Integrated Gradients) Analyzer")
         print("11) GradCAM Analyzer (for DenseNet-121)")
-        print("12) Exit Program")
+        print("12) Combined GradCAM and IG Analyzer (for DenseNet-121)")
+        print("13) Exit Program")
         menu1 = int(fn.input_int("Please choose: "))
 
         ######################
@@ -197,11 +199,20 @@ def main():
             gradcam = GradCAMAnalyzer(device)
             gradcam()
 
+        ###################
+        # Captum Analyzer #  
+        ###################
+
+        elif(menu1 == 12):  
+            print("\n:GradCAM AND IG ANALYZER:") 
+            gradcampp = GradCAMpp_Analyzer(device, debug=True)
+            gradcampp()
+
         ################
         # Exit Program #
         ################
 
-        elif(menu1 == 12):
+        elif(menu1 == 13):
             print("\nExit program...")
             break
         

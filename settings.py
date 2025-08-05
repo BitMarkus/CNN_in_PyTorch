@@ -116,12 +116,12 @@ setting = {
     # Shuffle dataset
     "ds_shuffle": True,
     # Shuffle seed
-    "ds_shuffle_seed": 111,
+    "ds_shuffle_seed": 333,
     # Validation split settings
     # Validation split from training dataset (False or percentage 0.0-1.0)
     "ds_val_from_train_split": False, # 0.1
     # Validation split from test dataset (False or percentage 0.0-1.0)
-    "ds_val_from_test_split": 0.3, # 0.25
+    "ds_val_from_test_split": 0.4, # 0.25
     # Define cell lines (for dataset generator)
     "wt_lines": ["WT_1618-02", "WT_JG", "WT_JT", "WT_KM", "WT_MS"],
     "ko_lines": ["KO_1096-01", "KO_1618-01", "KO_BR2986", "KO_BR3075"],
@@ -178,7 +178,7 @@ setting = {
     # Set to True, if checkpoints shall be saved during training
     "chckpt_save": True,  
     # Mininmun validation accuracy from which on checkpoints are saved
-    "chckpt_min_acc": 0.5,  # 0.8 for 2 classes, 0.6 for 9 classess
+    "chckpt_min_acc": 0.4,  # 0.8 for 2 classes, 0.6 for 9 classess
 
     #######################
     # CONFIDENCE ANALYZER #
@@ -195,7 +195,7 @@ setting = {
     # "unsure": Images with confidence within [min_conf, max_conf] (regardless of correctness) -> Intermediate-confidence predictions
     'ca_filter_type': 'correct',
     # Maximum number of checkpoints which are analyzed for a dataset
-    "ca_max_ckpts": 2,
+    "ca_max_ckpts": 1,
     # Method for best checkpoint selection
     # Options: balanced_sum, f1_score, min_difference, balanced_accuracy
     "ca_ckpt_select_method": 'balanced_accuracy',
@@ -255,7 +255,7 @@ setting = {
     ###########
 
     # Parameters for second iteration with blurring
-    "gradcam_second_iteration": True,
+    "gradcam_second_iteration": False,
     # Percentage of most prominent pixels to blur (0-1)
     "gradcam_threshold_percent": 0.40,
     # Gaussian blur strength
