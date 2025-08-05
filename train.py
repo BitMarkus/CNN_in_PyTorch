@@ -241,12 +241,14 @@ class Train():
             #################
             # Training loop #
             #################
+
             self.cnn.train()
             train_accuracy = 0.0
             train_loss = 0.0
             
             with tqdm(self.ds_train, unit="batch") as tepoch:
                 for batch_idx, (images, labels) in enumerate(tepoch):
+                    tepoch.set_description("Train")
                     images, labels = images.to(self.device), labels.to(self.device)
                     
                     self.optimizer.zero_grad()
@@ -282,6 +284,8 @@ class Train():
             train_accuracy /= len(self.ds_train.dataset)
             train_loss /= len(self.ds_train.dataset)
             current_lr = self.scheduler.get_last_lr()[0]
+
+            print(f"> train_loss: {train_loss:.5f}, train_acc: {train_accuracy:.2f}, lr: {current_lr:.6f}")
             
             history["train_acc"].append(train_accuracy)
             history["train_loss"].append(train_loss)
@@ -301,6 +305,7 @@ class Train():
             with torch.inference_mode():
                 with tqdm(self.ds_val, unit="batch") as tepoch:
                     for batch_idx, (images, labels) in enumerate(tepoch):
+                        tepoch.set_description("Valid")
                         images, labels = images.to(self.device), labels.to(self.device)
                         
                         # Critical Fix 1: Add autocast to validation
@@ -331,6 +336,10 @@ class Train():
                 all_probs = torch.cat(all_probs).numpy()
             all_labels = np.array(all_labels)
             all_preds = np.array(all_preds)
+
+            # Convert to class indices if one-hot encoded
+            if all_labels.ndim > 1 and all_labels.shape[1] > 1:
+                all_labels = np.argmax(all_labels, axis=1)        
             
             # Calculate classification metrics
             f1_macro = f1_score(all_labels, all_preds, average='macro')
@@ -370,6 +379,8 @@ class Train():
             if torch.cuda.is_available():
                 mem_usage = torch.cuda.memory_allocated() / self.total_gpu_memory
                 self.writer.add_scalar('System/GPU_Memory', mem_usage, epoch)
+
+            print(f"> val_loss: {val_loss:.5f}, val_acc: {val_accuracy:.2f}, F1 weighted: {f1_weighted:.4f}")
 
             # Store validation metrics
             history["val_acc"].append(val_accuracy)
