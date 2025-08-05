@@ -14,7 +14,7 @@ setting = {
     ############
 
     # Number of epochs
-    "train_num_epochs": 1,  # 30
+    "train_num_epochs": 2,  # 30
     # Batch size for training and validation datasets
     "ds_batch_size": 50, 
 
@@ -121,7 +121,7 @@ setting = {
     # Validation split from training dataset (False or percentage 0.0-1.0)
     "ds_val_from_train_split": False, # 0.1
     # Validation split from test dataset (False or percentage 0.0-1.0)
-    "ds_val_from_test_split": 0.4, # 0.25
+    "ds_val_from_test_split": 0.3, # 0.3
     # Define cell lines (for dataset generator)
     "wt_lines": ["WT_1618-02", "WT_JG", "WT_JT", "WT_KM", "WT_MS"],
     "ko_lines": ["KO_1096-01", "KO_1618-01", "KO_BR2986", "KO_BR3075"],
@@ -185,7 +185,7 @@ setting = {
     #######################
 
     # Min confidence for image sorting
-    "ca_min_conf": 0.8,     # 80%
+    "ca_min_conf": 0.9,     # 80%
     # Max confidence for image sorting
     'ca_max_conf': 1.0,
     # Filter type for image sorting
@@ -193,7 +193,7 @@ setting = {
     # "incorrect": Images incorrectly classified in all test folds, with confidence within [min_conf, max_conf] -> Systematic errors to investigate
     # "low_confidence": Images with confidence below min_conf in all test folds (ignores max_conf)(regardless of correctness) -> Ambiguous cases needing manual review
     # "unsure": Images with confidence within [min_conf, max_conf] (regardless of correctness) -> Intermediate-confidence predictions
-    'ca_filter_type': 'correct',
+    'ca_filter_type': 'incorrect',
     # Maximum number of checkpoints which are analyzed for a dataset
     "ca_max_ckpts": 1,
     # Method for best checkpoint selection

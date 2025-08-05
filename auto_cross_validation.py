@@ -1,6 +1,8 @@
 from pathlib import Path
 import json
+import torch
 from collections import defaultdict
+import gc
 # Own modules
 from dataset import Dataset
 from settings import setting
@@ -105,6 +107,14 @@ class AutoCrossValidation:
             print(f"Failed to record splits: {str(e)}")
             raise
 
+    def reset_model(self):
+        """Reinitializes the model by creating a fresh instance"""
+        print("Creating fresh model instance for new fold...")
+        # Force a new model load instead of resetting weights
+        self.cnn_wrapper.model = self.cnn_wrapper.load_model(self.device)
+        # Move to device (if not already done in load_model)
+        self.cnn_wrapper.model = self.cnn_wrapper.model.to(self.device)
+
     #############################################################################################################
     # CALL:
 
@@ -123,6 +133,12 @@ class AutoCrossValidation:
 
         # Iterate over each dataset
         for config in configs:
+
+            # Model Reset
+            print("Resetting model for new fold...")
+            self.reset_model()
+            torch.cuda.empty_cache()
+
             # Clean up before creating new dataset to ensure fresh start
             self.ds_gen.cleanup(self.data_dir)
 
@@ -169,16 +185,10 @@ class AutoCrossValidation:
                 print(f"Number training images/batches: {self.ds.num_train_img}/{self.ds.num_train_batches}")
                 print(f"Number validation images/batches: {self.ds.num_val_img}/{self.ds.num_val_batches}") 
 
-            ##############
-            # Create CNN #
-            ##############
-            print(f"Creating new {self.cnn_wrapper.cnn_type} network...")
-            self.cnn = self.cnn_wrapper.load_model(self.device).to(self.device)
-            print("Network successfully created.")   
-
             ####################
             # Train on dataset #
-            ####################
+            #################### 
+
             self.train = Train(self.cnn_wrapper, self.ds, self.device)
             print(f"\n> Start training on dataset {config['dataset_idx']}...")
             self.train.train(checkpoint_dir, plot_dir)
@@ -187,6 +197,7 @@ class AutoCrossValidation:
             ################
             # Testing Loop # 
             ################
+
             # Always load fresh test dataset for final evaluation
             print(f"\n> Load test images for final evaluation...")
             self.ds.load_test_dataset()
@@ -251,6 +262,15 @@ class AutoCrossValidation:
                     print(f"KO accuracy: {(loaded_results['class_accuracy']['KO']*100):.2f}%")
 
                     print(f'Prediction successfully finished. Confusion matrix and results saved to {plot_dir}.')
+
+            # Cleanup fr dataset
+            print(f"Cleaning up resources for dataset {config['dataset_idx']}...")
+            if hasattr(self, 'train'):
+                del self.train
+            if hasattr(self, 'cnn'):
+                del self.cnn
+            torch.cuda.empty_cache()
+            gc.collect()                 
 
         # FINAL CLEANUP (once at the end)
         print("\nCleaning up all temporary data...")

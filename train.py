@@ -10,7 +10,8 @@ import torch
 import matplotlib.pyplot as plt
 from torch.amp import GradScaler, autocast 
 from torch.utils.tensorboard import SummaryWriter
-from sklearn.metrics import f1_score, confusion_matrix
+from sklearn.metrics import (f1_score, confusion_matrix, roc_curve, auc, 
+                            roc_auc_score, precision_recall_curve, average_precision_score)
 from datetime import datetime
 import numpy as np
 # Own modules
@@ -23,18 +24,16 @@ class Train():
     # CONSTRUCTOR:
     
     def __init__(self, cnn_wrapper, dataset, device):
+        # Input validation
+        assert len(dataset.ds_train) > 0, "Training dataset is empty"
+        assert len(dataset.ds_val) > 0, "Validation dataset is empty"
+        
         self.device = device
-        # CNN object for methods
         self.cnn_wrapper = cnn_wrapper
-        # Model
         self.cnn = cnn_wrapper.model
-        # Initialize TensorBoard writer
-        # To use tensorboard for training, navigate to the root of the project folder
-        # Type in CMD in the the adress line
-        # Run the following command: tensorboard --logdir=logs/ --host=localhost (Optional: --reload_interval 30)
-        # Open http://localhost:6006/ in web browser
         self.writer = SummaryWriter(f"logs/{datetime.now().strftime('%Y%m%d-%H%M%S')}")
-        # Create a custom layout for TensorBoard
+        
+        # Enhanced TensorBoard layout
         custom_layout = {
             'Accuracy': {
                 'Training Accuracy': ['Scalar', 'Accuracy/Train'],
@@ -45,11 +44,17 @@ class Train():
                 'Validation Loss': ['Scalar', 'Loss/Val'],
             },
             'Metrics': {
-                'F1 Score': ['Scalar', 'Metrics/F1'],
+                'F1 Scores': ['Multiline', ['Metrics/F1/Macro', 'Metrics/F1/Weighted']],
+                'AUC': ['Scalar', 'Metrics/AUC'],
+                'AP': ['Scalar', 'Metrics/AP'],
                 'Learning Rate': ['Scalar', 'Metrics/LR'],
             },
+            'System': {
+                'GPU Memory': ['Scalar', 'System/GPU_Memory']
+            }
         }
         self.writer.add_custom_scalars(custom_layout)
+        
         # Pretrained
         self.is_pretrained = setting["cnn_is_pretrained"] 
         # Datasets
@@ -137,269 +142,264 @@ class Train():
         # Add gradient scaler for mixed precision training
         # Initialize once before training
         self.scaler = GradScaler()
+        
+        # Add memory monitoring
+        self.total_gpu_memory = torch.cuda.get_device_properties(device).total_memory if torch.cuda.is_available() else 0
 
     #############################################################################################################
     # METHODS:
 
-    # Plots accuracy, loss, f1 score, and learning rate after training
     def _plot_metrics(self, history, plot_path, show_plot=True, save_plot=True):
-        # Number of epochs
-        epochs_range = range(1, len(history["train_loss"]) + 1)
-        # Create 2x2 grid layout
-        plt.figure(figsize=(15, 12))  # Increased height for 2x2 layout
-        # Accuracy plot (top-left)
-        plt.subplot(2, 2, 1)
-        plt.plot(epochs_range, history["train_acc"], label='Training Accuracy', color='green')
-        plt.plot(epochs_range, history["val_acc"], label='Validation Accuracy', color='red')
-        plt.legend(loc='lower right')
-        plt.title('Training and Validation Accuracy')
-        # Loss plot (top-right)
-        plt.subplot(2, 2, 2)
-        plt.ylim(0, 5)  # Set the range of y-axis
-        plt.plot(epochs_range, history["train_loss"], label='Training Loss', color='green')
-        plt.plot(epochs_range, history["val_loss"], label='Validation Loss', color='red')
-        plt.legend(loc='upper right')
-        plt.title('Training and Validation Loss')
-        # Learning rate plot (bottom-left)
-        plt.subplot(2, 2, 3)
-        plt.plot(epochs_range, history["lr"], label='Learning Rate', color='blue')
-        plt.legend(loc='upper right')
-        plt.title('Learning Rate')
-        # F1 score plot (bottom-right)
-        plt.subplot(2, 2, 4)
-        plt.plot(epochs_range, history["f1"], label='F1 Score', color='red')
-        plt.ylim(0, 1)  # F1 score ranges between 0 and 1
-        plt.legend(loc='lower right')
-        plt.title('F1 Score (Macro)')
+        plt.figure(figsize=(24, 18))
         
-        # Adjust layout
+        # 1. Accuracy Plot
+        plt.subplot(3, 3, 1)
+        epochs_range = range(1, len(history["train_acc"]) + 1)
+        plt.plot(epochs_range, history["train_acc"], 'g-', label='Training')
+        plt.plot(epochs_range, history["val_acc"], 'r-', label='Validation')
+        plt.title('Accuracy')
+        plt.legend()
+        
+        # 2. Loss Plot
+        plt.subplot(3, 3, 2)
+        plt.plot(epochs_range, history["train_loss"], 'g-')
+        plt.plot(epochs_range, history["val_loss"], 'r-')
+        plt.title('Loss')
+        plt.ylim(0, min(5, max(history["val_loss"]) * 1.1))
+        
+        # 3. Learning Rate
+        plt.subplot(3, 3, 3)
+        plt.plot(epochs_range, history["lr"], 'b-')
+        plt.title('Learning Rate')
+        
+        # 4. F1 Scores
+        plt.subplot(3, 3, 4)
+        plt.plot(epochs_range, history["f1_macro"], 'b-', label='Macro')
+        plt.plot(epochs_range, history["f1_weighted"], 'orange', label='Weighted')
+        plt.title('F1 Scores')
+        plt.legend()
+        plt.ylim(0, 1)
+        
+        # 5. ROC Curves (last epoch only)
+        plt.subplot(3, 3, 5)
+        colors = plt.cm.rainbow(np.linspace(0, 1, len(self.classes)))
+        last_epoch = -1
+        for i, color in zip(range(len(self.classes)), colors):
+            if i in history["fpr"][last_epoch]:
+                plt.plot(history["fpr"][last_epoch][i], 
+                         history["tpr"][last_epoch][i],
+                         color=color,
+                         label=f'{self.classes[i]} (AUC={history["roc_auc"][last_epoch][i]:.2f})')
+        plt.plot([0, 1], [0, 1], 'k--')
+        plt.title('ROC Curves')
+        plt.legend()
+        
+        # 6. PR Curves (last epoch only)
+        plt.subplot(3, 3, 6)
+        for i, color in zip(range(len(self.classes)), colors):
+            if i in history["precision"][last_epoch]:
+                plt.plot(history["recall"][last_epoch][i],
+                         history["precision"][last_epoch][i],
+                         color=color,
+                         label=f'{self.classes[i]} (AP={history["average_precision"][last_epoch][i]:.2f})')
+        plt.title('Precision-Recall')
+        plt.legend()
+        
+        # 7. Confusion Matrix (last epoch)
+        plt.subplot(3, 3, (7, 9))
+        cm = history["last_confusion_matrix"]
+        cm_normalized = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis]
+        plt.imshow(cm_normalized, interpolation='nearest', cmap=plt.cm.Blues)
+        plt.colorbar()
+        plt.xticks(np.arange(len(self.classes)), self.classes, rotation=45)
+        plt.yticks(np.arange(len(self.classes)), self.classes)
+        plt.title('Confusion Matrix')
+        
         plt.tight_layout()
-        # Save plot
         if save_plot:
             plt.savefig(str(plot_path / "train_metrics"), bbox_inches='tight', dpi=300)
             plt.close()
-        # Show plot
         if show_plot:
             plt.show()
 
-    # Creates a styled confusion matrix plot
-    def _plot_confusion_matrix(self, cm, class_names=None, epoch=None):
-        fig, ax = plt.subplots(figsize=(8, 8))
-        # Normalize and plot
-        cm_normalized = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis]
-        im = ax.imshow(cm_normalized, interpolation='nearest', cmap=plt.cm.Blues)
-        # Customize fonts
-        title_font = {'size': 14, 'weight': 'bold'}
-        label_font = {'size': 12}
-        tick_font = {'size': 12}
-        text_font = {'size': 12}
-        # Add labels/title
-        ax.set_xlabel('Predicted Label', fontdict=label_font)
-        ax.set_ylabel('True Label', fontdict=label_font)
-        ax.set_title(f'Confusion Matrix (Epoch {epoch+1})' if epoch else 'Confusion Matrix', 
-                    fontdict=title_font)
-        # Class names
-        if class_names:
-            ax.set_xticks(np.arange(len(class_names)))
-            ax.set_yticks(np.arange(len(class_names)))
-            ax.set_xticklabels(class_names, rotation=45, ha="right", fontdict=tick_font)
-            ax.set_yticklabels(class_names, fontdict=tick_font)
-        # Annotations
-        thresh = cm_normalized.max() / 2.
-        for i in range(cm.shape[0]):
-            for j in range(cm.shape[1]):
-                ax.text(j, i, 
-                    f"{cm_normalized[i,j]:.1%}\n({cm[i,j]})", 
-                    ha="center", va="center",
-                    color="white" if cm_normalized[i,j] > thresh else "black",
-                    fontsize=text_font['size'])
-        # Colorbar
-        cbar = plt.colorbar(im, fraction=0.046, pad=0.04)
-        cbar.ax.tick_params(labelsize=12)
-        plt.tight_layout()
-
-        return fig
-
     def train(self, chckpt_pth, plot_pth):
-
-        # Save best accuracy for model saving
+        # Initialize metrics storage
+        history = {
+            "train_acc": [], "train_loss": [],
+            "val_acc": [], "val_loss": [],
+            "lr": [],
+            "f1_macro": [], "f1_weighted": [],
+            "roc_auc": [], "fpr": [], "tpr": [],
+            "precision": [], "recall": [], "average_precision": [],
+            "last_confusion_matrix": None
+        }
         best_accuracy = 0.0
-        # Track train and validation accuracy, train and accuracy loss and learning rate every epoch
-        history = {"train_acc": [], "train_loss": [], "val_acc": [], "val_loss": [], "lr": [], "f1": []}
 
-        # Iterate over epochs
         for epoch in range(self.num_epochs):
-
             print(f"\n>> Epoch [{epoch+1}/{self.num_epochs}]:")
 
             #################
             # Training loop #
-            #################        
-
-            # Switch model to train mode
+            #################
             self.cnn.train()
-            # Set variables for train accuracy and loss
             train_accuracy = 0.0
             train_loss = 0.0
             
-            # Iterate over batches
-            # https://towardsdatascience.com/training-models-with-a-progress-a-bar-2b664de3e13e
             with tqdm(self.ds_train, unit="batch") as tepoch:
                 for batch_idx, (images, labels) in enumerate(tepoch):
-                    tepoch.set_description("Train")
-
-                    # Send images and labels to gpu or cpu
-                    if torch.cuda.is_available():
-                        images, labels = images.cuda(), labels.cuda()
+                    images, labels = images.to(self.device), labels.to(self.device)
                     
-                    # Clear gradients
-                    self.optimizer.zero_grad() 
-                    # Enable mixed precision
+                    self.optimizer.zero_grad()
                     with autocast(device_type='cuda', enabled=self.device.type == 'cuda'):
-                        # Forward          
                         outputs = self.cnn(images)
                         loss = self.loss_function(outputs, labels)
-                    # Scales loss and backprops scaled gradients
+                    
+                    # Scale loss and backpropagate
                     self.scaler.scale(loss).backward()
-                    # Unscales gradients + optimizer step (skips if gradients are inf/NaN)
+                    
+                    # Add gradient clipping here
+                    self.scaler.unscale_(self.optimizer)
+                    torch.nn.utils.clip_grad_norm_(self.cnn.parameters(), max_norm=1.0)
+                    
+                    # Update weights
                     self.scaler.step(self.optimizer)
-                    # Updates scale for next iteration
                     self.scaler.update()
                     
-                    train_loss += loss.cpu().data * images.size(0)
-                    _, prediction = torch.max(outputs.data, 1)           
-                    train_accuracy += int(torch.sum(prediction==labels.data))
+                    # Check for NaN/inf values
+                    if torch.isnan(loss).any():
+                        raise ValueError("NaN loss detected during training")
+                    
+                    train_loss += loss.item() * images.size(0)
+                    _, preds = torch.max(outputs, 1)
+                    train_accuracy += torch.sum(preds == labels.data).item()
 
-                    # Tensorboard: Log batch-level metrics
-                    # if batch_idx % 50 == 0:  # Log every 50 batches
-                    #     self.writer.add_scalar('Loss/train_batch', loss.item(), epoch * len(self.ds_train) + batch_idx)
+                    # Clear memory every 10 batches
+                    if batch_idx % 10 == 0:
+                        torch.cuda.empty_cache()
 
-                # Set learning rate scheduler
-                self.scheduler.step()
-
-                # Calculate train loss and accuracy   
-                train_accuracy = train_accuracy / self.num_train_img
-                train_loss = train_loss / self.num_train_img
-                lr = self.scheduler.get_last_lr()[0]
-
-                # Tensorboard: Log epoch-level training metrics
-                self.writer.add_scalar('Loss/train', train_loss, epoch)
-                self.writer.add_scalar('Accuracy/train', train_accuracy, epoch)
-                self.writer.add_scalar('Metrics/LR', lr, epoch)             
-
-                print(f"> train_loss: {train_loss:.5f}, train_acc: {train_accuracy:.2f}, lr: {lr:.6f}")
-
-                # Save train loss, accuracy and learning rate
-                history["train_loss"].append(train_loss)
-                history["train_acc"].append(train_accuracy)
-                history["lr"].append(lr)
-
-            ###################
-            # Evaluation loop #
-            ###################
-
-            # Switch model to evaluation mode
-            self.cnn.eval()
-            # Set variables for validation accuracy and loss
-            validation_accuracy = 0.0
-            validation_loss = 0.0
-            all_preds = []  # Store all predictions for advanced metrics
-            all_labels = []  # Store all ground truth labels
+            # Update learning rate and store training metrics
+            self.scheduler.step()
+            train_accuracy /= len(self.ds_train.dataset)
+            train_loss /= len(self.ds_train.dataset)
+            current_lr = self.scheduler.get_last_lr()[0]
             
-            # Clear cache before validation to save V-RAM
-            torch.cuda.empty_cache()
+            history["train_acc"].append(train_accuracy)
+            history["train_loss"].append(train_loss)
+            history["lr"].append(current_lr)
 
-            # Iterate over batches
-            # torch.inference_mode(): More efficient than no_grad()
+            ###################
+            # Validation loop #
+            ###################
+
+            self.cnn.eval()
+            val_accuracy = 0.0
+            val_loss = 0.0
+            all_preds = []
+            all_labels = []
+            all_probs = []
+            
             with torch.inference_mode():
                 with tqdm(self.ds_val, unit="batch") as tepoch:
-                    for images, labels in tepoch:
-                        tepoch.set_description("Valid")
-
-                        # Send images and labels to gpu or cpu
-                        if torch.cuda.is_available():
-                            images, labels = images.cuda(), labels.cuda()
+                    for batch_idx, (images, labels) in enumerate(tepoch):
+                        images, labels = images.to(self.device), labels.to(self.device)
                         
-                        # Explicit FP32 validation (no autocast)
-                        outputs = self.cnn(images) # Let PyTorch handle dtype automatically
-                        loss = self.loss_function(outputs, labels)
+                        # Critical Fix 1: Add autocast to validation
+                        with autocast(device_type='cuda', enabled=self.device.type == 'cuda'):
+                            outputs = self.cnn(images)
+                            probs = torch.softmax(outputs.float(), dim=1) 
+                            loss = self.loss_function(outputs, labels)
                         
-                        validation_loss += loss.cpu().data * images.size(0)
-                        _, prediction = torch.max(outputs.data, 1)
-                        validation_accuracy += int(torch.sum(prediction==labels.data))
+                        val_loss += loss.item() * images.size(0)
+                        _, preds = torch.max(outputs, 1)
+                        val_accuracy += torch.sum(preds == labels.data).item()
                         
-                        # Store predictions and labels for advanced metrics
-                        all_preds.extend(prediction.cpu().numpy())
+                        # Critical Fix 2: Proper memory management
+                        all_probs.append(probs.cpu().detach())  # Explicit detach
+                        all_preds.extend(preds.cpu().numpy())
                         all_labels.extend(labels.cpu().numpy())
+                        
+                        # Clear memory every 10 batches
+                        if batch_idx % 10 == 0:
+                            torch.cuda.empty_cache()
+
+            # Calculate validation metrics
+            val_accuracy /= len(self.ds_val.dataset)
+            val_loss /= len(self.ds_val.dataset)
             
-            # Calculate standard metrics
-            validation_accuracy = validation_accuracy / self.num_val_img
-            validation_loss = validation_loss / self.num_val_img
-            # Log validation metrics to TensorBoard
-            self.writer.add_scalar('Loss/val', validation_loss, epoch)
-            self.writer.add_scalar('Accuracy/val', validation_accuracy, epoch)
+            # Convert to numpy arrays safely
+            with torch.no_grad():
+                all_probs = torch.cat(all_probs).numpy()
+            all_labels = np.array(all_labels)
+            all_preds = np.array(all_preds)
             
-            # Calculate F1 score and confusion matrix
-            # Options for parameter average:
-            # 'binary': 
-            # Only reports F1 for the positive class in binary classification. Uses pos_label to specify which class is "positive".
-            # -> Binary classification only (not for multiclass).
-            # 'micro': 
-            # Calculates global F1 by summing all TPs, FPs, FNs across classes, then computes F1. Class-agnostic. 
-            # -> Imbalanced data where you care about overall performance (favors majority classes).
-            # 'macro': 
-            # Computes F1 for each class independently, then takes the unweighted mean. Treats all classes equally.
-            # -> Multiclass data where you want equal importance for all classes (ignores imbalance).
-            # 'weighted': 
-            # Like 'macro', but weights each class’s F1 by its support (number of true instances). 
-            # -> Imbalanced data where you want to reflect class frequencies.
-            # 'None': 
-            # Returns F1 per class as an array. 
-            # -> Debugging per-class performance.
-            f1 = f1_score(all_labels, all_preds, average='macro')
+            # Calculate classification metrics
+            f1_macro = f1_score(all_labels, all_preds, average='macro')
+            f1_weighted = f1_score(all_labels, all_preds, average='weighted')
             cm = confusion_matrix(all_labels, all_preds)
+            
+            # Initialize metric dictionaries
+            fpr, tpr, roc_auc = {}, {}, {}
+            precision, recall, average_precision = {}, {}, {}
+            
+            # Calculate per-class metrics with checks
+            for i in range(len(self.classes)):
+                class_mask = (all_labels == i)
+                if np.sum(class_mask) > 0:  # Only if class exists in batch
+                    fpr[i], tpr[i], _ = roc_curve(class_mask, all_probs[:, i])
+                    roc_auc[i] = auc(fpr[i], tpr[i])
+                    precision[i], recall[i], _ = precision_recall_curve(class_mask, all_probs[:, i])
+                    average_precision[i] = average_precision_score(class_mask, all_probs[:, i])
+            
+            # Calculate weighted metrics
+            roc_auc_weighted = roc_auc_score(all_labels, all_probs, multi_class='ovr', average='weighted')
+            ap_weighted = np.mean(list(average_precision.values())) if average_precision else 0
 
-            # Log advanced metrics to TensorBoard
-            self.writer.add_scalar('Metrics/F1', f1, epoch)
+            # Log to TensorBoard
+            self.writer.add_scalar('Loss/train', train_loss, epoch)
+            self.writer.add_scalar('Accuracy/train', train_accuracy, epoch)
+            self.writer.add_scalar('Loss/val', val_loss, epoch)
+            self.writer.add_scalar('Accuracy/val', val_accuracy, epoch)
+            self.writer.add_scalar('Metrics/LR', current_lr, epoch)
+            self.writer.add_scalars('Metrics/F1', 
+                                  {'Macro': f1_macro, 'Weighted': f1_weighted}, 
+                                  epoch)
+            self.writer.add_scalar('Metrics/AUC', roc_auc_weighted, epoch)
+            self.writer.add_scalar('Metrics/AP', ap_weighted, epoch)
+            
+            # Log GPU memory usage
+            if torch.cuda.is_available():
+                mem_usage = torch.cuda.memory_allocated() / self.total_gpu_memory
+                self.writer.add_scalar('System/GPU_Memory', mem_usage, epoch)
 
-            # Create and log confusion matrix figure
-            cm_fig = self._plot_confusion_matrix(cm, class_names=self.classes, epoch=epoch)
-            self.writer.add_figure('Confusion Matrix', cm_fig, epoch, close=True)  # Added close=True
-            plt.close(cm_fig)  # Extra safety to prevent memory leaks
+            # Store validation metrics
+            history["val_acc"].append(val_accuracy)
+            history["val_loss"].append(val_loss)
+            history["f1_macro"].append(f1_macro)
+            history["f1_weighted"].append(f1_weighted)
+            history["roc_auc"].append(roc_auc)
+            history["fpr"].append(fpr)
+            history["tpr"].append(tpr)
+            history["precision"].append(precision)
+            history["recall"].append(recall)
+            history["average_precision"].append(average_precision)
+            history["last_confusion_matrix"] = cm
 
-            print(f"> val_loss: {validation_loss:.5f}, val_acc: {validation_accuracy:.2f}, F1: {f1:.4f}")
+            # Print epoch summary
+            print(f"Train Loss: {train_loss:.4f} | Val Loss: {val_loss:.4f}")
+            print(f"Train Acc: {train_accuracy:.4f} | Val Acc: {val_accuracy:.4f}")
+            print(f"F1 Macro: {f1_macro:.4f} | F1 Weighted: {f1_weighted:.4f}")
+            print(f"AUC: {roc_auc_weighted:.4f} | AP: {ap_weighted:.4f}")
 
-            # Save validation loss and accuracy
-            history["val_loss"].append(validation_loss)
-            history["val_acc"].append(validation_accuracy)
-            history["f1"].append(f1)  # Store F1 score in history
+            # Save best model
+            best_accuracy = self.cnn_wrapper.save_weights(
+                val_accuracy, 
+                best_accuracy, 
+                epoch, 
+                chckpt_pth
+            )
 
-            ###################
-            # Save best model #
-            ###################
-
-            best_accuracy = self.cnn_wrapper.save_weights(validation_accuracy, best_accuracy, epoch, chckpt_pth)
-
-        ################
-        # Metircs plot #
-        ################
-
-        # Tensorboard: Log hyperparameters and close writer
-        self.writer.add_hparams(
-            # Hyperparameters (inputs being tested)
-            {
-                "lr": self.init_lr,                     # Learning rate
-                "batch_size": setting["ds_batch_size"], # Batch size from config
-                "momentum": self.sgd_momentum           # SGD momentum (if using SGD)
-            },
-            # Metrics (outputs to evaluate)
-            {
-                "hparam/val_accuracy": max(history["val_acc"]),  # Best validation accuracy
-                "hparam/val_loss": min(history["val_loss"])      # Lowest validation loss
-            },
-        )
+        # Final cleanup and plotting
         self.writer.close()
-
         self._plot_metrics(history, plot_pth, show_plot=False, save_plot=True)
-
+        
         return history
