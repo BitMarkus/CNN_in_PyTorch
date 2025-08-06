@@ -146,6 +146,7 @@ class AutoCrossValidation:
             ##################
             # Create dataset #
             ##################
+
             print(f"\n>> PROCESSING DATASET {config['dataset_idx']} OF {len(configs)}:")
 
             print(f"Cell line for testing WT group: {config['test_wt']}")
@@ -155,7 +156,7 @@ class AutoCrossValidation:
             dataset_dir = self.ds_gen.generate_dataset(**config) # Unpacks dict as kwargs
 
             # Create a subfolder for checkpoints
-            checkpoint_dir = dataset_dir / "checkpoints"  # MODIFIED: Fixed typo in variable name
+            checkpoint_dir = dataset_dir / "checkpoints"
             checkpoint_dir.mkdir(exist_ok=True)
             # Create a subfolder for plots
             plot_dir = dataset_dir / "plots"
@@ -165,6 +166,7 @@ class AutoCrossValidation:
             ######################
             # Load train dataset #
             ######################
+
             print(f"\n> Load dataset {config['dataset_idx']} for training...")
             
             # Check for correct settings in settings file
@@ -180,7 +182,6 @@ class AutoCrossValidation:
             
             # Print dataset info
             self.ds.print_dataset_info()
-            
             if(self.ds.ds_loaded):
                 print(f"Dataset {config['dataset_idx']} successfully loaded.")
                 print(f"Number training images/batches: {self.ds.num_train_img}/{self.ds.num_train_batches}")
@@ -241,6 +242,7 @@ class AutoCrossValidation:
             print(f"Test images for dataset {config['dataset_idx']} successfully loaded.")             
             print(f"Number test images/batch size: {self.ds.num_pred_img}/1")
             
+            # Load checkpoint
             checkpoint_list = self.cnn_wrapper.get_checkpoints_list(checkpoint_dir)
             if not checkpoint_list:
                 print("No checkpoint for this dataset!")
@@ -264,7 +266,7 @@ class AutoCrossValidation:
 
                     print(f'Prediction successfully finished. Confusion matrix and results saved to {plot_dir}.')
 
-            # Cleanup fr dataset
+            # Cleanup dataset
             print(f"Cleaning up resources for dataset {config['dataset_idx']}...")
             if hasattr(self, 'train'):
                 del self.train
@@ -273,7 +275,7 @@ class AutoCrossValidation:
             torch.cuda.empty_cache()
             gc.collect()                 
 
-        # FINAL CLEANUP (once at the end)
+        # Final cleanup (once at the end)
         print("\nCleaning up all temporary data...")
         self.ds_gen.cleanup(self.data_dir)
         print("Cross-validation complete.")
