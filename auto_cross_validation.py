@@ -56,7 +56,7 @@ class AutoCrossValidation:
             val_loader = self.ds.ds_test_for_val
             test_loader = self.ds.ds_test_for_test
             
-            # Verify we have the expected structure
+            # Verify the expected structure
             if not all(hasattr(loader, 'sampler') and hasattr(loader.sampler, 'indices') 
                 for loader in [val_loader, test_loader]):
                 raise ValueError("DataLoaders don't have proper sampler indices")
@@ -80,12 +80,13 @@ class AutoCrossValidation:
             val_images = [full_dataset.samples[i][0] for i in true_val_indices]
             test_images = [full_dataset.samples[i][0] for i in true_test_indices]
             
-            # Verify we've accounted for all images
+            # Verify it was accounted for all images
             total_images = len(full_dataset.samples)
             recorded = len(val_images) + len(test_images)
             if recorded != total_images:
                 print(f"Note: {total_images - recorded} images not in either set (may be intentional)")
-            
+
+            # Prepare split info text
             split_info = {
                 'validation': {
                     'WT': sorted(list({Path(p).name for p in val_images if 'WT' in str(p)})),
@@ -97,9 +98,9 @@ class AutoCrossValidation:
                 }
             }
             
+            # Write split info text to json file
             output_path = Path(self.acv_results_dir) / f"dataset_{dataset_idx}" / "split_info.json"
             output_path.parent.mkdir(parents=True, exist_ok=True)
-            
             with open(output_path, 'w') as f:
                 json.dump(split_info, f, indent=2)
                 
@@ -107,10 +108,10 @@ class AutoCrossValidation:
             print(f"Failed to record splits: {str(e)}")
             raise
 
+    # Reinitializes the model by creating a fresh instance
     def reset_model(self):
-        """Reinitializes the model by creating a fresh instance"""
-        print("Creating fresh model instance for new fold...")
-        # Force a new model load instead of resetting weights
+        print("Creating fresh model instance for new training...")
+        # Force a new model load
         self.cnn_wrapper.model = self.cnn_wrapper.load_model(self.device)
         # Move to device (if not already done in load_model)
         self.cnn_wrapper.model = self.cnn_wrapper.model.to(self.device)
@@ -135,7 +136,7 @@ class AutoCrossValidation:
         for config in configs:
 
             # Model Reset
-            print("Resetting model for new fold...")
+            print("Resetting model for new training...")
             self.reset_model()
             torch.cuda.empty_cache()
 

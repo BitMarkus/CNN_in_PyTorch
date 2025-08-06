@@ -14,7 +14,7 @@ setting = {
     ############
 
     # Number of epochs
-    "train_num_epochs": 2,  # 30
+    "train_num_epochs": 10,  # 30
     # Batch size for training and validation datasets
     "ds_batch_size": 50, 
 
@@ -178,7 +178,7 @@ setting = {
     # Set to True, if checkpoints shall be saved during training
     "chckpt_save": True,  
     # Mininmun validation accuracy from which on checkpoints are saved
-    "chckpt_min_acc": 0.4,  # 0.8 for 2 classes, 0.6 for 9 classess
+    "chckpt_min_acc": 0.8,  # 0.8 for 2 classes, 0.6 for 9 classess
 
     #######################
     # CONFIDENCE ANALYZER #
