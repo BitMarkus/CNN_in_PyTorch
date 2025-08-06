@@ -137,7 +137,7 @@ class Train():
             start_factor=0.01,  # Start at 1% of target LR
             total_iters=self.warmup_epochs ,      # Ramp over 5 epochs
         )
-        # Then chain with your CosineAnnealingLR
+        # Then chain with CosineAnnealingLR
         self.scheduler = torch.optim.lr_scheduler.SequentialLR(
             self.optimizer,
             schedulers=[self.warmup_scheduler, self.scheduler_CA],
@@ -153,6 +153,7 @@ class Train():
     #############################################################################################################
     # METHODS:
 
+    # Generate metrics plot at the end of a training
     def _plot_metrics(self, history, plot_path, show_plot=True, save_plot=True):
         plt.figure(figsize=(24, 12))
         
@@ -220,25 +221,30 @@ class Train():
     # Creates a styled confusion matrix plot
     def _plot_confusion_matrix(self, cm, class_names=None, epoch=None):
         fig, ax = plt.subplots(figsize=(8, 8))
+
         # Normalize and plot
         cm_normalized = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis]
         im = ax.imshow(cm_normalized, interpolation='nearest', cmap=plt.cm.Blues)
+
         # Customize fonts
         title_font = {'size': 14, 'weight': 'bold'}
         label_font = {'size': 12}
         tick_font = {'size': 12}
         text_font = {'size': 12}
+
         # Add labels/title
         ax.set_xlabel('Predicted Label', fontdict=label_font)
         ax.set_ylabel('True Label', fontdict=label_font)
         ax.set_title(f'Confusion Matrix (Epoch {epoch+1})' if epoch else 'Confusion Matrix', 
                     fontdict=title_font)
+        
         # Class names
         if class_names:
             ax.set_xticks(np.arange(len(class_names)))
             ax.set_yticks(np.arange(len(class_names)))
             ax.set_xticklabels(class_names, rotation=45, ha="right", fontdict=tick_font)
             ax.set_yticklabels(class_names, fontdict=tick_font)
+
         # Annotations
         thresh = cm_normalized.max() / 2.
         for i in range(cm.shape[0]):
@@ -248,6 +254,7 @@ class Train():
                     ha="center", va="center",
                     color="white" if cm_normalized[i,j] > thresh else "black",
                     fontsize=text_font['size'])
+                
         # Colorbar
         cbar = plt.colorbar(im, fraction=0.046, pad=0.04)
         cbar.ax.tick_params(labelsize=12)
@@ -270,11 +277,14 @@ class Train():
             "precision": [], "recall": [], "average_precision": [],
             "confusion_matrices": []
         }
+
+        # Track best accuracy for checkpoint saving
         best_accuracy = 0.0
 
         # Iterate over epochs
         for epoch in range(self.num_epochs):
 
+            # Console output:
             print(f"\n>> Epoch [{epoch+1}/{self.num_epochs}]:")
 
             #################
@@ -288,6 +298,7 @@ class Train():
             with tqdm(self.ds_train, unit="batch") as tepoch:
                 for batch_idx, (images, labels) in enumerate(tepoch):
                     tepoch.set_description("Train")
+
                     images, labels = images.to(self.device), labels.to(self.device)
                     
                     self.optimizer.zero_grad()
@@ -325,7 +336,7 @@ class Train():
             train_loss /= len(self.ds_train.dataset)
             current_lr = self.scheduler.get_last_lr()[0]
 
-            # Print training summary
+            # Console output: Print training summary
             print(f"> Train Loss: {train_loss:.5f} | Train Acc: {train_accuracy:.2f} | Learning Rate: {current_lr:.6f}")
             
             # Add training metrics to history
@@ -346,9 +357,10 @@ class Train():
             all_probs = []
 
             with torch.inference_mode():
-                with tqdm(self.ds_val, unit="batch") as tepoch:  # <-- Progress bar added back
+                with tqdm(self.ds_val, unit="batch") as tepoch:
                     tepoch.set_description("Valid")
                     for images, labels in tepoch:
+
                         images, labels = images.to(self.device), labels.to(self.device)
                         
                         with autocast(device_type='cuda', enabled=self.device.type == 'cuda'):
@@ -369,10 +381,8 @@ class Train():
             val_accuracy /= total_samples
             val_loss /= total_samples
             
-            # Calculate confusion matrix
+            # Create and log confusion matrix
             cm = confusion_matrix(all_labels, all_preds)
-
-            # Create and log figure
             cm_fig = self._plot_confusion_matrix(cm, class_names=self.classes, epoch=epoch)
             self.writer.add_figure('Confusion Matrix', cm_fig, epoch, close=True)
             plt.close(cm_fig)
@@ -404,9 +414,9 @@ class Train():
                     precision[i], recall[i], _ = precision_recall_curve(class_mask, all_probs[:, i])
                     average_precision[i] = average_precision_score(class_mask, all_probs[:, i])
 
-            # Calculate weighted metrics: HANDLE BINARY VS MULTICLASS DIFFERENTLY
+            # Calculate weighted metrics: HANDLE BINARY VS MULTICLASS DIFFERENTLY!
             if len(self.classes) == 2:
-                # Binary classification - use probabilities for positive class only
+                # Binary classification: use probabilities for positive class only
                 roc_auc_weighted = roc_auc_score(all_labels, all_probs[:, 1])
             else:
                 # Multiclass classification
@@ -430,7 +440,7 @@ class Train():
             
             # Log GPU memory usage
             if torch.cuda.is_available():
-                mem_usage = torch.cuda.memory_allocated() / self.total_gpu_memory
+                mem_usage = torch.cuda.memory_reserved() / self.total_gpu_memory
                 self.writer.add_scalar('System/GPU_Memory', mem_usage, epoch)
 
             # Print validation summary
