@@ -218,11 +218,11 @@ def main():
             print("\n:DIMENSION REDUCTION (UMAP, PaCMAP):") 
 
             # For test data (default):
-            # visualizer = UMAP_Visualizer(device="cuda")  # Auto-detects GPU
+            # visualizer = UMAP_Visualizer(device)  # Auto-detects GPU
             # visualizer.run()
 
             # For training data (if implemented):
-            visualizer = UMAP_Visualizer(device="cuda")
+            visualizer = UMAP_Visualizer(device)
             visualizer.mode = "train"  # Switch to training mode
             visualizer.run()
 

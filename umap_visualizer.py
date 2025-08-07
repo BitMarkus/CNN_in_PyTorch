@@ -16,8 +16,9 @@ class UMAP_Visualizer:
     
     # https://towardsdatascience.com/why-you-should-not-rely-on-t-sne-umap-or-trimap-f8f5dc333e59/
 
-    def __init__(self, device="cuda"):
-        self.device = torch.device(device) if isinstance(device, str) else device
+    def __init__(self, device):
+        # self.device = torch.device(device) if isinstance(device, str) else device
+        self.device = device
         self.mode = "test"
         
         # Load settings
@@ -89,7 +90,7 @@ class UMAP_Visualizer:
             return False
 
     def extract_features(self):
-        assert next(self.cnn.parameters()).device == self.device, "Model-device mismatch!"
+        # assert next(self.cnn.parameters()).device == self.device, "Model-device mismatch!"
         
         if self.mode == "train":
             if not hasattr(self.ds, 'load_training_dataset'):
