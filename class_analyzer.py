@@ -123,21 +123,17 @@ class ClassAnalyzer:
             print("WARNING: Using untrained weights!")
             self.loaded_checkpoint_name = "untrained"
 
-        # Debug:
-        self.debug_transforms()
-
-        # Get all class folders in prediction directory
-        class_folders = [d.name for d in self.pth_prediction.iterdir() 
-                        if d.is_dir() and d.name in self.classes]
+        # Get ALL folders in prediction directory (not just class-named ones)
+        all_folders = [d.name for d in self.pth_prediction.iterdir() if d.is_dir()]
         
-        if not class_folders:
-            print(f"No valid class folders found in {self.pth_prediction}")
+        if not all_folders:
+            print(f"No folders found in {self.pth_prediction}")
             return None
 
-        print(f"\nAnalyzing {len(class_folders)} class folders...")
+        print(f"\nAnalyzing {len(all_folders)} folders...")
         results = []
         
-        for folder in class_folders:
+        for folder in all_folders:
             try:
                 print(f"\n> Processing folder: {folder}")
                 result = self.predict_folder(folder)

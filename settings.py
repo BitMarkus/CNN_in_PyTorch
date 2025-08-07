@@ -14,7 +14,7 @@ setting = {
     ############
 
     # Number of epochs
-    "train_num_epochs": 10,  # 30
+    "train_num_epochs": 40,  # 30
     # Batch size for training and validation datasets
     "ds_batch_size": 50, 
 
@@ -116,10 +116,10 @@ setting = {
     # Shuffle dataset
     "ds_shuffle": True,
     # Shuffle seed
-    "ds_shuffle_seed": 333,
+    "ds_shuffle_seed": 444,
     # Validation split settings
     # Validation split from training dataset (False or percentage 0.0-1.0)
-    "ds_val_from_train_split": 0.1, # 0.1
+    "ds_val_from_train_split": 0.2, # 0.1
     # Validation split from test dataset (False or percentage 0.0-1.0)
     "ds_val_from_test_split": False, # 0.3
     # Define cell lines (for dataset generator)
