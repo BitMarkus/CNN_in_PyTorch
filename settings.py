@@ -39,6 +39,11 @@ setting = {
     "train_adam_beta1": 0.9, # 0.9
     "train_adam_beta2": 0.99, # 0.99
 
+    # Loss function:
+    # Paramater to use weighted loss function or normal loss function
+    # Weighted loss function for class imbalance
+    "train_use_weighted_loss": True,
+
     # Learning rate scheduler:
     # Number of steps after which the lr is multiplied by the lr multiplier
     # Warmup scheduler:
@@ -119,17 +124,17 @@ setting = {
     "ds_shuffle_seed": 444,
     # Validation split settings
     # Validation split from training dataset (False or percentage 0.0-1.0)
-    "ds_val_from_train_split": 0.2, # 0.1
+    "ds_val_from_train_split": False, # 0.1
     # Validation split from test dataset (False or percentage 0.0-1.0)
-    "ds_val_from_test_split": False, # 0.3
+    "ds_val_from_test_split": 0.3, # 0.3
     # Define cell lines (for dataset generator)
     "wt_lines": ["WT_1618-02", "WT_JG", "WT_JT", "WT_KM", "WT_MS"],
     "ko_lines": ["KO_1096-01", "KO_1618-01", "KO_BR2986", "KO_BR3075"],
     # Define classes
     # 2 classes (WT and KO):
-    # "classes": ["KO", "WT"],
+    "classes": ["KO", "WT"],
     # 9 classes (one for each cell line):
-    "classes": ["KO_1096-01", "KO_1618-01", "KO_BR2986", "KO_BR3075", "WT_1618-02", "WT_JG", "WT_JT", "WT_KM", "WT_MS"],
+    # "classes": ["KO_1096-01", "KO_1618-01", "KO_BR2986", "KO_BR3075", "WT_1618-02", "WT_JG", "WT_JT", "WT_KM", "WT_MS"],
 
     #########
     # MODEL #
@@ -178,7 +183,7 @@ setting = {
     # Set to True, if checkpoints shall be saved during training
     "chckpt_save": True,  
     # Mininmun validation accuracy from which on checkpoints are saved
-    "chckpt_min_acc": 0.6,  # 0.8 for 2 classes, 0.6 for 9 classess
+    "chckpt_min_acc": 0.8,  # 0.8 for 2 classes, 0.6 for 9 classess
 
     #######################
     # CONFIDENCE ANALYZER #

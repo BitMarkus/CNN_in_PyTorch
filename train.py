@@ -6,6 +6,7 @@ from torch.optim import Adam, SGD, AdamW
 from torch import nn
 from tqdm import tqdm
 import torch
+from pathlib import Path
 import matplotlib.pyplot as plt
 from torch.amp import GradScaler, autocast 
 from torch.utils.tensorboard import SummaryWriter
@@ -91,6 +92,13 @@ class Train():
         self.sgd_use_nesterov = setting["train_sgd_use_nesterov"] # SGD
         self.adam_beta1 = setting["train_adam_beta1"]   # ADAM/ADAMW
         self.adam_beta2 = setting["train_adam_beta2"]   # ADAM/ADAMW 
+        # Loss function 
+        self.use_weighted_loss = setting["train_use_weighted_loss"]
+        # Validation split settings (False or percentage 0.0-1.0)
+        # Validation split from training dataset
+        self.val_from_train_split = setting["ds_val_from_train_split"]
+        # Validation split from test dataset
+        self.val_from_test_split = setting["ds_val_from_test_split"]
 
         # Optmizer, learning rate scheduler and loss function
         if(self.optimizer_type == "ADAM"):
@@ -121,8 +129,28 @@ class Train():
                 weight_decay=self.weight_decay,
                 nesterov=self.sgd_use_nesterov
             )
-        # This loss function combines nn.LogSoftmax() and nn.NLLLoss() in one single class
-        self.loss_function = nn.CrossEntropyLoss(label_smoothing=self.label_smoothing)
+
+        # Loss function setup
+        if self.use_weighted_loss:
+            print("\nLoss function: Using weighted loss function. Calculating class weights...")
+            if self.val_from_train_split is not False:
+                # Case 1: Validation split from training data
+                # Access only training samples (excludes validation split)
+                class_weights = self._calculate_weights_from_dataloader()
+            else:
+                # Case 2: Validation is separate (e.g., from test or own folder)
+                # Counts files per class without loading images (fast)
+                class_weights = self._calculate_weights_from_folder(dataset.pth_train)
+            print(f"Class weights: {dict(zip(dataset.classes, class_weights.tolist()))}")
+
+            self.loss_function = nn.CrossEntropyLoss(
+                weight=class_weights.to(device),
+                label_smoothing=self.label_smoothing
+        )
+        else:
+            # Case 3: Using non-weighted loss function
+            print("\nLoss function: Using non-weighted loss function.")
+            self.loss_function = nn.CrossEntropyLoss(label_smoothing=self.label_smoothing)
 
         # Learning rate scheduler:
         # CosineAnnealingLR:
@@ -261,6 +289,24 @@ class Train():
         plt.tight_layout()
 
         return fig
+    
+    # Calculate class weights from a DataLoader
+    # For when validation is split from training data
+    def _calculate_weights_from_dataloader(self):
+        train_dataset = self.ds_train.dataset
+        class_counts = torch.zeros(len(self.classes))
+        for _, label in train_dataset:
+            class_counts[label] += 1
+        weights = 1.0 / (class_counts + 1e-6)
+        return weights / weights.sum()
+    # For standalone train/val folders
+    def _calculate_weights_from_folder(self, folder_path):
+        class_counts = []
+        for class_dir in Path(folder_path).iterdir():
+            if class_dir.is_dir():
+                class_counts.append(len(list(class_dir.glob("*.*"))))
+        weights = 1.0 / (torch.tensor(class_counts, dtype=torch.float32) + 1e-6)
+        return weights / weights.sum()
 
     ##################
     # TRAIN FUNCTION #

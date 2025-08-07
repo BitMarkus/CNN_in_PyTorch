@@ -123,7 +123,7 @@ class ClassAnalyzer:
             print("WARNING: Using untrained weights!")
             self.loaded_checkpoint_name = "untrained"
 
-        # Get ALL folders in prediction directory (not just class-named ones)
+        # Get ALL folders in prediction directory
         all_folders = [d.name for d in self.pth_prediction.iterdir() if d.is_dir()]
         
         if not all_folders:
