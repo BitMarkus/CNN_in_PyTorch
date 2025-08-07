@@ -124,7 +124,7 @@ setting = {
     # Shuffle seed
     "ds_shuffle_seed": 444,
     # How many subprocesses are used to load data in parallel
-    "ds_num_workers": 6,
+    "ds_num_workers": 3, # Intel Core i7-10700 CPU: 3
     # Validation split settings
     # Validation split from training dataset (False or percentage 0.0-1.0)
     "ds_val_from_train_split": False, # 0.1

@@ -141,7 +141,9 @@ class Train():
                 # Case 2: Validation is separate (e.g., from test or own folder)
                 # Counts files per class without loading images (fast)
                 class_weights = self._calculate_weights_from_folder(dataset.pth_train)
-            print(f"Class weights: {dict(zip(dataset.classes, class_weights.tolist()))}")
+            # Print class weights
+            formatted_weights, _ = self.format_class_weights(class_weights, self.classes)
+            print(formatted_weights)
 
             self.loss_function = nn.CrossEntropyLoss(
                 weight=class_weights.to(device),
@@ -307,6 +309,35 @@ class Train():
                 class_counts.append(len(list(class_dir.glob("*.*"))))
         weights = 1.0 / (torch.tensor(class_counts, dtype=torch.float32) + 1e-6)
         return weights / weights.sum()
+
+    # Formats class weights (Tensor or dict) for clean display. 
+    # Args:
+        # class_weights: Tensor of shape [n_classes] or dictionary
+        # class_names: Optional list of class names (default: ['Class 0', 'Class 1', ...])
+    # Returns:
+        # Formatted string and dictionary of weights    
+    def format_class_weights(self, class_weights, class_names=None):
+
+        # Convert Tensor to dictionary if needed
+        if torch.is_tensor(class_weights):
+            if class_names is None:
+                class_names = [f'Class {i}' for i in range(len(class_weights))]
+            weights_dict = {name: weight.item() for name, weight in zip(class_names, class_weights)}
+        elif isinstance(class_weights, dict):
+            weights_dict = class_weights
+        else:
+            raise ValueError("class_weights must be Tensor or dictionary")
+        
+        # Generate formatted output as percentages
+        max_len = max(len(cls) for cls in weights_dict.keys())
+        header = "Class Weights [%]:"
+        lines = [header]
+        
+        for cls, weight in weights_dict.items():
+            percentage = weight * 100  # Convert to percentage
+            lines.append(f"  {cls.ljust(max_len)} : {percentage:.2f}%")  # 2 decimal places
+        
+        return "\n".join(lines), weights_dict
 
     ##################
     # TRAIN FUNCTION #
