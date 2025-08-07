@@ -118,15 +118,20 @@ setting = {
     # DATASET #
     ###########
 
+    # Dataset parameters:
     # Shuffle dataset
     "ds_shuffle": True,
     # Shuffle seed
     "ds_shuffle_seed": 444,
+    # How many subprocesses are used to load data in parallel
+    "ds_num_workers": 6,
     # Validation split settings
     # Validation split from training dataset (False or percentage 0.0-1.0)
     "ds_val_from_train_split": False, # 0.1
     # Validation split from test dataset (False or percentage 0.0-1.0)
     "ds_val_from_test_split": 0.3, # 0.3
+
+    # Classes:
     # Define cell lines (for dataset generator)
     "wt_lines": ["WT_1618-02", "WT_JG", "WT_JT", "WT_KM", "WT_MS"],
     "ko_lines": ["KO_1096-01", "KO_1618-01", "KO_BR2986", "KO_BR3075"],

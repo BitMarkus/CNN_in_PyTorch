@@ -11,7 +11,6 @@ from torch.utils.data.sampler import SubsetRandomSampler
 from torch.utils.data import DataLoader
 import matplotlib.pyplot as plt
 import torchvision.utils as vutils
-import warnings
 # Own modules
 from settings import setting
 
@@ -37,6 +36,8 @@ class Dataset():
         # Batch size for prediction dataset
         # Always needs to be 1! Or calculation of confusion matrix parameters are more complicated
         self.batch_size_pred = 1
+        # How many subprocesses are used to load data in parallel
+        self.num_workers = setting["ds_num_workers"]
 
         # Validation split settings (False or percentage 0.0-1.0)
         # Validation split from training dataset
@@ -137,6 +138,12 @@ class Dataset():
             print("Using only the training data split and ignoring test data split.")
             self.val_from_test_split = False 
 
+    # Helper Methods
+    def _gamma_correction(self, x):
+        return (x + 1e-6) ** random.uniform(self.gamma_min, self.gamma_max)
+    def _add_poisson_noise(self, x):
+        return torch.clamp(x + torch.poisson(x * self.poiss_scaling) * self.poiss_noise_strength, 0, 1)
+
     # Prints validation strategy
     def print_dataset_info(self):
         if self.validation_from_test:
@@ -216,7 +223,7 @@ class Dataset():
                 # Gamma < 1 (e.g., 0.5): Dark areas get brighter, bright areas stay mostly the same
                 # Gamma > 1 (e.g., 2.0): Bright areas get darker, dark areas stay mostly the same
                 transforms.RandomApply(
-                    [transforms.Lambda(lambda x: (x + 1e-6) ** random.uniform(self.gamma_min, self.gamma_max))],
+                    [transforms.Lambda(self._gamma_correction)],  # <- Use method reference
                     p=self.gamma_prob
                 ),
 
@@ -229,7 +236,7 @@ class Dataset():
                 ),
                 # Adds Poisson noise (a type of noise common in microscopy/imaging) scaled to 5% of pixel values
                 transforms.RandomApply(
-                    [transforms.Lambda(lambda x: torch.clamp(x + torch.poisson(x * self.poiss_scaling) * self.poiss_noise_strength, 0, 1))],
+                    [transforms.Lambda(self._add_poisson_noise)],  # <- Use method reference
                     p=self.poiss_prob
                 ),
 
@@ -275,7 +282,7 @@ class Dataset():
                 ),
                 # Gamma correction
                 transforms.RandomApply(
-                    [transforms.Lambda(lambda x: (x + 1e-6) ** random.uniform(self.gamma_min, self.gamma_max))],
+                    [transforms.Lambda(self._gamma_correction)],
                     p=self.gamma_prob
                 ),
                 
@@ -287,7 +294,7 @@ class Dataset():
                 ),
                 # Poisson noise 
                 transforms.RandomApply(
-                    [transforms.Lambda(lambda x: torch.clamp(x + torch.poisson(x * self.poiss_scaling) * self.poiss_noise_strength, 0, 1))],
+                    [transforms.Lambda(self._add_poisson_noise)],
                     p=self.poiss_prob
                 ),
                 
@@ -329,7 +336,7 @@ class Dataset():
             self.num_val_img = len(val_indices)        
             
             train_sampler = SubsetRandomSampler(train_indices)
-            valid_sampler = SubsetRandomSampler(val_indices)
+            val_sampler = SubsetRandomSampler(val_indices)
             
             # Create validation dataset with test transformer ONLY when needed
             val_dataset = torchvision.datasets.ImageFolder(
@@ -339,7 +346,10 @@ class Dataset():
             validation_loader = DataLoader(
                 val_dataset,
                 batch_size=self.batch_size,
-                sampler=valid_sampler
+                sampler=val_sampler,
+                num_workers=self.num_workers,
+                persistent_workers=True,
+                pin_memory=True  # Faster transfer to GPU
             )
         else:
             # All training data is used for training if validation comes from test set
@@ -353,6 +363,9 @@ class Dataset():
             train_dataset, 
             batch_size=self.batch_size, 
             sampler=train_sampler,
+            num_workers=self.num_workers,
+            persistent_workers=True,
+            pin_memory=True  # Faster transfer to GPU
         )
         
         self.num_train_batches = len(train_loader)
@@ -395,12 +408,17 @@ class Dataset():
             self.ds_test_for_val = DataLoader(
                 dataset,
                 batch_size=self.batch_size,
-                sampler=val_sampler
+                sampler=val_sampler,
+                num_workers=self.num_workers,
+                pin_memory=True  # Faster transfer to GPU
             )
             self.ds_test_for_test = DataLoader(
                 dataset,
                 batch_size=self.batch_size_pred,
-                sampler=test_sampler
+                sampler=test_sampler,
+                num_workers=self.num_workers,
+                persistent_workers=True,
+                pin_memory=True  # Faster transfer to GPU
             )
             
             # Use the test-for-val as the validation set
@@ -411,7 +429,10 @@ class Dataset():
             # Normal test loader when not using test set for validation
             self.ds_test_for_test = DataLoader(
                 dataset,
-                batch_size=self.batch_size_pred
+                batch_size=self.batch_size_pred,
+                num_workers=self.num_workers,
+                persistent_workers=True,
+                pin_memory=True  # Faster transfer to GPU
             )
             self.num_test_after_val_img = dataset_size
         
@@ -432,7 +453,11 @@ class Dataset():
             # Create dataloader object
             prediction_loader = DataLoader(
                 dataset, 
-                batch_size=self.batch_size_pred, 
+                batch_size=self.batch_size_pred,
+                shuffle=False, # No shuffling here!
+                num_workers=self.num_workers,
+                persistent_workers=True,
+                pin_memory=True  # Faster transfer to GPU
             )
             # Get number of images in test dataset
             self.num_pred_img = len(prediction_loader)

@@ -132,7 +132,7 @@ class Train():
 
         # Loss function setup
         if self.use_weighted_loss:
-            print("\nLoss function: Using weighted loss function. Calculating class weights...")
+            print("\n> Loss function: Using weighted loss function. Calculating class weights...")
             if self.val_from_train_split is not False:
                 # Case 1: Validation split from training data
                 # Access only training samples (excludes validation split)
@@ -146,10 +146,10 @@ class Train():
             self.loss_function = nn.CrossEntropyLoss(
                 weight=class_weights.to(device),
                 label_smoothing=self.label_smoothing
-        )
+            )
         else:
             # Case 3: Using non-weighted loss function
-            print("\nLoss function: Using non-weighted loss function.")
+            print("\n> Loss function: Using non-weighted loss function.")
             self.loss_function = nn.CrossEntropyLoss(label_smoothing=self.label_smoothing)
 
         # Learning rate scheduler:
