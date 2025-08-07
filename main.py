@@ -10,6 +10,7 @@ from class_analyzer import ClassAnalyzer
 from captum_analyzer import CaptumAnalyzer
 from gradcam_analyzer import GradCAMAnalyzer
 from gradcampp_analyzer import GradCAMpp_Analyzer
+from umap_visualizer import UMAP_Visualizer
 from settings import setting
 
 ###########
@@ -50,7 +51,8 @@ def main():
         print("10) Captum (Integrated Gradients) Analyzer")
         print("11) GradCAM Analyzer (for DenseNet-121)")
         print("12) Combined GradCAM and IG Analyzer (for DenseNet-121)")
-        print("13) Exit Program")
+        print("13) Dimension reduction (UMAP, PaCMAP) (for DenseNet-121)")
+        print("14) Exit Program")
         menu1 = int(fn.input_int("Please choose: "))
 
         ######################
@@ -208,11 +210,27 @@ def main():
             gradcampp = GradCAMpp_Analyzer(device, debug=True)
             gradcampp()
 
+        ######################
+        # Dimension Reducton #  
+        ######################
+
+        elif(menu1 == 13):  
+            print("\n:DIMENSION REDUCTION (UMAP, PaCMAP):") 
+
+            # For test data (default):
+            # visualizer = UMAP_Visualizer(device="cuda")  # Auto-detects GPU
+            # visualizer.run()
+
+            # For training data (if implemented):
+            visualizer = UMAP_Visualizer(device="cuda")
+            visualizer.mode = "train"  # Switch to training mode
+            visualizer.run()
+
         ################
         # Exit Program #
         ################
 
-        elif(menu1 == 13):
+        elif(menu1 == 14):
             print("\nExit program...")
             break
         
