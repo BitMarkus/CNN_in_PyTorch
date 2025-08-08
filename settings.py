@@ -271,6 +271,38 @@ setting = {
     # Gaussian blur strength
     "gradcam_blurr_sigma": 15,
 
+    #######################
+    # DIMENSION REDUCTION #
+    #######################
+
+    # Choose the method for dimension reduction
+    "dimred_use_umap": True,
+    "dimred_use_tsne": True,
+    "dimred_use_trimap": True,
+    "dimred_use_pacmap": True,
+
+    # Mode: Source of images to analyze
+    # "test": Images are test images
+    # "train": Images are training images
+    "dimred_mode": 'train',
+
+    # UMAP parameters
+    "dimred_umap_n_neighbors": 15,
+    "dimred_umap_min_dist": 0.1,
+
+    # t-SNE parameters
+    "dimred_tsne_perplexity": 30,
+    "dimred_tsne_learning_rate": 'auto',
+
+    # TriMAP parameters
+    "dimred_trimap_n_inliers": 10,
+    "dimred_trimap_n_outliers": 5,
+
+    # PaCMAP parameters
+    "dimred_pacmap_n_neighbors": 15,
+    "dimred_pacmap_MN_ratio": 0.5,
+    "dimred_pacmap_FP_ratio": 2.0,
+
     #########
     # PATHS #
     #########
