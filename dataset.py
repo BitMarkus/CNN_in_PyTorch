@@ -365,7 +365,7 @@ class Dataset():
             sampler=train_sampler,
             num_workers=self.num_workers,
             persistent_workers=True,
-            pin_memory=True  # Faster transfer to GPU
+            pin_memory=True 
         )
         
         self.num_train_batches = len(train_loader)
@@ -410,7 +410,8 @@ class Dataset():
                 batch_size=self.batch_size,
                 sampler=val_sampler,
                 num_workers=self.num_workers,
-                pin_memory=True  # Faster transfer to GPU
+                persistent_workers=True,
+                pin_memory=True 
             )
             self.ds_test_for_test = DataLoader(
                 dataset,
@@ -418,7 +419,7 @@ class Dataset():
                 sampler=test_sampler,
                 num_workers=self.num_workers,
                 persistent_workers=True,
-                pin_memory=True  # Faster transfer to GPU
+                pin_memory=True 
             )
             
             # Use the test-for-val as the validation set
@@ -432,7 +433,7 @@ class Dataset():
                 batch_size=self.batch_size_pred,
                 num_workers=self.num_workers,
                 persistent_workers=True,
-                pin_memory=True  # Faster transfer to GPU
+                pin_memory=True  
             )
             self.num_test_after_val_img = dataset_size
         
@@ -457,7 +458,7 @@ class Dataset():
                 shuffle=False, # No shuffling here!
                 num_workers=self.num_workers,
                 persistent_workers=True,
-                pin_memory=True  # Faster transfer to GPU
+                pin_memory=True  
             )
             # Get number of images in test dataset
             self.num_pred_img = len(prediction_loader)

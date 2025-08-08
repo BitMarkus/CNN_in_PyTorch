@@ -127,9 +127,9 @@ setting = {
     "ds_num_workers": 3, # Intel Core i7-10700 CPU: 3
     # Validation split settings
     # Validation split from training dataset (False or percentage 0.0-1.0)
-    "ds_val_from_train_split": 0.2, # 0.2
+    "ds_val_from_train_split": False, # 0.2
     # Validation split from test dataset (False or percentage 0.0-1.0)
-    "ds_val_from_test_split": False, # 0.3
+    "ds_val_from_test_split": 0.3, # 0.3
 
     # Classes:
     # Define cell lines (for dataset generator)
@@ -137,9 +137,9 @@ setting = {
     "ko_lines": ["KO_1096-01", "KO_1618-01", "KO_BR2986", "KO_BR3075"],
     # Define classes
     # 2 classes (WT and KO):
-    # "classes": ["KO", "WT"],
+    "classes": ["KO", "WT"],
     # 9 classes (one for each cell line):
-    "classes": ["KO_1096-01", "KO_1618-01", "KO_BR2986", "KO_BR3075", "WT_1618-02", "WT_JG", "WT_JT", "WT_KM", "WT_MS"],
+    # "classes": ["KO_1096-01", "KO_1618-01", "KO_BR2986", "KO_BR3075", "WT_1618-02", "WT_JG", "WT_JT", "WT_KM", "WT_MS"],
 
     #########
     # MODEL #
@@ -188,7 +188,7 @@ setting = {
     # Set to True, if checkpoints shall be saved during training
     "chckpt_save": True,  
     # Mininmun validation accuracy from which on checkpoints are saved
-    "chckpt_min_acc": 0.6,  # 0.8 for 2 classes, 0.6 for 9 classess
+    "chckpt_min_acc": 0.8,  # 0.8 for 2 classes, 0.6 for 9 classess
 
     #######################
     # CONFIDENCE ANALYZER #
@@ -280,24 +280,19 @@ setting = {
     "dimred_use_tsne": True,
     "dimred_use_trimap": True,
     "dimred_use_pacmap": True,
-
     # Mode: Source of images to analyze
     # "test": Images are test images
     # "train": Images are training images
     "dimred_mode": 'train',
-
     # UMAP parameters
     "dimred_umap_n_neighbors": 15,
     "dimred_umap_min_dist": 0.1,
-
     # t-SNE parameters
     "dimred_tsne_perplexity": 30,
     "dimred_tsne_learning_rate": 'auto',
-
     # TriMAP parameters
     "dimred_trimap_n_inliers": 10,
     "dimred_trimap_n_outliers": 5,
-
     # PaCMAP parameters
     "dimred_pacmap_n_neighbors": 15,
     "dimred_pacmap_MN_ratio": 0.5,
