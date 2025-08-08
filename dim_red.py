@@ -188,7 +188,6 @@ class DimRed:
         if self.use_umap:
             reducer = umap.UMAP(
                 n_components=2,
-                n_jobs=1, 
                 **self.umap_params,
                 verbose=True
             )
