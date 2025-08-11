@@ -1,0 +1,19 @@
+Dataset 1 Configuration:
+
+=== TRAINING DATA ===
+WT lines:
+- WT_JG: 2843 images
+- WT_JT: 2832 images
+- WT_KM: 3028 images
+- WT_MS: 3359 images
+Total WT training images: 12062
+
+KO lines:
+- KO_1618-01: 3109 images
+- KO_BR2986: 3286 images
+- KO_BR3075: 3026 images
+Total KO training images: 9421
+
+=== TESTING DATA ===
+WT test line: WT_1618-02 (2593 images)
+KO test line: KO_1096-01 (2596 images)

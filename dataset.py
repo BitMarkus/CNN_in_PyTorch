@@ -444,7 +444,7 @@ class Dataset():
         return True
         
    
-    # Loads prediction dataset for captum
+    # Loads prediction dataset
     def load_pred_dataset(self):
      
         transformer = self.get_transformer_test()

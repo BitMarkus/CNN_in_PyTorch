@@ -117,9 +117,9 @@ class DimRed:
                 raise ValueError("Failed to load training data")
             dataloader = self.ds.ds_train
         else:
-            if not self.ds.load_pred_dataset():
+            if not self.ds.load_test_dataset():
                 raise ValueError("Failed to load test data")
-            dataloader = self.ds.ds_pred
+            dataloader = self.ds.ds_test
         
         self.cnn.eval()
         features, labels = [], []

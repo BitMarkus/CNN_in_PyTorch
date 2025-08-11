@@ -283,7 +283,7 @@ setting = {
     # Mode: Source of images to analyze
     # "test": Images are test images
     # "train": Images are training images
-    "dimred_mode": 'train',
+    "dimred_mode": 'test',
     # UMAP parameters
     "dimred_umap_n_neighbors": 15,
     "dimred_umap_min_dist": 0.1,
