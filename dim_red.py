@@ -119,7 +119,6 @@ class DimRed:
         print(f"Auto-detected {len(self.group_mapping)} groups in predictions folder: {list(self.group_mapping.keys())}")
 
     def load_checkpoint(self):
-
         silent_checkpoints = self.cnn_wrapper.print_checkpoints_table(self.pth_checkpoint, print_table=False)
         if not silent_checkpoints:
             print("No checkpoints found!")
@@ -137,18 +136,38 @@ class DimRed:
         try:
             original_params = list(self.cnn.parameters())[0].clone()
             full_path = self.pth_checkpoint / checkpoint_file
-            self.cnn.load_state_dict(torch.load(full_path))
+            
+            # Load checkpoint weights
+            checkpoint_weights = torch.load(full_path)
+            model_dict = self.cnn.state_dict()
+            
+            # Filter out incompatible weights (like the classifier)
+            compatible_weights = {k: v for k, v in checkpoint_weights.items() 
+                                if k in model_dict and model_dict[k].shape == v.shape}
+            
+            # Load only compatible weights
+            model_dict.update(compatible_weights)
+            self.cnn.load_state_dict(model_dict)
+            
+            # Report what was loaded
+            print(f"Loaded {len(compatible_weights)}/{len(checkpoint_weights)} layers from checkpoint")
+            if len(compatible_weights) < len(checkpoint_weights):
+                print("Note: Skipped incompatible classifier layer - using feature extractor only")
+            
+            # Verify weights changed
             new_params = list(self.cnn.parameters())[0]
             if torch.equal(original_params, new_params):
                 print("Warning: Model weights unchanged after loading!")
+            
             self.checkpoint_loaded = True
             self.checkpoint_name = full_path.stem
-            print(f"Loaded weights from {checkpoint_file}")
+            print(f"Successfully loaded compatible weights from {checkpoint_file}")
             return True
+            
         except Exception as e:
             print(f"Error loading checkpoint: {e}")
             return False
-
+    
     def extract_features(self):
         """
         Modified to handle both original modes (train/test) and the new groups mode
