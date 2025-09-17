@@ -129,7 +129,7 @@ setting = {
     # Validation split from training dataset (False or percentage 0.0-1.0)
     "ds_val_from_train_split": False, # 0.2
     # Validation split from test dataset (False or percentage 0.0-1.0)
-    "ds_val_from_test_split": 0.3, # 0.3
+    "ds_val_from_test_split": False, # 0.3
 
     # Classes:
     # Define cell lines (for dataset generator)
@@ -195,7 +195,7 @@ setting = {
     #######################
 
     # Min confidence for image sorting
-    "ca_min_conf": 0.9,     # 80%
+    "ca_min_conf": 0.7,     # 80%
     # Max confidence for image sorting
     'ca_max_conf': 1.0,
     # Filter type for image sorting
@@ -203,7 +203,7 @@ setting = {
     # "incorrect": Images incorrectly classified in all test folds, with confidence within [min_conf, max_conf] -> Systematic errors to investigate
     # "low_confidence": Images with confidence below min_conf in all test folds (ignores max_conf)(regardless of correctness) -> Ambiguous cases needing manual review
     # "unsure": Images with confidence within [min_conf, max_conf] (regardless of correctness) -> Intermediate-confidence predictions
-    'ca_filter_type': 'incorrect',
+    'ca_filter_type': 'correct',
     # Maximum number of checkpoints which are analyzed for a dataset
     "ca_max_ckpts": 1,
     # Method for best checkpoint selection
@@ -280,10 +280,23 @@ setting = {
     "dimred_use_tsne": True,
     "dimred_use_trimap": True,
     "dimred_use_pacmap": True,
-    # Mode: Source of images to analyze
-    # "test": Images are test images
-    # "train": Images are training images
-    "dimred_mode": 'test',
+
+    # Mode can be "train", "test", or "groups"
+    # "test": Images are test images in the data/test/ folder
+    # "train": Images are training images in the data/training/ folder
+    # "groups": Arbitrary number of groups, defined by the number of folders in the prediction/ folder
+    "dimred_mode": "groups",
+    # Group configuration mode: 'auto' (detects folders) or 'manual' (uses explicit mapping)
+    "dimred_group_mode": "auto",
+    # For manual mode: Explicit mapping of folder names to (display_name, label)
+    "dimred_group_mapping": {
+        "WT": ("Real WT", 0),
+        "WT_GAN": ("Fake WT", 1),
+        "KO": ("Real KO", 2),
+        "KO_GAN": ("Fake KO", 3),
+        # Add more groups as needed
+    },
+
     # UMAP parameters
     "dimred_umap_n_neighbors": 15,
     "dimred_umap_min_dist": 0.1,

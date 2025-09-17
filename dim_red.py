@@ -1,5 +1,6 @@
 import torch
 import numpy as np
+import os
 from pathlib import Path
 from tqdm import tqdm
 import matplotlib.pyplot as plt
@@ -12,6 +13,7 @@ from sklearn.preprocessing import StandardScaler
 import gc
 # Own modules
 from settings import setting
+from dataset import Dataset
 
 class DimRed:
 
@@ -26,13 +28,34 @@ class DimRed:
         self.classes = setting['classes']
         self.pth_prediction = Path(setting['pth_prediction'])
         self.pth_checkpoint = Path(setting['pth_checkpoint'])
-        # Mode ("train" or "test")
-        self.mode = setting['dimred_mode']  
+        
+        # Group settings
+        self.mode = setting['dimred_mode']  # "train", "test", or "groups"
+        self.group_mode = setting['dimred_group_mode'] # 'auto' or 'manual'
+        self.group_mapping = setting['dimred_group_mapping'] 
+
+        # Set up group mapping based on mode
+        if self.mode == "groups":
+            if self.group_mode == "manual" and isinstance(self.group_mapping, dict) and self.group_mapping:
+                # Convert manual mapping format
+                manual_mapping = {}
+                for idx, (folder_name, display_name) in enumerate(self.group_mapping.items()):
+                    manual_mapping[folder_name] = (display_name, idx)
+                self.group_mapping = manual_mapping
+                print(f"Manual mapping set up: {list(self.group_mapping.keys())}")
+            else:
+                # Auto-detect groups
+                self._setup_auto_group_mapping()
+            # Check to ensure groups were actually set up
+            if not self.group_mapping:
+                raise ValueError("No groups found for dimensionality reduction!")
+        
         # Method activation flags
         self.use_umap = setting['dimred_use_umap'] 
         self.use_tsne = setting['dimred_use_tsne'] 
         self.use_trimap = setting['dimred_use_trimap'] 
         self.use_pacmap = setting['dimred_use_pacmap']      
+        
         # Store parameters for each method
         # UMAP parameters
         self.umap_params = {
@@ -75,6 +98,26 @@ class DimRed:
     #############################################################################################################
     # METHODS:
 
+    def _setup_auto_group_mapping(self):
+        """Automatically set up group mapping based on folder structure in predictions/ folder"""
+        
+        if not self.pth_prediction.exists():
+            print(f"Warning: Predictions directory {self.pth_prediction} does not exist for auto group detection")
+            self.group_mapping = {}
+            return
+        
+        # Find which folders actually exist and create mapping
+        self.group_mapping = {}
+        
+        for folder_name in os.listdir(self.pth_prediction):
+            folder_path = self.pth_prediction / folder_name
+            if folder_path.is_dir():
+                # Use folder name as display name
+                label_val = len(self.group_mapping)
+                self.group_mapping[folder_name] = (folder_name, label_val)
+        
+        print(f"Auto-detected {len(self.group_mapping)} groups in predictions folder: {list(self.group_mapping.keys())}")
+
     def load_checkpoint(self):
 
         silent_checkpoints = self.cnn_wrapper.print_checkpoints_table(self.pth_checkpoint, print_table=False)
@@ -107,36 +150,45 @@ class DimRed:
             return False
 
     def extract_features(self):
-
-        from dataset import Dataset
-        self.ds = Dataset()
-        
-        # Modified to use mode parameter
-        if self.mode == "train":
-            if not self.ds.load_training_dataset():
-                raise ValueError("Failed to load training data")
-            dataloader = self.ds.ds_train
-        else:
-            if not self.ds.load_test_dataset():
-                raise ValueError("Failed to load test data")
-            dataloader = self.ds.ds_test
-        
-        self.cnn.eval()
+        """
+        Modified to handle both original modes (train/test) and the new groups mode
+        Uses existing dataset loading functionality for all modes
+        """
         features, labels = [], []
         
-        with torch.no_grad():
-            for images, batch_labels in tqdm(dataloader, desc="Extracting features"):
-                images = images.to(self.device)
-                batch_features = self.cnn.features(images)
-                pooled = torch.nn.functional.adaptive_avg_pool2d(batch_features, (1, 1))
-                flattened = pooled.view(images.size(0), -1)
-                features.append(flattened.cpu().numpy())
-                labels.append(batch_labels.numpy())
+        if self.mode in ["train", "test", "groups"]:
+
+            self.ds = Dataset()
+            
+            if(self.mode == "train"):
+                if not self.ds.load_training_dataset():
+                    raise ValueError("Failed to load training data")
+                dataloader = self.ds.ds_train
+            elif(self.mode == "test"):
+                if not self.ds.load_test_dataset():
+                    raise ValueError("Failed to load test data")
+                dataloader = self.ds.ds_test
+            elif(self.mode == "groups"):
+                if not self.ds.load_pred_dataset():
+                    raise ValueError("Failed to load prediction data")
+                dataloader = self.ds.ds_pred
+            
+            self.cnn.eval()
+            with torch.no_grad():
+                for images, batch_labels in tqdm(dataloader, desc="Extracting features"):
+                    images = images.to(self.device)
+                    batch_features = self.cnn.features(images)
+                    pooled = torch.nn.functional.adaptive_avg_pool2d(batch_features, (1, 1))
+                    flattened = pooled.view(images.size(0), -1)
+                    features.append(flattened.cpu().numpy())
+                    labels.append(batch_labels.numpy())
+                    
+        else:
+            raise ValueError(f"Unknown mode: {self.mode}. Use 'train', 'test', or 'groups'")
                 
         return np.concatenate(features), np.concatenate(labels)
 
     def run_reduction(self, method, reducer, features, labels):
-
         print(f"\nRunning {method}...")
         start_time = time()
         scaled_features = self.scaler.fit_transform(features)
@@ -144,16 +196,44 @@ class DimRed:
         print(f"{method} completed in {time()-start_time:.2f} seconds")
         
         plt.figure(figsize=(12, 8))
-        for class_idx, class_name in enumerate(self.classes):
-            mask = labels == class_idx
-            if np.sum(mask) == 0:
-                continue
-            plt.scatter(
-                embedding[mask, 0], embedding[mask, 1],
-                label=class_name, alpha=0.7, s=40
-            )
         
-        plt.title(f"{method} Projection ({self.mode} set)\nCheckpoint: {self.checkpoint_name}")
+        if self.mode in ["train", "test"]:
+            # Original 2-class plotting
+            for class_idx, class_name in enumerate(self.classes):
+                mask = labels == class_idx
+                if np.sum(mask) == 0:
+                    continue
+                plt.scatter(
+                    embedding[mask, 0], embedding[mask, 1],
+                    label=class_name, alpha=0.7, s=40
+                )
+        else:
+            # NEW: Flexible group plotting
+            unique_labels = np.unique(labels)
+            for label_val in unique_labels:
+                mask = labels == label_val
+                if np.sum(mask) == 0:
+                    continue
+                
+                # Find the display name for this label
+                display_name = f"Group {label_val}"
+                for folder_name, (name, val) in self.group_mapping.items():
+                    if val == label_val:
+                        display_name = name
+                        break
+                
+                plt.scatter(
+                    embedding[mask, 0], embedding[mask, 1],
+                    label=display_name, alpha=0.7, s=40
+                )
+        
+        # Update title based on mode
+        if self.mode == "groups":
+            title = f"{method} Projection ({len(self.group_mapping)} Groups)\nCheckpoint: {self.checkpoint_name}"
+        else:
+            title = f"{method} Projection ({self.mode} set)\nCheckpoint: {self.checkpoint_name}"
+        
+        plt.title(title)
         plt.xlabel(f"{method} 1")
         plt.ylabel(f"{method} 2")
         plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
@@ -163,7 +243,13 @@ class DimRed:
         
         output_dir = self.pth_prediction / "dim_red"
         output_dir.mkdir(exist_ok=True, parents=True)
-        output_path = output_dir / f"{method.lower()}_{self.mode}_{self.checkpoint_name}.png"
+        
+        # Update filename based on mode
+        if self.mode == "groups":
+            output_path = output_dir / f"{method.lower()}_{len(self.group_mapping)}_groups_{self.checkpoint_name}.png"
+        else:
+            output_path = output_dir / f"{method.lower()}_{self.mode}_{self.checkpoint_name}.png"
+            
         plt.savefig(output_path, dpi=300, bbox_inches='tight')
         plt.close()
         print(f"Saved {method} plot to {output_path}")
