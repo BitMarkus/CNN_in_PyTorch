@@ -11,6 +11,7 @@ from captum_analyzer import CaptumAnalyzer
 from gradcam_analyzer import GradCAMAnalyzer
 from gradcampp_analyzer import GradCAMpp_Analyzer
 from dim_red import DimRed
+from fid_calculator import FIDCalculator
 from settings import setting
 
 ###########
@@ -52,7 +53,8 @@ def main():
         print("11) GradCAM Analyzer (for DenseNet-121)")
         print("12) Combined GradCAM and IG Analyzer (for DenseNet-121)")
         print("13) Dimension reduction (for DenseNet-121)")
-        print("14) Exit Program")
+        print("14) FID Calculator")
+        print("15) Exit Program")
         menu1 = int(fn.input_int("Please choose: "))
 
         ######################
@@ -210,14 +212,32 @@ def main():
             gradcampp = GradCAMpp_Analyzer(device, debug=True)
             gradcampp()
 
-        ######################
-        # Dimension Reducton #  
-        ######################
+        #######################
+        # Dimension Reduction #  
+        #######################
 
         elif(menu1 == 13):  
             print("\n:DIMENSION REDUCTION:") 
             dimred = DimRed(device)
             dimred()
+
+        ##################
+        # FID calculator #  
+        ##################
+
+        elif(menu1 == 14):  
+            print("\n:FID CALCULATOR:") 
+            # Initialize calculator
+            calculator = FIDCalculator()
+            # Run calculation
+            fid_score = calculator.run()
+            # Print output
+            if fid_score is not None:
+                print(f"\nFID calculation completed successfully!")
+                return 0
+            else:
+                print(f"\nFID calculation failed!")
+                return 1
 
         ################
         # Exit Program #
