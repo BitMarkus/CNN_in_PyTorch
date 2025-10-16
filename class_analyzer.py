@@ -76,13 +76,13 @@ class ClassAnalyzer:
             print(f"\nError loading checkpoint: {str(e)}")
             return False
         
+    # Return indices of samples belonging to a specific folder
     def get_folder_indices(self, dataset, folder_name):
-        """Return indices of samples belonging to a specific folder"""
         return [i for i, (path, _) in enumerate(dataset.samples) 
                 if Path(path).parent.name == folder_name]
     
-    def predict_folder(self, folder_name):
-        """Predict images from a specific folder"""
+    # Predict images from a specific folder
+    def predict_folder(self, folder_name, rename_images=False):
         folder_indices = self.get_folder_indices(self.ds.ds_pred.dataset, folder_name)
         if not folder_indices:
             print(f"No images found for folder: {folder_name}")
@@ -93,21 +93,46 @@ class ClassAnalyzer:
 
         class_counts = {class_name: 0 for class_name in self.classes}
         
+        # For individual image tracking and renaming
+        image_predictions = []
+        
         self.cnn.eval()
         with torch.no_grad():
             pbar = tqdm(loader, desc=f"Predicting {folder_name}", unit="img")
-            for images, _ in pbar:
+            for batch_idx, (images, _) in enumerate(pbar):
                 outputs = self.cnn(images.to(self.device))
-                _, predicted = torch.max(outputs, 1)
+                probabilities = torch.nn.functional.softmax(outputs, dim=1)
+                confidences, predicted = torch.max(probabilities, 1)
                 
-                for pred in predicted:
-                    class_name = self.classes[pred.item()]
+                # Process each image in the batch
+                for i in range(len(images)):
+                    pred_class_idx = predicted[i].item()
+                    confidence = confidences[i].item()
+                    class_name = self.classes[pred_class_idx]
+                    
+                    # Get the original image path
+                    sample_idx = folder_indices[batch_idx * self.ds.batch_size_pred + i]
+                    original_path = self.ds.ds_pred.dataset.samples[sample_idx][0]
+                    
+                    # Store prediction info
+                    image_predictions.append({
+                        'original_path': original_path,
+                        'predicted_class': class_name,
+                        'confidence': confidence,
+                        'confidence_percentage': int(confidence * 100)
+                    })
+                    
+                    # Count for overall statistics
                     class_counts[class_name] += 1
                 
                 pbar.set_postfix({
                     'total': len(folder_indices),
                     **{k: v for k, v in class_counts.items() if v > 0}
                 })
+
+        # Rename images if requested
+        if rename_images:
+            self._rename_images_with_confidence(image_predictions, folder_name)
 
         total = len(folder_indices)
         return {
@@ -118,7 +143,37 @@ class ClassAnalyzer:
             'Most Likely Class': max(class_counts.items(), key=lambda x: x[1])[0]
         }
 
-    def analyze_prediction_folder(self):
+    # Rename images by adding confidence percentage to filename
+    def _rename_images_with_confidence(self, image_predictions, folder_name):
+
+        renamed_count = 0
+        
+        for pred_info in image_predictions:
+            original_path = Path(pred_info['original_path'])
+            confidence_pct = pred_info['confidence_percentage']
+            predicted_class = pred_info['predicted_class']
+            
+            # Create new filename: original_stem_conf{confidence}_class{predicted_class}.extension
+            original_stem = original_path.stem.rstrip('_') # remove eventual underscores from the filename
+            new_stem = f"{original_stem}_conf{confidence_pct}-{predicted_class}"
+            new_filename = f"{new_stem}{original_path.suffix}"
+            new_path = original_path.parent / new_filename
+            
+            try:
+                # Rename the file
+                original_path.rename(new_path)
+                renamed_count += 1
+                # print(f"Renamed: {original_path.name} -> {new_filename}")
+            except Exception as e:
+                # print(f"Error renaming {original_path.name}: {str(e)}")
+                pass
+        
+        print(f"Successfully renamed {renamed_count}/{len(image_predictions)} images in folder '{folder_name}'")
+
+    # Analyze all folders in prediction directory
+    # rename_images (bool): If True, rename images with confidence scores and predicted class
+    def analyze_prediction_folder(self, rename_images=False):
+
         if not self.load_checkpoint():
             print("WARNING: Using untrained weights!")
             self.loaded_checkpoint_name = "untrained"
@@ -131,12 +186,17 @@ class ClassAnalyzer:
             return None
 
         print(f"\nAnalyzing {len(all_folders)} folders...")
+        if rename_images:
+            print("Image renaming with confidence scores is ENABLED")
+        else:
+            print("Image renaming with confidence scores is DISABLED")
+        
         results = []
         
         for folder in all_folders:
             try:
                 print(f"\n> Processing folder: {folder}")
-                result = self.predict_folder(folder)
+                result = self.predict_folder(folder, rename_images=rename_images)
                 if result:
                     results.append(result)
                     # Print folder results

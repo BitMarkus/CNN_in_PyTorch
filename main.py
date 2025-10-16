@@ -150,7 +150,7 @@ def main():
             print("\n:PREDICT CLASS FROM PREDICTION FOLDER:") 
 
             analyzer = ClassAnalyzer(device)
-            analyzer.analyze_prediction_folder()
+            analyzer.analyze_prediction_folder(rename_images=True)
 
         #####################
         # Dataset Generator #  
