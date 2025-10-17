@@ -319,7 +319,7 @@ setting = {
     "fid_batch_size": 32,
     # When this is set to True, the number of images is determined by the folder with the least images
     # to balance the number of images for the calculation
-    "fid_balance_samples": True,
+    "fid_balance_samples": False,
     # Random seed for randomly choosing images if balance samples is set to True
     "fid_random_seed": 123,
 

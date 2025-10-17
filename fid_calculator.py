@@ -19,16 +19,16 @@ import random
 # Own modules
 from settings import setting
 
-
 class FIDCalculator:
 
     #############################################################################################################
     # CONSTRUCTOR:
     
-    def __init__(self, device):
+    def __init__(self, device, reference_folder=None):
 
         # Passed parameters
         self.device = device
+        self.reference_folder = reference_folder  # Name of the reference folder
         
         # Settings parameters
         self.prediction_folder = setting['pth_prediction'].resolve()
@@ -42,15 +42,15 @@ class FIDCalculator:
         self.random_seed = setting['fid_random_seed']
         
         # Class variables
-        self.folder1 = None
-        self.folder2 = None
-        self.fid_score = None
+        self.folders = {}  # Dictionary to store folder paths: {name: path}
+        self.reference_folder_name = None  # Actual name of reference folder after validation
+        self.fid_scores = {}  # Dictionary to store FID scores: {folder_name: score}
         self.results = {}
 
     #############################################################################################################
     # METHODS:
 
-    # Validate that exactly two folders exist in the prediction directory and that they contain images 
+    # Validate folders in the prediction directory and identify reference folder
     def validate_folders(self):
 
         if not self.prediction_folder.exists():
@@ -60,13 +60,11 @@ class FIDCalculator:
         # Get all subdirectories
         subdirs = [d for d in self.prediction_folder.iterdir() if d.is_dir()]
         
-        if len(subdirs) != 2:
-            print(f"Error: Expected exactly 2 folders in '{self.prediction_folder}', found {len(subdirs)}")
+        if len(subdirs) < 2:
+            print(f"Error: Expected at least 2 folders in '{self.prediction_folder}', found {len(subdirs)}")
             print(f"Found folders: {[d.name for d in subdirs]}")
             return False
             
-        self.folder1, self.folder2 = subdirs[0], subdirs[1]
-        
         # Check if folders contain images
         image_extensions = {'.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.tif'}
         
@@ -74,28 +72,77 @@ class FIDCalculator:
             return len([f for f in folder.iterdir() 
                        if f.is_file() and f.suffix.lower() in image_extensions])
         
-        count1 = count_images(self.folder1)
-        count2 = count_images(self.folder2)
+        # Store all valid folders with their image counts
+        valid_folders = {}
+        for folder in subdirs:
+            count = count_images(folder)
+            if count > 0:
+                valid_folders[folder.name] = {
+                    'path': folder,
+                    'count': count
+                }
+            else:
+                print(f"Warning: No images found in folder '{folder.name}', skipping")
         
-        if count1 == 0:
-            print(f"Error: No images found in folder '{self.folder1.name}'")
+        if len(valid_folders) < 2:
+            print(f"Error: Need at least 2 folders with images, found {len(valid_folders)}")
             return False
             
-        if count2 == 0:
-            print(f"Error: No images found in folder '{self.folder2.name}'")
-            return False
-            
-        print(f"Found folder 1: '{self.folder1.name}' with {count1} images")
-        print(f"Found folder 2: '{self.folder2.name}' with {count2} images")
+        self.folders = valid_folders
         
-        self.results['folder1'] = self.folder1.name
-        self.results['folder2'] = self.folder2.name
-        self.results['folder1_count'] = count1
-        self.results['folder2_count'] = count2
+        # Determine reference folder
+        if len(valid_folders) == 2:
+            # If exactly 2 folders, no need for explicit reference folder
+            folder_names = list(valid_folders.keys())
+            self.reference_folder_name = folder_names[0]
+            print(f"Exactly 2 folders found. Using '{self.reference_folder_name}' as reference.")
+        else:
+            # For 3+ folders, let user choose reference folder interactively
+            print(f"\nFound {len(valid_folders)} folders with images:")
+            print("Please select the reference folder by entering the corresponding index:")
+            print("-" * 50)
+            
+            folder_list = list(valid_folders.keys())
+            for idx, folder_name in enumerate(folder_list, 1):
+                count = valid_folders[folder_name]['count']
+                print(f"  [{idx}] {folder_name} ({count} images)")
+            
+            print("-" * 50)
+            
+            # Get user input for reference folder selection
+            while True:
+                try:
+                    selection = input("Enter the number of the reference folder: ").strip()
+                    if not selection:
+                        continue
+                    
+                    selected_idx = int(selection)
+                    if 1 <= selected_idx <= len(folder_list):
+                        self.reference_folder_name = folder_list[selected_idx - 1]
+                        break
+                    else:
+                        print(f"Please enter a number between 1 and {len(folder_list)}")
+                except ValueError:
+                    print("Please enter a valid number")
+                except KeyboardInterrupt:
+                    print("\nOperation cancelled by user")
+                    return False
+            
+            print(f"Selected '{self.reference_folder_name}' as reference folder.")
+        
+        # Print folder information
+        print(f"Folder configuration:")
+        for folder_name, info in valid_folders.items():
+            marker = " [REFERENCE]" if folder_name == self.reference_folder_name else ""
+            print(f"  - '{folder_name}': {info['count']} images{marker}")
+        
+        self.results['all_folders'] = {name: info['count'] for name, info in valid_folders.items()}
+        self.results['reference_folder'] = self.reference_folder_name
+        self.results['total_folders'] = len(valid_folders)
         self.results['channels'] = self.num_channels
         
         return True
-    
+
     # Load images from a specific folder as a PyTorch Dataset
     def load_images_from_folder(self, folder_path, max_images=None, random_seed=42):
 
@@ -121,7 +168,7 @@ class FIDCalculator:
         
         dataset = InceptionDataset(folder_path, num_channels=self.num_channels, image_paths=selected_paths)
         return dataset
-    
+
     # Load and configure the InceptionV3 model for feature extraction
     def get_inception_model(self):
 
@@ -142,7 +189,7 @@ class FIDCalculator:
             param.requires_grad = False
             
         return inception_model
-    
+
     # Calculate activations for all images in the dataset
     def get_activations(self, dataset, model, batch_size=32):
 
@@ -166,7 +213,7 @@ class FIDCalculator:
                 activations.append(features.cpu().numpy())
         
         return np.concatenate(activations, axis=0)
-    
+
     # Calculate Frechet distance between two multivariate Gaussians
     def calculate_frechet_distance(self, mu1, sigma1, mu2, sigma2, eps=1e-6):
 
@@ -197,7 +244,7 @@ class FIDCalculator:
         
         return (diff.dot(diff) + np.trace(sigma1) + 
                 np.trace(sigma2) - 2 * tr_covmean)
-    
+
     # Calculate activation statistics for a dataset
     def calculate_activation_statistics(self, dataset, model, batch_size=32):
 
@@ -205,8 +252,8 @@ class FIDCalculator:
         mu = np.mean(act, axis=0)
         sigma = np.cov(act, rowvar=False)
         return mu, sigma
-    
-    # Calculate FID score between the two image folders
+
+    # Calculate FID score between the reference folder and all other folders
     def calculate_fid(self, batch_size=None, balance_samples=None, random_seed=None):
 
         # Use instance variables if parameters are not provided
@@ -220,42 +267,60 @@ class FIDCalculator:
         print("Loading InceptionV3 model...")
         model = self.get_inception_model()
         
-        # Determine maximum number of images to use
+        # Get reference folder info
+        ref_folder_info = self.folders[self.reference_folder_name]
+        ref_folder_path = ref_folder_info['path']
+        ref_image_count = ref_folder_info['count']
+        
+        # Determine maximum number of images to use for balancing
         max_images = None
         if balance_samples:
-            # Use the smaller folder's count as the maximum for both
-            max_images = min(self.results['folder1_count'], self.results['folder2_count'])
+            # Find the minimum image count among all folders for balanced comparison
+            all_counts = [info['count'] for info in self.folders.values()]
+            max_images = min(all_counts)
             print(f"Balancing samples: using {max_images} images from each folder")
             self.results['balanced_sample_size'] = max_images
             self.results['balancing_enabled'] = True
         else:
             self.results['balancing_enabled'] = False
         
-        print("Loading images from first folder...")
-        dataset1 = self.load_images_from_folder(self.folder1, max_images=max_images, random_seed=random_seed)
+        print(f"Loading reference images from '{self.reference_folder_name}'...")
+        ref_dataset = self.load_images_from_folder(ref_folder_path, max_images=max_images, random_seed=random_seed)
         
-        print("Loading images from second folder...")
-        dataset2 = self.load_images_from_folder(self.folder2, max_images=max_images, random_seed=random_seed)
+        print("Calculating activations and statistics for reference folder...")
+        ref_mu, ref_sigma = self.calculate_activation_statistics(ref_dataset, model, batch_size)
         
-        print(f"Using {len(dataset1)} images from folder 1")
-        print(f"Using {len(dataset2)} images from folder 2")
+        # Calculate FID scores for all other folders compared to reference
+        self.fid_scores = {}
         
-        print("Calculating activations and statistics for folder 1...")
-        m1, s1 = self.calculate_activation_statistics(dataset1, model, batch_size)
+        for folder_name, folder_info in self.folders.items():
+            if folder_name == self.reference_folder_name:
+                continue  # Skip reference folder
+                
+            print(f"\n> Processing folder '{folder_name}'...")
+            folder_path = folder_info['path']
+            
+            print(f"Loading images from '{folder_name}'...")
+            compare_dataset = self.load_images_from_folder(folder_path, max_images=max_images, random_seed=random_seed)
+            
+            print(f"Calculating activations and statistics for '{folder_name}'...")
+            compare_mu, compare_sigma = self.calculate_activation_statistics(compare_dataset, model, batch_size)
+            
+            print(f"Calculating FID score between '{self.reference_folder_name}' and '{folder_name}'...")
+            fid_value = self.calculate_frechet_distance(ref_mu, ref_sigma, compare_mu, compare_sigma)
+            
+            self.fid_scores[folder_name] = float(fid_value)
+            
+            # Store detailed results
+            self.results[f'fid_{folder_name}'] = float(fid_value)
+            self.results[f'images_used_{folder_name}'] = len(compare_dataset)
         
-        print("Calculating activations and statistics for folder 2...")
-        m2, s2 = self.calculate_activation_statistics(dataset2, model, batch_size)
+        # Store reference folder usage
+        self.results['reference_images_used'] = len(ref_dataset)
+        self.results['fid_scores'] = self.fid_scores.copy()
         
-        print("Calculating FID score...")
-        fid_value = self.calculate_frechet_distance(m1, s1, m2, s2)
-        
-        self.fid_score = fid_value
-        self.results['fid_score'] = float(fid_value)
-        self.results['actual_images_used_1'] = len(dataset1)
-        self.results['actual_images_used_2'] = len(dataset2)
-        
-        return fid_value
-    
+        return self.fid_scores
+
     # Save FID results to a file in the prediction folder
     def save_results(self):
        
@@ -263,20 +328,25 @@ class FIDCalculator:
         self.results['timestamp'] = datetime.now().isoformat()
         self.results['device'] = str(self.device)
         
-        # Optional: Save data as json file
-        # results_file = self.prediction_folder / "fid_results.json"
-        # with open(results_file, 'w') as f:
-        #    json.dump(self.results, f, indent=2)
-        # print(f"Results saved to: {results_file}")
-        
-        # Also create a human-readable text file
+        # Create a human-readable text file
         text_file = self.prediction_folder / "fid_results.txt"
         with open(text_file, 'w') as f:
             f.write("FID Score Results\n")
             f.write("=================\n\n")
-            f.write(f"Folder 1: {self.results['folder1']} ({self.results['actual_images_used_1']} images used)\n")
-            f.write(f"Folder 2: {self.results['folder2']} ({self.results['actual_images_used_2']} images used)\n")
-            f.write(f"FID Score: {self.results['fid_score']:.4f}\n")
+            
+            f.write(f"Reference Folder: {self.results['reference_folder']} ({self.results['reference_images_used']} images used)\n\n")
+            
+            f.write("FID Scores (compared to reference):\n")
+            f.write("-" * 50 + "\n")
+            
+            # Sort folders by FID score for better readability
+            sorted_scores = sorted(self.fid_scores.items(), key=lambda x: x[1])
+            
+            for folder_name, score in sorted_scores:
+                f.write(f"{folder_name:<30}: {score:.4f}\n")
+            
+            f.write("\n" + "-" * 50 + "\n")
+            f.write(f"Total Folders: {self.results['total_folders']}\n")
             f.write(f"Image Channels: {self.results['channels']}\n")
             if self.results.get('balancing_enabled', False):
                 f.write(f"Sample Balancing: ENABLED (max: {self.results['balanced_sample_size']} images each)\n")
@@ -286,25 +356,34 @@ class FIDCalculator:
             f.write(f"Device: {self.results['device']}\n")
         
         print(f"Results saved to: {text_file}")
-    
+
     # Print FID results to console
     def print_results(self):
 
         print("\n>> FID SCORE RESULTS")
-        print("-"*50)
+        print("-" * 60)
+        print(f"Reference Folder: {self.results['reference_folder']} ({self.results['reference_images_used']} images used)")
         print(f"Image Channels: {self.results['channels']}")
-        print(f"Folder 1: {self.results['folder1']} ({self.results['actual_images_used_1']} images used)")
-        print(f"Folder 2: {self.results['folder2']} ({self.results['actual_images_used_2']} images used)")
-        print(f"FID Score: {self.results['fid_score']:.4f}")
-        print(f"Image Channels: {self.results['channels']}")
+        print(f"Total Folders: {self.results['total_folders']}")
+        
+        print("\nFID Scores (compared to reference):")
+        print("-" * 40)
+        
+        # Sort by FID score for better readability
+        sorted_scores = sorted(self.fid_scores.items(), key=lambda x: x[1])
+        
+        for folder_name, score in sorted_scores:
+            images_used = self.results.get(f'images_used_{folder_name}', 'N/A')
+            print(f"  {folder_name:<25}: {score:>8.4f}  ({images_used} images)")
+        
+        print("-" * 40)
+        
         if self.results.get('balancing_enabled', False):
             print(f"Sample Balancing: ENABLED (max: {self.results['balanced_sample_size']} images each)")
         else:
             print("Sample Balancing: DISABLED (using all available images)")
-        # print(f"Calculation Date: {self.results['timestamp']}")
-        # print(f"Device: {self.results['device']}")
-        print("-"*50)
-    
+        print("-" * 60)
+
     #############################################################################################################
     # CALL:
 
@@ -318,21 +397,20 @@ class FIDCalculator:
                 return None
             
             # Calculate FID using parameters from constructor
-            fid_score = self.calculate_fid(self.batch_size, self.balance_samples, self.random_seed)
+            fid_scores = self.calculate_fid(self.batch_size, self.balance_samples, self.random_seed)
             
             # Save and display results
             self.save_results()
             self.print_results()
             
             print(f"\nFID calculation completed successfully!")
-            return fid_score
+            return fid_scores
             
         except Exception as e:
             print(f"\nFID calculation failed: {str(e)}")
             import traceback
             traceback.print_exc()
             return None
-
 
 #############################################################################################################
 # SIMPLE IMAGE DATASET CLASS:

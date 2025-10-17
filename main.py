@@ -227,9 +227,7 @@ def main():
 
         elif(menu1 == 14):  
             print("\n:FID CALCULATOR:") 
-            # Initialize calculator
             fid_score_calc = FIDCalculator(device)
-            # Run calculation
             fid_score_calc()
 
         ################
