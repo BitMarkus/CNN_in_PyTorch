@@ -1,3 +1,7 @@
+#########################
+# FID Score calculation #
+#########################
+
 # FID Score Scale Reference:
 # 0-50: Excellent quality (images are very similar)
 # 50-100: Good quality
@@ -6,11 +10,7 @@
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 import numpy as np
-import os
-from pathlib import Path
-import json
 from datetime import datetime
 from scipy import linalg
 from torchvision import models, transforms
@@ -21,51 +21,38 @@ from settings import setting
 
 
 class FIDCalculator:
-    """
-    A class to calculate Frechet Inception Distance (FID) between two image folders.
-    """
+
+    #############################################################################################################
+    # CONSTRUCTOR:
     
-    def __init__(self):
-        """
-        Initialize the FID calculator.
-        """
+    def __init__(self, device):
+
+        # Passed parameters
+        self.device = device
+        
+        # Settings parameters
         self.prediction_folder = setting['pth_prediction'].resolve()
+        self.num_channels = setting['img_channels']  # Get channels from settings
+        # Batch size for processing images for FID calculation
+        self.batch_size = setting['fid_batch_size']
+        # When this is set to True, the number of images is determined by the folder with the least images
+        # to balance the number of images for the calculation
+        self.balance_samples = setting['fid_balance_samples']
+        # Random seed for randomly choosing images if balance samples is set to True
+        self.random_seed = setting['fid_random_seed']
+        
+        # Class variables
         self.folder1 = None
         self.folder2 = None
         self.fid_score = None
         self.results = {}
-        self.num_channels = setting['img_channels']  # Get channels from settings
-        
-        # Device configuration
-        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        print(f"Using device: {self.device}")
-        print(f"Image channels: {self.num_channels}")
-        
-        # Define image transformations based on number of channels
-        if self.num_channels == 1:
-            # Grayscale images
-            self.transform = transforms.Compose([
-                transforms.Grayscale(num_output_channels=1),  # Ensure grayscale
-                transforms.Resize((299, 299)),  # InceptionV3 expects 299x299
-                transforms.ToTensor(),
-                transforms.Normalize(mean=[0.5], std=[0.5])  # Normalize for grayscale
-            ])
-        else:
-            # RGB images
-            self.transform = transforms.Compose([
-                transforms.Resize((299, 299)),  # InceptionV3 expects 299x299
-                transforms.ToTensor(),
-                transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-            ])
-        
+
+    #############################################################################################################
+    # METHODS:
+
+    # Validate that exactly two folders exist in the prediction directory and that they contain images 
     def validate_folders(self):
-        """
-        Validate that exactly two folders exist in the prediction directory
-        and that they contain images.
-        
-        Returns:
-            bool: True if validation passes, False otherwise
-        """
+
         if not self.prediction_folder.exists():
             print(f"Error: Prediction folder '{self.prediction_folder}' does not exist.")
             return False
@@ -109,42 +96,9 @@ class FIDCalculator:
         
         return True
     
+    # Load images from a specific folder as a PyTorch Dataset
     def load_images_from_folder(self, folder_path, max_images=None, random_seed=42):
-        """
-        Load images from a specific folder as a PyTorch Dataset.
-        
-        Args:
-            folder_path (Path): Path to the folder containing images
-            max_images (int): Maximum number of images to load (None for all)
-            random_seed (int): Random seed for reproducible sampling
-            
-        Returns:
-            torch.utils.data.Dataset: Dataset containing the images
-        """
-        class SimpleImageDataset(torch.utils.data.Dataset):
-            def __init__(self, folder_path, transform=None, num_channels=1, image_paths=None):
-                self.folder_path = folder_path
-                self.transform = transform
-                self.num_channels = num_channels
-                self.image_paths = image_paths
-            
-            def __len__(self):
-                return len(self.image_paths)
-            
-            def __getitem__(self, idx):
-                image_path = self.image_paths[idx]
-                
-                # Load image based on number of channels
-                if self.num_channels == 1:
-                    image = Image.open(image_path).convert('L')  # Convert to grayscale
-                else:
-                    image = Image.open(image_path).convert('RGB')  # Convert to RGB
-                
-                if self.transform:
-                    image = self.transform(image)
-                
-                return image, 0  # Return dummy label
-        
+
         # Get all image files
         image_extensions = {'.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.tif'}
         all_image_paths = []
@@ -165,17 +119,12 @@ class FIDCalculator:
         else:
             selected_paths = all_image_paths
         
-        dataset = SimpleImageDataset(folder_path, transform=self.transform, 
-                                   num_channels=self.num_channels, image_paths=selected_paths)
+        dataset = InceptionDataset(folder_path, num_channels=self.num_channels, image_paths=selected_paths)
         return dataset
     
+    # Load and configure the InceptionV3 model for feature extraction
     def get_inception_model(self):
-        """
-        Load and configure the InceptionV3 model for feature extraction.
-        
-        Returns:
-            torch.nn.Module: InceptionV3 model configured for feature extraction
-        """
+
         # Load pretrained InceptionV3
         inception_model = models.inception_v3(weights=models.Inception_V3_Weights.IMAGENET1K_V1)
         
@@ -194,18 +143,9 @@ class FIDCalculator:
             
         return inception_model
     
+    # Calculate activations for all images in the dataset
     def get_activations(self, dataset, model, batch_size=32):
-        """
-        Calculate activations for all images in the dataset.
-        
-        Args:
-            dataset (Dataset): Dataset containing images
-            model (torch.nn.Module): Inception model
-            batch_size (int): Batch size for processing
-            
-        Returns:
-            numpy.ndarray: Matrix of activations (n_images x 2048)
-        """
+
         model.eval()
         activations = []
         
@@ -227,20 +167,9 @@ class FIDCalculator:
         
         return np.concatenate(activations, axis=0)
     
+    # Calculate Frechet distance between two multivariate Gaussians
     def calculate_frechet_distance(self, mu1, sigma1, mu2, sigma2, eps=1e-6):
-        """
-        Calculate Frechet distance between two multivariate Gaussians.
-        
-        Args:
-            mu1 (numpy.ndarray): Mean of first distribution
-            sigma1 (numpy.ndarray): Covariance matrix of first distribution
-            mu2 (numpy.ndarray): Mean of second distribution
-            sigma2 (numpy.ndarray): Covariance matrix of second distribution
-            eps (float): Epsilon for numerical stability
-            
-        Returns:
-            float: Frechet distance
-        """
+
         mu1 = np.atleast_1d(mu1)
         mu2 = np.atleast_1d(mu2)
         sigma1 = np.atleast_2d(sigma1)
@@ -269,35 +198,25 @@ class FIDCalculator:
         return (diff.dot(diff) + np.trace(sigma1) + 
                 np.trace(sigma2) - 2 * tr_covmean)
     
+    # Calculate activation statistics for a dataset
     def calculate_activation_statistics(self, dataset, model, batch_size=32):
-        """
-        Calculate activation statistics for a dataset.
-        
-        Args:
-            dataset (Dataset): Dataset containing images
-            model (torch.nn.Module): Inception model
-            batch_size (int): Batch size for processing
-            
-        Returns:
-            tuple: (mu, sigma) mean and covariance of activations
-        """
+
         act = self.get_activations(dataset, model, batch_size)
         mu = np.mean(act, axis=0)
         sigma = np.cov(act, rowvar=False)
         return mu, sigma
     
-    def calculate_fid(self, batch_size=32, balance_samples=False, random_seed=42):
-        """
-        Calculate FID score between the two image folders.
-        
-        Args:
-            batch_size (int): Batch size for processing images
-            balance_samples (bool): Whether to balance sample sizes
-            random_seed (int): Random seed for reproducible sampling
-            
-        Returns:
-            float: FID score
-        """
+    # Calculate FID score between the two image folders
+    def calculate_fid(self, batch_size=None, balance_samples=None, random_seed=None):
+
+        # Use instance variables if parameters are not provided
+        if batch_size is None:
+            batch_size = self.batch_size
+        if balance_samples is None:
+            balance_samples = self.balance_samples
+        if random_seed is None:
+            random_seed = self.random_seed
+
         print("Loading InceptionV3 model...")
         model = self.get_inception_model()
         
@@ -337,18 +256,18 @@ class FIDCalculator:
         
         return fid_value
     
+    # Save FID results to a file in the prediction folder
     def save_results(self):
-        """Save FID results to a file in the prediction folder."""
-        results_file = self.prediction_folder / "fid_results.json"
-        
+       
         # Add metadata
         self.results['timestamp'] = datetime.now().isoformat()
         self.results['device'] = str(self.device)
         
-        with open(results_file, 'w') as f:
-            json.dump(self.results, f, indent=2)
-        
-        print(f"Results saved to: {results_file}")
+        # Optional: Save data as json file
+        # results_file = self.prediction_folder / "fid_results.json"
+        # with open(results_file, 'w') as f:
+        #    json.dump(self.results, f, indent=2)
+        # print(f"Results saved to: {results_file}")
         
         # Also create a human-readable text file
         text_file = self.prediction_folder / "fid_results.txt"
@@ -366,13 +285,14 @@ class FIDCalculator:
             f.write(f"Calculation Date: {self.results['timestamp']}\n")
             f.write(f"Device: {self.results['device']}\n")
         
-        print(f"Human-readable results saved to: {text_file}")
+        print(f"Results saved to: {text_file}")
     
+    # Print FID results to console
     def print_results(self):
-        """Print FID results to console."""
-        print("\n" + "="*50)
-        print("FID SCORE RESULTS")
-        print("="*50)
+
+        print("\n>> FID SCORE RESULTS")
+        print("-"*50)
+        print(f"Image Channels: {self.results['channels']}")
         print(f"Folder 1: {self.results['folder1']} ({self.results['actual_images_used_1']} images used)")
         print(f"Folder 2: {self.results['folder2']} ({self.results['actual_images_used_2']} images used)")
         print(f"FID Score: {self.results['fid_score']:.4f}")
@@ -381,38 +301,81 @@ class FIDCalculator:
             print(f"Sample Balancing: ENABLED (max: {self.results['balanced_sample_size']} images each)")
         else:
             print("Sample Balancing: DISABLED (using all available images)")
-        print(f"Calculation Date: {self.results['timestamp']}")
-        print(f"Device: {self.results['device']}")
-        print("="*50)
+        # print(f"Calculation Date: {self.results['timestamp']}")
+        # print(f"Device: {self.results['device']}")
+        print("-"*50)
     
-    def run(self, batch_size=32, balance_samples=True, random_seed=42):
-        """
-        Main method to run the FID calculation pipeline.
-        
-        Args:
-            batch_size (int): Batch size for processing images
-            balance_samples (bool): Whether to balance sample sizes
-            random_seed (int): Random seed for reproducible sampling
-            
-        Returns:
-            float: FID score, or None if calculation failed
-        """
+    #############################################################################################################
+    # CALL:
+
+    # Main analysis method
+    def __call__(self):
+
         try:
             # Validate folders
             if not self.validate_folders():
+                print(f"\nFID calculation failed: Folder validation error!")
                 return None
             
-            # Calculate FID
-            fid_score = self.calculate_fid(batch_size, balance_samples, random_seed)
+            # Calculate FID using parameters from constructor
+            fid_score = self.calculate_fid(self.batch_size, self.balance_samples, self.random_seed)
             
             # Save and display results
             self.save_results()
             self.print_results()
             
+            print(f"\nFID calculation completed successfully!")
             return fid_score
             
         except Exception as e:
-            print(f"Error during FID calculation: {str(e)}")
+            print(f"\nFID calculation failed: {str(e)}")
             import traceback
             traceback.print_exc()
             return None
+
+
+#############################################################################################################
+# SIMPLE IMAGE DATASET CLASS:
+
+# Simple dataset for loading images from a folder for the Inception network architecture
+class InceptionDataset(torch.utils.data.Dataset):
+    
+    def __init__(self, folder_path, num_channels=1, image_paths=None):
+
+        self.folder_path = folder_path
+        self.num_channels = num_channels
+        self.image_paths = image_paths
+
+        # Define image transformations based on number of channels
+        if self.num_channels == 1:
+            # Grayscale images
+            self.transform = transforms.Compose([
+                transforms.Grayscale(num_output_channels=1),  # Ensure grayscale
+                transforms.Resize((299, 299)),  # InceptionV3 expects 299x299
+                transforms.ToTensor(),
+                transforms.Normalize(mean=[0.5], std=[0.5])  # Normalize for grayscale
+            ])
+        else:
+            # RGB images
+            self.transform = transforms.Compose([
+                transforms.Resize((299, 299)),  # InceptionV3 expects 299x299
+                transforms.ToTensor(),
+                transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+            ])
+    
+    def __len__(self):
+        return len(self.image_paths)
+    
+    def __getitem__(self, idx):
+        image_path = self.image_paths[idx]
+        
+        # Load image based on number of channels
+        if self.num_channels == 1:
+            image = Image.open(image_path).convert('L')  # Convert to grayscale
+        else:
+            image = Image.open(image_path).convert('RGB')  # Convert to RGB
+        
+        if self.transform:
+            image = self.transform(image)
+        
+        return image, 0  # Return dummy label

@@ -677,7 +677,7 @@ class ConfidenceAnalyzer:
     # Main analysis method
     def __call__(self):
         """
-        # Add this temporary debug code to inspect your split_info.json
+        # temporary debug code to inspect your split_info.json
         split_file = self.pth_acv_results / "dataset_1" / "split_info.json"
         with open(split_file, 'r') as f:
             split_info = json.load(f)

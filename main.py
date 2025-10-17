@@ -228,22 +228,15 @@ def main():
         elif(menu1 == 14):  
             print("\n:FID CALCULATOR:") 
             # Initialize calculator
-            calculator = FIDCalculator()
+            fid_score_calc = FIDCalculator(device)
             # Run calculation
-            fid_score = calculator.run()
-            # Print output
-            if fid_score is not None:
-                print(f"\nFID calculation completed successfully!")
-                return 0
-            else:
-                print(f"\nFID calculation failed!")
-                return 1
+            fid_score_calc()
 
         ################
         # Exit Program #
         ################
 
-        elif(menu1 == 14):
+        elif(menu1 == 15):
             print("\nExit program...")
             break
         

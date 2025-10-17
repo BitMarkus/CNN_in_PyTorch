@@ -311,6 +311,18 @@ setting = {
     "dimred_pacmap_MN_ratio": 0.5,
     "dimred_pacmap_FP_ratio": 2.0,
 
+    #############
+    # FID SCORE #
+    #############
+
+    # Batch size for processing images for FID calculation
+    "fid_batch_size": 32,
+    # When this is set to True, the number of images is determined by the folder with the least images
+    # to balance the number of images for the calculation
+    "fid_balance_samples": True,
+    # Random seed for randomly choosing images if balance samples is set to True
+    "fid_random_seed": 123,
+
     #########
     # PATHS #
     #########
