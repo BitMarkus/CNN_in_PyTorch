@@ -266,7 +266,9 @@ class GradCAMAnalyzer:
         
         # Save
         suffix = "_iter2" if iteration > 1 else ""
-        output_path = output_folder / f"{img_path.stem}_gradcam{suffix}.png"
+        # MODIFIED: Include GradCAM class in filename
+        gradcam_suffix = f"_gradcam-{self.selected_class_name}" if self.selected_class_name else "_gradcam"
+        output_path = output_folder / f"{img_path.stem}{gradcam_suffix}{suffix}.png"
         plt.tight_layout()
         fig.savefig(output_path, bbox_inches='tight', dpi=150)
         plt.close(fig)
@@ -286,7 +288,9 @@ class GradCAMAnalyzer:
         
         # Save without any borders or padding
         suffix = "_iter2" if iteration > 1 else ""
-        output_path = output_folder / f"{img_path.stem}_gradcam{suffix}.png"
+        # MODIFIED: Include GradCAM class in filename
+        gradcam_suffix = f"_gradcam-{self.selected_class_name}" if self.selected_class_name else "_gradcam"
+        output_path = output_folder / f"{img_path.stem}{gradcam_suffix}{suffix}.png"
         fig.savefig(output_path, bbox_inches='tight', pad_inches=0, dpi=100)
         plt.close(fig)
 
