@@ -40,8 +40,8 @@ class GradCAMAnalyzer:
         # Gaussian blur strength
         self.sigma = setting['gradcam_blurr_sigma']
 
-        # Export mode
-        self.export_only_overlay = setting.get('gradcam_export_only_overlay', False)  # Default to False for backward compatibility
+        # Export mode - Control what gets exported
+        self.export_only_overlay = setting.get('gradcam_export_only_overlay', False)
 
         # Initialize dataset and model
         # Initialize dataset and load prediction data
@@ -60,12 +60,54 @@ class GradCAMAnalyzer:
         # Checkpoints
         self.checkpoint_loaded = False
         self.loaded_checkpoint_name = None
+        
+        # Class selection for GradCAM
+        self.selected_class = None
+        self.selected_class_name = None
 
         # For faster convolutions
         torch.backends.cudnn.benchmark = True  
         
     #############################################################################################################
     # METHODS:
+
+    # User selectionich class to use for GradCAM analysis
+    def select_gradcam_class(self):
+        
+        # Display available classes with PrettyTable
+        from prettytable import PrettyTable
+        table = PrettyTable()
+        table.field_names = ["ID", "Class Name"]
+        table.align["ID"] = "c"
+        table.align["Class Name"] = "l"
+        
+        # Start index at 1 instead of 0
+        for idx, class_name in enumerate(self.classes, 1):
+            table.add_row([idx, class_name])
+        
+        print()
+        print(table)
+        
+        # Get user input
+        while True:
+            try:
+                selection = input(f"Select class for GradCAM analysis (1-{len(self.classes)}): ").strip()
+                class_idx = int(selection)
+                
+                # Adjust for 1-based indexing
+                if 1 <= class_idx <= len(self.classes):
+                    self.selected_class = class_idx - 1  # Convert to 0-based for internal use
+                    self.selected_class_name = self.classes[self.selected_class]
+                    print(f"✓ Selected class: {self.selected_class_name}")
+                    return True
+                else:
+                    print(f"Invalid selection. Please enter a number between 1 and {len(self.classes)}.")
+                    
+            except ValueError:
+                print("Invalid input. Please enter a valid number.")
+            except KeyboardInterrupt:
+                print("\nClass selection cancelled.")
+                return False
 
     def load_checkpoint(self):
         # First get checkpoints without printing table
@@ -183,11 +225,14 @@ class GradCAMAnalyzer:
         else:
             img_np = image.permute(1, 2, 0).cpu().numpy()
         
-        # Create output directory
-        output_folder = self.pth_prediction / f"{img_path.parent.name}_gradcam"
+        # Create output directory - Include selected class name in folder
+        if self.selected_class_name:
+            output_folder = self.pth_prediction / f"{img_path.parent.name}_gradcam_{self.selected_class_name}"
+        else:
+            output_folder = self.pth_prediction / f"{img_path.parent.name}_gradcam"
         output_folder.mkdir(exist_ok=True, parents=True)
         
-        # NEW: Different export modes
+        # Different export modes
         if self.export_only_overlay:
             # Export only the overlay image
             self._export_overlay_only(img_np, heatmap, img_path, iteration, output_folder)
@@ -206,9 +251,10 @@ class GradCAMAnalyzer:
         ax1.set_title(f"Original: {img_path.parent.name}")
         ax1.axis('off')
         
-        # Heatmap
+        # Heatmap - Use selected class name in title
+        class_name = self.selected_class_name if self.selected_class_name else self.classes[target_class]
         ax2.imshow(heatmap, cmap='jet')
-        ax2.set_title(f"Grad-CAM for {self.classes[target_class]}")
+        ax2.set_title(f"Grad-CAM for {class_name}")
         ax2.axis('off')
         
         # Overlay
@@ -247,6 +293,11 @@ class GradCAMAnalyzer:
     def predict_gradcam(self, dataset, second_iteration=False):
         self.cnn.eval()  # Ensure model is in eval mode
         
+        # Use the selected class for ALL images
+        target_class = self.selected_class
+        print(f"\nApplying GradCAM for class: {self.selected_class_name}")  # Show 1-based index to user
+        print("Processing images...")
+        
         for batch_idx, (images, _) in enumerate(tqdm(dataset, desc="Grad-CAM Analysis")):
             batch_paths = [Path(dataset.dataset.samples[i][0]) 
                         for i in range(batch_idx * dataset.batch_size,
@@ -257,14 +308,11 @@ class GradCAMAnalyzer:
                     img = images[img_idx].to(self.device)
                     img_path = batch_paths[img_idx]
                     
-                    # Get target class DIRECTLY from folder name
-                    folder_name = img_path.parent.name
-                    target_class = self.classes.index(folder_name)  # Will raise ValueError if folder doesn't match classes
-                    
-                    # Generate heatmap FORCING the folder-derived class
+                    # Use the user-selected class instead of folder name
+                    # Generate heatmap for the SELECTED class
                     heatmap, _ = self.generate_heatmap(img, target_class=target_class)
                     
-                    # Visualize - pass the same target_class for both predicted and target
+                    # Visualize - use the same target_class for visualization
                     self.visualize_gradcam(img.detach(), heatmap, img_path, 
                                         target_class, target_class, iteration=1)
                     
@@ -276,9 +324,6 @@ class GradCAMAnalyzer:
                     
                     torch.cuda.empty_cache()
                     
-                except ValueError as e:
-                    print(f"\nSkipping {img_path.name}: Folder '{folder_name}' not in classes {self.classes}")
-                    continue
                 except Exception as e:
                     print(f"\nError processing {img_path.name}: {str(e)}")
                     continue
@@ -340,13 +385,17 @@ class GradCAMAnalyzer:
         if not self.ds.ds_loaded:
             print("Failed to load dataset")
             return
-        # self.debug_dataset_labels()
 
         # Load checkpoint
         if not self.load_checkpoint():
             print("WARNING: Using untrained weights!")
             self.loaded_checkpoint_name = "untrained"
         
+        # Select class for GradCAM analysis
+        if not self.select_gradcam_class():
+            print("GradCAM analysis cancelled.")
+            return
+
         # 2. Verify model predictions first
         """
         if not self.verify_model_predictions():
