@@ -270,6 +270,10 @@ setting = {
     "gradcam_threshold_percent": 0.40,
     # Gaussian blur strength
     "gradcam_blurr_sigma": 15,
+    # Export mode: 
+    # True: Composition of original, gradcam and overlay images
+    # False: Only export of gradcam image in 512x512 px
+   "gradcam_export_only_overlay": True, 
 
     #######################
     # DIMENSION REDUCTION #

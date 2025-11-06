@@ -40,6 +40,9 @@ class GradCAMAnalyzer:
         # Gaussian blur strength
         self.sigma = setting['gradcam_blurr_sigma']
 
+        # Export mode
+        self.export_only_overlay = setting.get('gradcam_export_only_overlay', False)  # Default to False for backward compatibility
+
         # Initialize dataset and model
         # Initialize dataset and load prediction data
         self.ds = Dataset()
@@ -184,7 +187,17 @@ class GradCAMAnalyzer:
         output_folder = self.pth_prediction / f"{img_path.parent.name}_gradcam"
         output_folder.mkdir(exist_ok=True, parents=True)
         
-        # Create figure
+        # NEW: Different export modes
+        if self.export_only_overlay:
+            # Export only the overlay image
+            self._export_overlay_only(img_np, heatmap, img_path, iteration, output_folder)
+        else:
+            # Original behavior - export all three images
+            self._export_all_images(img_np, heatmap, img_path, target_class, iteration, output_folder)
+    
+    def _export_all_images(self, img_np, heatmap, img_path, target_class, iteration, output_folder):
+        """Export all three images (original, gradcam, overlay)"""
+        # Create figure with three subplots
         fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(15, 5))
         
         # Original image
@@ -210,6 +223,25 @@ class GradCAMAnalyzer:
         output_path = output_folder / f"{img_path.stem}_gradcam{suffix}.png"
         plt.tight_layout()
         fig.savefig(output_path, bbox_inches='tight', dpi=150)
+        plt.close(fig)
+    
+    def _export_overlay_only(self, img_np, heatmap, img_path, iteration, output_folder):
+        """Export only the overlay image without axes or whitespace"""
+        # Create figure without any margins
+        fig = plt.figure(figsize=(5.12, 5.12), dpi=100)  # 512x512 at 100 DPI
+        ax = plt.Axes(fig, [0., 0., 1., 1.])  # Cover entire figure
+        ax.set_axis_off()
+        fig.add_axes(ax)
+        
+        # Display overlay (original image + heatmap)
+        ax.imshow(img_np if self.img_channels == 1 else np.mean(img_np, axis=2),
+                 cmap='gray' if self.img_channels == 1 else None)
+        ax.imshow(heatmap, cmap='jet', alpha=self.alpha_overlay)
+        
+        # Save without any borders or padding
+        suffix = "_iter2" if iteration > 1 else ""
+        output_path = output_folder / f"{img_path.stem}_gradcam{suffix}.png"
+        fig.savefig(output_path, bbox_inches='tight', pad_inches=0, dpi=100)
         plt.close(fig)
 
     def predict_gradcam(self, dataset, second_iteration=False):
