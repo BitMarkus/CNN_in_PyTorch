@@ -98,8 +98,8 @@ class DimRed:
     #############################################################################################################
     # METHODS:
 
+    # Automatically set up group mapping based on folder structure in predictions/ folder
     def _setup_auto_group_mapping(self):
-        """Automatically set up group mapping based on folder structure in predictions/ folder"""
         
         if not self.pth_prediction.exists():
             print(f"Warning: Predictions directory {self.pth_prediction} does not exist for auto group detection")
@@ -194,21 +194,58 @@ class DimRed:
             
             self.cnn.eval()
             with torch.no_grad():
-                for images, batch_labels in tqdm(dataloader, desc="Extracting features"):
+                for batch_idx, (images, batch_labels) in enumerate(tqdm(dataloader, desc="Extracting features")):
                     images = images.to(self.device)
                     batch_features = self.cnn.features(images)
                     pooled = torch.nn.functional.adaptive_avg_pool2d(batch_features, (1, 1))
                     flattened = pooled.view(images.size(0), -1)
                     features.append(flattened.cpu().numpy())
-                    labels.append(batch_labels.numpy())
+                    
+                    # For groups mode, we need to REMAP the labels to match our group_mapping
+                    if self.mode == "groups":
+                        # The dataloader gives us ImageFolder's automatic labels
+                        # We need to map them to our desired group_mapping labels
+                        numeric_labels = []
+                        for label_val in batch_labels.numpy():
+                            # Find which folder name corresponds to this numeric label
+                            folder_name = None
+                            if hasattr(dataloader.dataset, 'classes') and label_val < len(dataloader.dataset.classes):
+                                folder_name = dataloader.dataset.classes[label_val]
+                            
+                            # Now map to our group_mapping numeric value
+                            if folder_name and folder_name in self.group_mapping:
+                                _, desired_label = self.group_mapping[folder_name]
+                                numeric_labels.append(desired_label)
+                            else:
+                                # Keep original if not found
+                                numeric_labels.append(label_val)
+                        
+                        labels.append(np.array(numeric_labels))
+                    else:
+                        labels.append(batch_labels.numpy())
                     
         else:
             raise ValueError(f"Unknown mode: {self.mode}. Use 'train', 'test', or 'groups'")
                 
-        return np.concatenate(features), np.concatenate(labels)
+        all_features = np.concatenate(features)
+        all_labels = np.concatenate(labels)
+
+        return all_features, all_labels
+
+    def _get_color_map(self, num_groups):
+        if num_groups <= 10:
+            # Use default tab10 colormap for small numbers
+            return plt.cm.tab10
+        elif num_groups <= 20:
+            # Use tab20 for medium numbers
+            return plt.cm.tab20
+        else:
+            # Use viridis for large numbers (continuous colormap)
+            return plt.cm.viridis
 
     def run_reduction(self, method, reducer, features, labels):
         print(f"\nRunning {method}...")
+        
         start_time = time()
         scaled_features = self.scaler.fit_transform(features)
         embedding = reducer.fit_transform(scaled_features)
@@ -227,25 +264,47 @@ class DimRed:
                     label=class_name, alpha=0.7, s=40
                 )
         else:
-            # NEW: Flexible group plotting
-            unique_labels = np.unique(labels)
-            for label_val in unique_labels:
+            # FIXED: Plot by sample count (largest first = background, smallest last = foreground)
+            unique_labels, counts = np.unique(labels, return_counts=True)
+            
+            # Create list of (label, count) pairs and sort by count (descending)
+            label_counts = list(zip(unique_labels, counts))
+            label_counts.sort(key=lambda x: x[1], reverse=True)  # Sort by count descending
+            
+            num_groups = len(unique_labels)
+            
+            # Get appropriate colormap
+            cmap = self._get_color_map(num_groups)
+            
+            # Create scatter plots
+            scatter_objects = []
+            legend_labels = []
+            
+            # Plot in order: largest groups first (background), smallest last (foreground)
+            for i, (label_val, count) in enumerate(label_counts):
                 mask = labels == label_val
                 if np.sum(mask) == 0:
                     continue
                 
-                # Find the display name for this label
-                display_name = f"Group {label_val}"
+                # Find display name
+                display_name = f"Label_{label_val}"
                 for folder_name, (name, val) in self.group_mapping.items():
                     if val == label_val:
                         display_name = name
                         break
                 
-                plt.scatter(
+                color = cmap(i / max(1, num_groups - 1))
+                
+                # Create scatter plot
+                scatter = plt.scatter(
                     embedding[mask, 0], embedding[mask, 1],
-                    label=display_name, alpha=0.7, s=40
+                    color=color,
+                    alpha=0.7, 
+                    s=40
                 )
-        
+                scatter_objects.append(scatter)
+                legend_labels.append(display_name)
+
         # Update title based on mode
         if self.mode == "groups":
             title = f"{method} Projection ({len(self.group_mapping)} Groups)\nCheckpoint: {self.checkpoint_name}"
@@ -255,7 +314,19 @@ class DimRed:
         plt.title(title)
         plt.xlabel(f"{method} 1")
         plt.ylabel(f"{method} 2")
-        plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+        
+        # Create legend using the actual scatter objects
+        if self.mode == "groups":
+            n_groups = len(scatter_objects)
+            if n_groups > 10:
+                plt.legend(scatter_objects, legend_labels, 
+                        bbox_to_anchor=(0.5, -0.2), loc='upper center', ncol=3)
+            else:
+                plt.legend(scatter_objects, legend_labels, 
+                        bbox_to_anchor=(1.05, 1), loc='upper left')
+        else:
+            plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+            
         plt.grid(alpha=0.3)
         plt.gca().set_facecolor('#f5f5f5')
         plt.tight_layout()
@@ -289,6 +360,10 @@ class DimRed:
             print("Warning: Using untrained weights")
         
         features, labels = self.extract_features()
+        
+        # Debug info
+        print(f"Extracted features: {features.shape}")
+        print(f"Labels: {np.unique(labels, return_counts=True)}")
         
         if self.use_umap:
             reducer = umap.UMAP(
