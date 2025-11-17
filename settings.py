@@ -14,7 +14,7 @@ setting = {
     ############
 
     # Number of epochs
-    "train_num_epochs": 40,  # 30
+    "train_num_epochs": 30,  # 30
     # Batch size for training and validation datasets
     "ds_batch_size": 50, 
 
@@ -122,14 +122,14 @@ setting = {
     # Shuffle dataset
     "ds_shuffle": True,
     # Shuffle seed
-    "ds_shuffle_seed": 555,
+    "ds_shuffle_seed": 123,
     # How many subprocesses are used to load data in parallel
     "ds_num_workers": 3, # Intel Core i7-10700 CPU: 3
     # Validation split settings
     # Validation split from training dataset (False or percentage 0.0-1.0)
     "ds_val_from_train_split": False, # 0.2
     # Validation split from test dataset (False or percentage 0.0-1.0)
-    "ds_val_from_test_split": False, # 0.3
+    "ds_val_from_test_split": 0.5, # 0.3
 
     # Classes:
     # Define cell lines (for dataset generator)
@@ -188,7 +188,7 @@ setting = {
     # Set to True, if checkpoints shall be saved during training
     "chckpt_save": True,  
     # Mininmun validation accuracy from which on checkpoints are saved
-    "chckpt_min_acc": 0.8,  # 0.8 for 2 classes, 0.6 for 9 classess
+    "chckpt_min_acc": 0.75,  # 0.8 for 2 classes, 0.6 for 9 classess
 
     #######################
     # CONFIDENCE ANALYZER #

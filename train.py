@@ -433,6 +433,10 @@ class Train():
             all_labels = []
             all_probs = []
 
+            # Initialize per-class counters
+            class_correct = {i: 0 for i in range(len(self.classes))}
+            class_total = {i: 0 for i in range(len(self.classes))}
+
             with torch.inference_mode():
                 with tqdm(self.ds_val, unit="batch") as tepoch:
                     tepoch.set_description("Valid")
@@ -454,9 +458,26 @@ class Train():
                         all_preds.extend(preds.cpu().numpy())
                         all_labels.extend(labels.cpu().numpy())
 
+                        # Calculate per-class accuracy
+                        for i in range(len(self.classes)):
+                            class_mask = (labels.cpu() == i)
+                            class_correct[i] += (preds[class_mask] == labels[class_mask]).sum().item()
+                            class_total[i] += class_mask.sum().item()
+
             # Calculate metrics
             val_accuracy /= total_samples
             val_loss /= total_samples
+
+            # Calculate per-class accuracies
+            class_accuracies = {}
+            for i in range(len(self.classes)):
+                if class_total[i] > 0:
+                    class_accuracies[self.classes[i]] = class_correct[i] / class_total[i]
+                else:
+                    class_accuracies[self.classes[i]] = 0.0
+
+            # Format per-class accuracies for display
+            class_acc_str = " | ".join([f"{acc:.2f} {cls}" for cls, acc in class_accuracies.items()])
             
             # Create and log confusion matrix
             cm = confusion_matrix(all_labels, all_preds)
@@ -521,7 +542,7 @@ class Train():
                 self.writer.add_scalar('System/GPU_Memory', mem_usage, epoch)
 
             # Print validation summary
-            print(f"> Val Loss: {val_loss:.5f} | Val Acc: {val_accuracy:.2f}")
+            print(f"> Val Loss: {val_loss:.5f} | Val Acc: {val_accuracy:.2f} ({class_acc_str})")
             print(f"> F1 (Macro): {f1_macro:.4f} | F1 (Weighted): {f1_weighted:.4f} | AUC: {roc_auc_weighted:.4f} | AP: {ap_weighted:.4f}")
 
             # Store validation metrics
