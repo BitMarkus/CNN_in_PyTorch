@@ -14,7 +14,7 @@ setting = {
     ############
 
     # Number of epochs
-    "train_num_epochs": 30,  # 30
+    "train_num_epochs": 50,  # 30
     # Batch size for training and validation datasets
     "ds_batch_size": 50, 
 
@@ -41,7 +41,8 @@ setting = {
 
     # Loss function:
     # Paramater to use weighted loss function or normal loss function
-    # Weighted loss function for class imbalance
+    # Also training metrics will change to weighted versions
+    # Useful for class imbalance
     "train_use_weighted_loss": True,
 
     # Learning rate scheduler:
@@ -122,7 +123,7 @@ setting = {
     # Shuffle dataset
     "ds_shuffle": True,
     # Shuffle seed
-    "ds_shuffle_seed": 123,
+    "ds_shuffle_seed": 111,
     # How many subprocesses are used to load data in parallel
     "ds_num_workers": 3, # Intel Core i7-10700 CPU: 3
     # Validation split settings

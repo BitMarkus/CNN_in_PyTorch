@@ -33,17 +33,18 @@ class Train():
         self.cnn = cnn_wrapper.model
 
         # Initialize TensorBoard writer
-        # To use tensorboard for training, navigate to the root of the project folder
-        # Type in CMD in the the adress line
-        # Run the following command: tensorboard --logdir=logs/ --host=localhost (Optional: --reload_interval 30)
-        # Open http://localhost:6006/ in web browser
         self.writer = SummaryWriter(f"logs/{datetime.now().strftime('%Y%m%d-%H%M%S')}")
+        
+        # Class names
+        self.classes = setting["classes"] 
         
         # Enhanced TensorBoard layout
         custom_layout = {
             'Accuracy': {
                 'Training Accuracy': ['Scalar', 'Accuracy/Train'],
                 'Validation Accuracy': ['Scalar', 'Accuracy/Val'],
+                'Standard Accuracy': ['Scalar', 'Accuracy/val_standard'],
+                'Per-Class Accuracy': ['Multiline', [f'Accuracy/class/{cls}' for cls in self.classes]],
             },
             'Loss': {
                 'Training Loss': ['Scalar', 'Loss/Train'],
@@ -51,9 +52,12 @@ class Train():
             },
             'Metrics': {
                 'F1 Scores': ['Multiline', ['Metrics/F1/Macro', 'Metrics/F1/Weighted']],
-                'AUC': ['Scalar', 'Metrics/AUC'],
-                'AP': ['Scalar', 'Metrics/AP'],
+                'AUC Scores': ['Multiline', ['Metrics/AUC'] + [f'Metrics/AUC/{cls}' for cls in self.classes]],
+                'AP Scores': ['Multiline', ['Metrics/AP'] + [f'Metrics/AP/{cls}' for cls in self.classes]],
                 'Learning Rate': ['Scalar', 'Metrics/LR'],
+            },
+            'Data': {
+                'Class Distribution': ['Multiline', [f'Data/class_count/{cls}' for cls in self.classes]],
             },
             'System': {
                 'GPU Memory': ['Scalar', 'System/GPU_Memory']
@@ -67,8 +71,6 @@ class Train():
         self.ds_train = dataset.ds_train
         self.ds_val = dataset.ds_val
 
-        # Class names
-        self.classes = setting["classes"] 
         # Number of training and validation images in each dataset
         self.num_train_img = dataset.num_train_img
         self.num_val_img = dataset.num_val_img
@@ -86,24 +88,27 @@ class Train():
         # Label smoothing
         self.label_smoothing = setting["train_label_smoothing"] 
         # Optimizer specific
-        # Options: "SGD" and "ADAM/ADAMW"
         self.optimizer_type = setting["train_optimizer_type"]
-        self.sgd_momentum = setting["train_sgd_momentum"] # SGD
-        self.sgd_use_nesterov = setting["train_sgd_use_nesterov"] # SGD
-        self.adam_beta1 = setting["train_adam_beta1"]   # ADAM/ADAMW
-        self.adam_beta2 = setting["train_adam_beta2"]   # ADAM/ADAMW 
-        # Loss function 
+        self.sgd_momentum = setting["train_sgd_momentum"]
+        self.sgd_use_nesterov = setting["train_sgd_use_nesterov"]
+        self.adam_beta1 = setting["train_adam_beta1"]
+        self.adam_beta2 = setting["train_adam_beta2"]
+
+        # Use weighted loss function and training metrics
+        # Useful for imbalanced datasets
         self.use_weighted_loss = setting["train_use_weighted_loss"]
-        # Validation split settings (False or percentage 0.0-1.0)
-        # Validation split from training dataset
+
+        # Validation split settings
+        # Validation split from training dataset in the folder data/train/
         self.val_from_train_split = setting["ds_val_from_train_split"]
-        # Validation split from test dataset
+        # Validation split from test dataset in the folder data/test/
         self.val_from_test_split = setting["ds_val_from_test_split"]
+
+        # Calculate class weights for metrics
+        self.class_weights = self._get_class_weights_for_metrics(dataset)
 
         # Optmizer, learning rate scheduler and loss function
         if(self.optimizer_type == "ADAM"):
-            # ADAM:
-            # amsgrad=True: Avoids LR instability
             self.optimizer = Adam(
                 self.cnn.parameters(),
                 lr=self.init_lr, 
@@ -112,7 +117,6 @@ class Train():
                 amsgrad=False
             )
         elif(self.optimizer_type == "ADAMW"):
-            # ADAMW:
             self.optimizer = AdamW(
                 self.cnn.parameters(),
                 lr=self.init_lr, 
@@ -121,7 +125,6 @@ class Train():
                 amsgrad=False
             )
         elif(self.optimizer_type == "SGD"):
-            # SGD:
             self.optimizer = SGD(
                 self.cnn.parameters(), 
                 lr=self.init_lr, 
@@ -132,14 +135,10 @@ class Train():
 
         # Loss function setup
         if self.use_weighted_loss:
-            print("\n> Loss function: Using weighted loss function. Calculating class weights...")
+            print("\n> Using WEIGHTED loss function. Calculating class weights...")
             if self.val_from_train_split is not False:
-                # Case 1: Validation split from training data
-                # Access only training samples (excludes validation split)
                 class_weights = self._calculate_weights_from_dataloader()
             else:
-                # Case 2: Validation is separate (e.g., from test or own folder)
-                # Counts files per class without loading images (fast)
                 class_weights = self._calculate_weights_from_folder(dataset.pth_train)
             # Print class weights
             formatted_weights, _ = self.format_class_weights(class_weights, self.classes)
@@ -150,24 +149,20 @@ class Train():
                 label_smoothing=self.label_smoothing
             )
         else:
-            # Case 3: Using non-weighted loss function
-            print("\n> Loss function: Using non-weighted loss function.")
+            print("\n> Using NON-WEIGHTED loss function.")
             self.loss_function = nn.CrossEntropyLoss(label_smoothing=self.label_smoothing)
 
-        # Learning rate scheduler:
-        # CosineAnnealingLR:
+        # Learning rate scheduler
         self.scheduler_CA = torch.optim.lr_scheduler.CosineAnnealingLR(
             self.optimizer, 
-            T_max=self.num_epochs - self.warmup_epochs, # Adjust for warmup
+            T_max=self.num_epochs - self.warmup_epochs,
             eta_min=self.lr_eta_min,
         )
-        # Warmup scheduler
         self.warmup_scheduler = torch.optim.lr_scheduler.LinearLR(
             self.optimizer, 
-            start_factor=0.01,  # Start at 1% of target LR
-            total_iters=self.warmup_epochs ,      # Ramp over 5 epochs
+            start_factor=0.01,
+            total_iters=self.warmup_epochs,
         )
-        # Then chain with CosineAnnealingLR
         self.scheduler = torch.optim.lr_scheduler.SequentialLR(
             self.optimizer,
             schedulers=[self.warmup_scheduler, self.scheduler_CA],
@@ -183,6 +178,40 @@ class Train():
     #############################################################################################################
     # METHODS:
 
+    # Get class weights for metrics calculation
+    def _get_class_weights_for_metrics(self, dataset):
+        if self.use_weighted_loss:
+            if self.val_from_train_split is not False:
+                weights = self._calculate_weights_from_dataloader()
+            else:
+                weights = self._calculate_weights_from_folder(dataset.pth_train)
+        else:
+            # Return equal weights for all classes (on CPU initially)
+            weights = torch.ones(len(self.classes))
+        
+        return weights  # Keep on CPU initially, will move to device when needed
+
+    # Calculate weighted accuracy if using weighted loss, otherwise standard accuracy
+    def _calculate_weighted_accuracy(self, preds, labels):
+        if self.use_weighted_loss:
+            # Ensure class weights are on the same device as labels
+            if self.class_weights.device != labels.device:
+                self.class_weights = self.class_weights.to(labels.device)
+            
+            # Calculate accuracy directly on GPU
+            correct = (preds == labels).float()
+            batch_weights = self.class_weights[labels]
+            
+            # Calculate weighted accuracy
+            weighted_accuracy = (correct * batch_weights).sum().item()
+            total_weight = batch_weights.sum().item()
+            
+            return weighted_accuracy, total_weight
+        else:
+            # Standard accuracy calculation
+            accuracy = (preds == labels).sum().item()
+            return accuracy, labels.size(0)
+
     # Generate metrics plot at the end of a training
     def _plot_metrics(self, history, plot_path, show_plot=True, save_plot=True):
         plt.figure(figsize=(24, 12))
@@ -192,14 +221,14 @@ class Train():
         epochs_range = range(1, len(history["train_acc"]) + 1)
         plt.plot(epochs_range, history["train_acc"], 'g-', label='Training')
         plt.plot(epochs_range, history["val_acc"], 'r-', label='Validation')
-        plt.title('Accuracy')
+        plt.title('Accuracy' + (' (Weighted)' if self.use_weighted_loss else ''))
         plt.legend()
         
         # 2. Loss Plot
         plt.subplot(2, 3, 2)
         plt.plot(epochs_range, history["train_loss"], 'g-', label='Training')
         plt.plot(epochs_range, history["val_loss"], 'r-', label='Validation')
-        plt.title('Loss')
+        plt.title('Loss' + (' (Weighted)' if self.use_weighted_loss else ''))
         plt.legend()
         plt.ylim(0, min(5, max(max(history["val_loss"]), max(history["train_loss"])) * 1.1))
         
@@ -243,7 +272,8 @@ class Train():
         
         plt.tight_layout()
         if save_plot:
-            plt.savefig(str(plot_path / "train_metrics"), bbox_inches='tight', dpi=300)
+            weight_suffix = "_weighted" if self.use_weighted_loss else "_standard"
+            plt.savefig(str(plot_path / f"train_metrics{weight_suffix}"), bbox_inches='tight', dpi=300)
             plt.close()
         if show_plot:
             plt.show()
@@ -265,8 +295,10 @@ class Train():
         # Add labels/title
         ax.set_xlabel('Predicted Label', fontdict=label_font)
         ax.set_ylabel('True Label', fontdict=label_font)
-        ax.set_title(f'Confusion Matrix (Epoch {epoch+1})' if epoch else 'Confusion Matrix', 
-                    fontdict=title_font)
+        title = f'Confusion Matrix (Epoch {epoch+1})' if epoch else 'Confusion Matrix'
+        if self.use_weighted_loss:
+            title += ' - Weighted Loss'
+        ax.set_title(title, fontdict=title_font)
         
         # Class names
         if class_names:
@@ -293,7 +325,6 @@ class Train():
         return fig
     
     # Calculate class weights from a DataLoader
-    # For when validation is split from training data
     def _calculate_weights_from_dataloader(self):
         train_dataset = self.ds_train.dataset
         class_counts = torch.zeros(len(self.classes))
@@ -301,6 +332,7 @@ class Train():
             class_counts[label] += 1
         weights = 1.0 / (class_counts + 1e-6)
         return weights / weights.sum()
+
     # For standalone train/val folders
     def _calculate_weights_from_folder(self, folder_path):
         class_counts = []
@@ -311,13 +343,7 @@ class Train():
         return weights / weights.sum()
 
     # Formats class weights (Tensor or dict) for clean display. 
-    # Args:
-        # class_weights: Tensor of shape [n_classes] or dictionary
-        # class_names: Optional list of class names (default: ['Class 0', 'Class 1', ...])
-    # Returns:
-        # Formatted string and dictionary of weights    
     def format_class_weights(self, class_weights, class_names=None):
-
         # Convert Tensor to dictionary if needed
         if torch.is_tensor(class_weights):
             if class_names is None:
@@ -334,8 +360,8 @@ class Train():
         lines = [header]
         
         for cls, weight in weights_dict.items():
-            percentage = weight * 100  # Convert to percentage
-            lines.append(f"  {cls.ljust(max_len)} : {percentage:.2f}%")  # 2 decimal places
+            percentage = weight * 100
+            lines.append(f"  {cls.ljust(max_len)} : {percentage:.2f}%")
         
         return "\n".join(lines), weights_dict
 
@@ -358,6 +384,15 @@ class Train():
         # Track best accuracy for checkpoint saving
         best_accuracy = 0.0
 
+        """
+        # Print training configuration
+        print(f"\n> Training Configuration:")
+        print(f"> Weighted Loss: {self.use_weighted_loss}")
+        print(f"> Classes: {self.classes}")
+        print(f"> Optimizer: {self.optimizer_type}")
+        print(f"> Initial LR: {self.init_lr}")
+        """
+
         # Iterate over epochs
         for epoch in range(self.num_epochs):
 
@@ -369,9 +404,16 @@ class Train():
             #################
 
             self.cnn.train()
-            train_accuracy = 0.0
+            weighted_train_accuracy = 0.0  # Separate accumulator for weighted
+            standard_train_accuracy = 0.0  # Separate accumulator for standard  
             train_loss = 0.0
-            
+            total_train_weight = 0.0
+            actual_train_samples = 0  # Track actual samples for standard accuracy
+
+            # Ensure class weights are on the correct device before training loop
+            if self.use_weighted_loss and self.class_weights.device != self.device:
+                self.class_weights = self.class_weights.to(self.device)
+
             with tqdm(self.ds_train, unit="batch") as tepoch:
                 for batch_idx, (images, labels) in enumerate(tepoch):
                     tepoch.set_description("Train")
@@ -401,7 +443,25 @@ class Train():
                     # Calculate train loss and accuracy
                     train_loss += loss.item() * images.size(0)
                     _, preds = torch.max(outputs, 1)
-                    train_accuracy += torch.sum(preds == labels.data).item()
+                    
+                    # Calculate BOTH weighted and standard accuracy
+                    if self.use_weighted_loss:
+                        # Weighted accuracy calculation
+                        batch_weighted_accuracy, batch_weight = self._calculate_weighted_accuracy(preds, labels)
+                        weighted_train_accuracy += batch_weighted_accuracy
+                        total_train_weight += batch_weight
+                        
+                        # Also calculate standard accuracy for this batch
+                        batch_standard_accuracy = (preds == labels).sum().item()
+                        standard_train_accuracy += batch_standard_accuracy
+                    else:
+                        # Standard accuracy calculation
+                        batch_standard_accuracy, _ = self._calculate_weighted_accuracy(preds, labels)
+                        standard_train_accuracy += batch_standard_accuracy
+                        weighted_train_accuracy = standard_train_accuracy  # Same for non-weighted
+                    
+                    # Track actual samples for standard accuracy calculation
+                    actual_train_samples += labels.size(0)
 
                     # Clear memory every 10 batches
                     if batch_idx % 10 == 0:
@@ -409,15 +469,40 @@ class Train():
 
             # Update learning rate and store training metrics
             self.scheduler.step()
-            train_accuracy /= len(self.ds_train.dataset)
-            train_loss /= len(self.ds_train.dataset)
+
+            # Calculate final training accuracies with PROPER sample counting
+            if self.use_weighted_loss:
+                # Weighted accuracy uses total_weight
+                if total_train_weight > 0:
+                    final_weighted_train_accuracy = weighted_train_accuracy / total_train_weight
+                else:
+                    final_weighted_train_accuracy = 0.0
+                
+                # Standard accuracy uses actual sample count
+                if actual_train_samples > 0:
+                    final_standard_train_accuracy = standard_train_accuracy / actual_train_samples
+                else:
+                    final_standard_train_accuracy = 0.0
+            else:
+                # For standard loss, use actual samples processed
+                if actual_train_samples > 0:
+                    final_standard_train_accuracy = standard_train_accuracy / actual_train_samples
+                    final_weighted_train_accuracy = final_standard_train_accuracy  # Same for non-weighted
+                else:
+                    final_standard_train_accuracy = 0.0
+                    final_weighted_train_accuracy = 0.0
+
+            train_loss = train_loss / len(self.ds_train.dataset)  # Loss calculation is fine as-is
             current_lr = self.scheduler.get_last_lr()[0]
 
-            # Console output: Print training summary
-            print(f"> Train Loss: {train_loss:.5f} | Train Acc: {train_accuracy:.2f} | Learning Rate: {current_lr:.6f}")
-            
+            # Console output: Print training summary - CONDITIONAL DISPLAY
+            if self.use_weighted_loss:
+                print(f"> Train Loss: {train_loss:.5f} | Weighted Train Acc: {final_weighted_train_accuracy:.2f} | Standard Train Acc: {final_standard_train_accuracy:.2f} | Learning Rate: {current_lr:.6f}")
+            else:
+                print(f"> Train Loss: {train_loss:.5f} | Train Acc: {final_standard_train_accuracy:.2f} | Learning Rate: {current_lr:.6f}")
+
             # Add training metrics to history
-            history["train_acc"].append(train_accuracy)
+            history["train_acc"].append(final_weighted_train_accuracy if self.use_weighted_loss else final_standard_train_accuracy)
             history["train_loss"].append(train_loss)
             history["lr"].append(current_lr)
 
@@ -428,10 +513,14 @@ class Train():
             self.cnn.eval()
             val_accuracy = 0.0
             val_loss = 0.0
-            total_samples = 0
+            total_val_weight = 0.0
             all_preds = []
             all_labels = []
             all_probs = []
+
+            # Ensure class weights are on the correct device before validation loop
+            if self.use_weighted_loss and self.class_weights.device != self.device:
+                self.class_weights = self.class_weights.to(self.device)
 
             # Initialize per-class counters
             class_correct = {i: 0 for i in range(len(self.classes))}
@@ -451,8 +540,11 @@ class Train():
                         
                         val_loss += loss.item() * images.size(0)
                         _, preds = torch.max(outputs, 1)
-                        val_accuracy += (preds == labels).sum().item()
-                        total_samples += labels.size(0)
+                        
+                        # Use weighted or standard accuracy calculation
+                        batch_accuracy, batch_weight = self._calculate_weighted_accuracy(preds, labels)
+                        val_accuracy += batch_accuracy
+                        total_val_weight += batch_weight
                         
                         all_probs.append(probs.cpu().detach())
                         all_preds.extend(preds.cpu().numpy())
@@ -464,17 +556,29 @@ class Train():
                             class_correct[i] += (preds[class_mask] == labels[class_mask]).sum().item()
                             class_total[i] += class_mask.sum().item()
 
-            # Calculate metrics
-            val_accuracy /= total_samples
-            val_loss /= total_samples
+            # Calculate final validation metrics with safety check
+            if self.use_weighted_loss:
+                # Avoid division by zero
+                if total_val_weight > 0:
+                    weighted_val_accuracy = val_accuracy / total_val_weight
+                else:
+                    weighted_val_accuracy = 0.0
+            else:
+                weighted_val_accuracy = val_accuracy / len(self.ds_val.dataset)
+                
+            val_loss = val_loss / len(self.ds_val.dataset)
 
             # Calculate per-class accuracies
             class_accuracies = {}
             for i in range(len(self.classes)):
                 if class_total[i] > 0:
+                    # Calculate ACTUAL per-class accuracy (not weighted)
                     class_accuracies[self.classes[i]] = class_correct[i] / class_total[i]
                 else:
                     class_accuracies[self.classes[i]] = 0.0
+
+            # Calculate standard (unweighted) accuracy directly from predictions
+            standard_val_accuracy = (np.array(all_preds) == np.array(all_labels)).mean()
 
             # Format per-class accuracies for display
             class_acc_str = " | ".join([f"{acc:.2f} {cls}" for cls, acc in class_accuracies.items()])
@@ -506,18 +610,16 @@ class Train():
             # Calculate per-class metrics with checks
             for i in range(len(self.classes)):
                 class_mask = (all_labels == i)
-                if np.sum(class_mask) > 0:  # Only if class exists in batch
+                if np.sum(class_mask) > 0:
                     fpr[i], tpr[i], _ = roc_curve(class_mask, all_probs[:, i])
                     roc_auc[i] = auc(fpr[i], tpr[i])
                     precision[i], recall[i], _ = precision_recall_curve(class_mask, all_probs[:, i])
                     average_precision[i] = average_precision_score(class_mask, all_probs[:, i])
 
-            # Calculate weighted metrics: HANDLE BINARY VS MULTICLASS DIFFERENTLY!
+            # Calculate weighted metrics
             if len(self.classes) == 2:
-                # Binary classification: use probabilities for positive class only
                 roc_auc_weighted = roc_auc_score(all_labels, all_probs[:, 1])
             else:
-                # Multiclass classification
                 roc_auc_weighted = roc_auc_score(
                     all_labels,
                     all_probs,
@@ -526,27 +628,52 @@ class Train():
                 )
             ap_weighted = np.mean(list(average_precision.values())) if average_precision else 0
 
-            # Log to TensorBoard
+            # Log to TensorBoard - ALL METRICS (regardless of weighted setting)
             self.writer.add_scalar('Loss/train', train_loss, epoch)
-            self.writer.add_scalar('Accuracy/train', train_accuracy, epoch)
+            self.writer.add_scalar('Accuracy/train', final_weighted_train_accuracy if self.use_weighted_loss else final_standard_train_accuracy, epoch)
             self.writer.add_scalar('Loss/val', val_loss, epoch)
-            self.writer.add_scalar('Accuracy/val', val_accuracy, epoch)
+            self.writer.add_scalar('Accuracy/val', weighted_val_accuracy if self.use_weighted_loss else standard_val_accuracy, epoch)
+
+            # Log both weighted and standard accuracy
+            self.writer.add_scalar('Accuracy/val_standard', standard_val_accuracy, epoch)
+            if self.use_weighted_loss:
+                self.writer.add_scalar('Accuracy/train_standard', standard_train_accuracy, epoch)
+
             self.writer.add_scalar('Metrics/LR', current_lr, epoch)
             self.writer.add_scalars('Metrics/F1', {'Macro': f1_macro, 'Weighted': f1_weighted}, epoch)
             self.writer.add_scalar('Metrics/AUC', roc_auc_weighted, epoch)
             self.writer.add_scalar('Metrics/AP', ap_weighted, epoch)
-            
+
+            # Log per-class metrics
+            for i, class_name in enumerate(self.classes):
+                if i in roc_auc:  # Only if class exists in this batch
+                    self.writer.add_scalar(f'Metrics/AUC/{class_name}', roc_auc[i], epoch)
+                if i in average_precision:
+                    self.writer.add_scalar(f'Metrics/AP/{class_name}', average_precision[i], epoch)
+                if class_name in class_accuracies:
+                    self.writer.add_scalar(f'Accuracy/class/{class_name}', class_accuracies[class_name], epoch)
+
+            # Log class distribution (useful for understanding weighted metrics)
+            for i, class_name in enumerate(self.classes):
+                if i in class_total:
+                    self.writer.add_scalar(f'Data/class_count/{class_name}', class_total[i], epoch)
+
             # Log GPU memory usage
             if torch.cuda.is_available():
                 mem_usage = torch.cuda.memory_reserved() / self.total_gpu_memory
                 self.writer.add_scalar('System/GPU_Memory', mem_usage, epoch)
 
-            # Print validation summary
-            print(f"> Val Loss: {val_loss:.5f} | Val Acc: {val_accuracy:.2f} ({class_acc_str})")
-            print(f"> F1 (Macro): {f1_macro:.4f} | F1 (Weighted): {f1_weighted:.4f} | AUC: {roc_auc_weighted:.4f} | AP: {ap_weighted:.4f}")
+            # Print validation summary - CONDITIONAL DISPLAY
+            if self.use_weighted_loss:
+                print(f"> Val Loss: {val_loss:.5f} | Weighted Val Acc: {weighted_val_accuracy:.2f} | Standard Val Acc: {standard_val_accuracy:.2f} | Per-class: ({class_acc_str})")
+                print(f"> F1 (Macro): {f1_macro:.4f} | F1 (Weighted): {f1_weighted:.4f} | AUC: {roc_auc_weighted:.4f} | AP: {ap_weighted:.4f}")
+            else:
+                print(f"> Val Loss: {val_loss:.5f} | Val Acc: {standard_val_accuracy:.2f} | Per-class: ({class_acc_str})")
+                print(f"> F1 (Macro): {f1_macro:.4f} | AUC: {roc_auc_weighted:.4f} | AP: {ap_weighted:.4f}")
 
             # Store validation metrics
-            history["val_acc"].append(val_accuracy)
+            current_val_accuracy = weighted_val_accuracy if self.use_weighted_loss else standard_val_accuracy
+            history["val_acc"].append(current_val_accuracy)
             history["val_loss"].append(val_loss)
             history["f1_macro"].append(f1_macro)
             history["f1_weighted"].append(f1_weighted)
@@ -558,13 +685,24 @@ class Train():
             history["average_precision"].append(average_precision)
             history["confusion_matrices"].append(cm)
 
-            # Save best model
+            # Save best mode
+            accuracy_for_checkpoint = weighted_val_accuracy if self.use_weighted_loss else standard_val_accuracy
+            accuracy_type = "weighted" if self.use_weighted_loss else "standard"
+
+            # Store the old best accuracy to check if it improved
+            old_best_accuracy = best_accuracy
+
+            # Call save_weights - it will handle the threshold check internally
             best_accuracy = self.cnn_wrapper.save_weights(
-                val_accuracy, 
+                accuracy_for_checkpoint, 
                 best_accuracy, 
                 epoch, 
                 chckpt_pth
             )
+
+            # Only print message if a checkpoint was actually saved
+            if best_accuracy > old_best_accuracy:
+                print(f"Model with {accuracy_type} validation accuracy {best_accuracy:.2f} saved!")
 
         # Final cleanup and plotting
         self.writer.close()
