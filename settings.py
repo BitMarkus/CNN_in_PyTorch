@@ -153,7 +153,8 @@ setting = {
     # VGG (without batch norm): vgg11, vgg13", vgg16, vgg19
     # VGG (with batch norm): vgg11_bn, vgg13_bn, vgg16_bn, vgg19_bn
     # DenseNet: densenet121, densenet169, densenet201
-    # EfficientNet: efficientnet_b0, efficientnet_b7
+    # EfficientNet: efficientnet_b0, efficientnet_b3, efficientnet_b4, efficientnet_b7
+    # ConvNeXt: convnext_tiny, convnext_small
     # Custom CNN architecture: custom
     "cnn_type": "densenet121",  
     # Pretrained or initialized weights

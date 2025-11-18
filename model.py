@@ -54,26 +54,25 @@ class CNN_Model():
         self.chckpt_min_acc = setting["chckpt_min_acc"] 
         self.chckpt_save = setting["chckpt_save"]
         self.chckpt_pth = setting["pth_checkpoint"]
-        # heckpoint loading options
-        # self.chckpt_weights_file = setting["chckpt_weights_file"] 
-        # Get number of classes = number of output nodes
-        # self.class_list = self.get_class_list()
+        # Class list
         self.class_list = setting["classes"]   
         self.num_classes = len(self.class_list)
 
     #############################################################################################################
     # METHODS:
 
+    """
+    Universal CNN loader for:
+    - ResNet (18/34/50/101/152)
+    - ResNeXt-101 (32x8d/64x4d)
+    - AlexNet
+    - VGG (11/13/16/19, with/without BN)
+    - DenseNet (121/169/201)
+    - EfficientNet (B0/B3/B4/B7)
+    - ConvNeXt (Tiny/Small)
+    """
     def load_model(self, device):
-        """
-        Universal CNN loader for:
-        - ResNet (18/34/50/101/152)
-        - ResNeXt-101 (32x8d/64x4d)
-        - AlexNet
-        - VGG (11/13/16/19, with/without BN)
-        - DenseNet (121/169/201/264)
-        - EfficientNet (B0-B7)
-        """
+
         # Supported models and their constructors
         model_dict = {
             # ResNet variants
@@ -100,13 +99,19 @@ class CNN_Model():
             "densenet121": models.densenet121,
             "densenet169": models.densenet169,
             "densenet201": models.densenet201,
-            # EfficientNet variants
+            # EfficientNet variants (expanded)
             "efficientnet_b0": models.efficientnet_b0,
+            "efficientnet_b3": models.efficientnet_b3,
+            "efficientnet_b4": models.efficientnet_b4,
             "efficientnet_b7": models.efficientnet_b7,
+            # ConvNeXt variants
+            "convnext_tiny": models.convnext_tiny,
+            "convnext_small": models.convnext_small,
             # Add custom model constructor
             "custom": self._build_custom_model
         }
         
+        # The rest of your load_model method remains exactly the same...
         # Custom Model Case
         if self.cnn_type == "custom":
             self.is_pretrained = False  # Custom models cannot be pretrained
@@ -149,6 +154,16 @@ class CNN_Model():
             else:
                 in_features = self.model.classifier.in_features
                 self.model.classifier = nn.Linear(in_features, self.num_classes)
+        # Add support for ConvNeXt classifier
+        elif hasattr(self.model, 'classifier') and hasattr(self.model.classifier, '2'):  # ConvNeXt
+            # ConvNeXt classifier is typically: Sequential([AdaptiveAvgPool2d(1), LayerNorm2d((1024,)), Flatten(), Linear(...)])
+            if isinstance(self.model.classifier, nn.Sequential):
+                # Find the Linear layer in the classifier
+                for i, layer in enumerate(self.model.classifier):
+                    if isinstance(layer, nn.Linear):
+                        in_features = layer.in_features
+                        self.model.classifier[i] = nn.Linear(in_features, self.num_classes)
+                        break
         
         # Initialize non-pretrained weights
         if not self.is_pretrained:
@@ -236,6 +251,20 @@ class CNN_Model():
             # Replace the entire block while preserving BN/activation
             model.features[0][0] = new_conv
             return original_conv
+        # ConvNeXt:
+        elif hasattr(model, 'features') and hasattr(model.features, '0'):
+            # ConvNeXt features[0] is typically the stem which contains a Conv2d
+            if hasattr(model.features[0], '0') and isinstance(model.features[0][0], nn.Conv2d):
+                original_conv = model.features[0][0]
+                model.features[0][0] = nn.Conv2d(
+                    input_channels,
+                    original_conv.out_channels,
+                    kernel_size=original_conv.kernel_size,
+                    stride=original_conv.stride,
+                    padding=original_conv.padding,
+                    bias=False
+                )
+                return original_conv
 
         return None
 
@@ -258,10 +287,7 @@ class CNN_Model():
         if(val_acc > best_acc and 
             val_acc > self.chckpt_min_acc and
             self.chckpt_save):
-            # Datetime for saved files
-            # current_datetime = datetime.now().strftime("%Y-%m-%d-%H-%M")
-            print(f"Model with test accuracy {val_acc:.2f} saved!")
-            # Add datetime, epoch and validation accuracy to the filename and save model
+            # Add epoch, pretrained prefix and validation accuracy to the filename and save model
             if(self.is_pretrained):
                 pretr = "_pretr"
             else:
