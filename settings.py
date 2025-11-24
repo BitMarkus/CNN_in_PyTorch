@@ -123,14 +123,14 @@ setting = {
     # Shuffle dataset
     "ds_shuffle": True,
     # Shuffle seed
-    "ds_shuffle_seed": 111,
+    "ds_shuffle_seed": 234,
     # How many subprocesses are used to load data in parallel
     "ds_num_workers": 3, # Intel Core i7-10700 CPU: 3
     # Validation split settings
     # Validation split from training dataset (False or percentage 0.0-1.0)
     "ds_val_from_train_split": False, # 0.2
     # Validation split from test dataset (False or percentage 0.0-1.0)
-    "ds_val_from_test_split": 0.5, # 0.3
+    "ds_val_from_test_split": 1.0, # 0.3
 
     # Classes:
     # Define cell lines (for dataset generator)
@@ -302,6 +302,9 @@ setting = {
         "KO_GAN": ("Fake KO", 3),
         # Add more groups as needed
     },
+    # Color palette for dimensionality reduction plots
+    # Options: # 'default' or any matplotlib colormap name, like 'rainbow', 'jet', etc.
+    'dimred_color_palette': 'jet',
 
     # UMAP parameters
     "dimred_umap_n_neighbors": 15,

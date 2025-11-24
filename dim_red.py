@@ -34,6 +34,9 @@ class DimRed:
         self.group_mode = setting['dimred_group_mode'] # 'auto' or 'manual'
         self.group_mapping = setting['dimred_group_mapping'] 
 
+        # NEW: Color palette setting
+        self.color_palette = setting['dimred_color_palette']  # 'default' or any matplotlib colormap name, like 'rainbow', 'jet', etc.
+
         # Set up group mapping based on mode
         if self.mode == "groups":
             if self.group_mode == "manual" and isinstance(self.group_mapping, dict) and self.group_mapping:
@@ -161,7 +164,7 @@ class DimRed:
             
             self.checkpoint_loaded = True
             self.checkpoint_name = full_path.stem
-            print(f"Successfully loaded compatible weights from {checkpoint_file}")
+            print(f"Successfully loaded compatible weights from {checkpoint_file}\n")
             return True
             
         except Exception as e:
@@ -169,10 +172,7 @@ class DimRed:
             return False
     
     def extract_features(self):
-        """
-        Modified to handle both original modes (train/test) and the new groups mode
-        Uses existing dataset loading functionality for all modes
-        """
+
         features, labels = [], []
         
         if self.mode in ["train", "test", "groups"]:
@@ -233,15 +233,42 @@ class DimRed:
         return all_features, all_labels
 
     def _get_color_map(self, num_groups):
-        if num_groups <= 10:
-            # Use default tab10 colormap for small numbers
-            return plt.cm.tab10
-        elif num_groups <= 20:
-            # Use tab20 for medium numbers
-            return plt.cm.tab20
-        else:
-            # Use viridis for large numbers (continuous colormap)
-            return plt.cm.viridis
+        """Get colormap with comprehensive error handling - supports any matplotlib colormap"""
+        # List of safe fallback colormaps in order of preference
+        FALLBACK_MAPS = ['viridis', 'plasma', 'tab10', 'rainbow']
+        
+        try:
+            if self.color_palette == 'default':
+                # Keep the original smart default behavior
+                if num_groups <= 10:
+                    return plt.cm.tab10
+                elif num_groups <= 20:
+                    return plt.cm.tab20
+                else:
+                    return plt.cm.viridis
+            else:
+                # Try to get the requested colormap
+                cmap = plt.cm.get_cmap(self.color_palette)
+                
+                # Warn if using discrete colormap with many groups
+                discrete_maps = ['tab10', 'Set1', 'Set2', 'Set3', 'Dark2', 'Paired']
+                if self.color_palette in discrete_maps and num_groups > 10:
+                    print(f"Warning: Discrete colormap '{self.color_palette}' used with {num_groups} groups. Colors will repeat.")
+                
+                return cmap
+                
+        except (ValueError, AttributeError) as e:
+            # Try fallbacks
+            for fallback in FALLBACK_MAPS:
+                try:
+                    print(f"Colormap '{self.color_palette}' not found. Using '{fallback}' instead.")
+                    return plt.cm.get_cmap(fallback)
+                except:
+                    continue
+            
+            # Ultimate fallback
+            print("All fallbacks failed. Using basic rainbow.")
+            return plt.cm.rainbow
 
     def run_reduction(self, method, reducer, features, labels):
         print(f"\nRunning {method}...")
@@ -273,8 +300,13 @@ class DimRed:
             
             num_groups = len(unique_labels)
             
-            # Get appropriate colormap
-            cmap = self._get_color_map(num_groups)
+            # Get appropriate colormap with error handling
+            try:
+                cmap = self._get_color_map(num_groups)
+                print(f"Using colormap: {self.color_palette}")
+            except Exception as e:
+                print(f"Error loading colormap '{self.color_palette}': {e}. Using viridis instead.")
+                cmap = plt.cm.viridis
             
             # Create scatter plots
             scatter_objects = []
@@ -293,7 +325,14 @@ class DimRed:
                         display_name = name
                         break
                 
-                color = cmap(i / max(1, num_groups - 1))
+                # Enhanced color assignment for any colormap
+                if self.color_palette == 'default':
+                    # Use discrete color selection for default behavior
+                    color = cmap(i % cmap.N)
+                else:
+                    # For named colormaps, distribute colors evenly across the colormap
+                    # This works for both continuous and discrete colormaps
+                    color = cmap(i / max(1, num_groups - 1))
                 
                 # Create scatter plot
                 scatter = plt.scatter(
@@ -305,11 +344,11 @@ class DimRed:
                 scatter_objects.append(scatter)
                 legend_labels.append(display_name)
 
-        # Update title based on mode
+        # Update title based on mode and color palette
         if self.mode == "groups":
-            title = f"{method} Projection ({len(self.group_mapping)} Groups)\nCheckpoint: {self.checkpoint_name}"
+            title = f"{method} Projection ({len(self.group_mapping)} Groups)\nCheckpoint: {self.checkpoint_name} | Palette: {self.color_palette}"
         else:
-            title = f"{method} Projection ({self.mode} set)\nCheckpoint: {self.checkpoint_name}"
+            title = f"{method} Projection ({self.mode} set)\nCheckpoint: {self.checkpoint_name} | Palette: {self.color_palette}"
         
         plt.title(title)
         plt.xlabel(f"{method} 1")
@@ -334,11 +373,11 @@ class DimRed:
         output_dir = self.pth_prediction / "dim_red"
         output_dir.mkdir(exist_ok=True, parents=True)
         
-        # Update filename based on mode
+        # Update filename based on mode and palette
         if self.mode == "groups":
-            output_path = output_dir / f"{method.lower()}_{len(self.group_mapping)}_groups_{self.checkpoint_name}.png"
+            output_path = output_dir / f"{method.lower()}_{len(self.group_mapping)}_groups_{self.checkpoint_name}_{self.color_palette}.png"
         else:
-            output_path = output_dir / f"{method.lower()}_{self.mode}_{self.checkpoint_name}.png"
+            output_path = output_dir / f"{method.lower()}_{self.mode}_{self.checkpoint_name}_{self.color_palette}.png"
             
         plt.savefig(output_path, dpi=300, bbox_inches='tight')
         plt.close()
@@ -354,6 +393,7 @@ class DimRed:
             return
 
         print(f"\nStarting dimensionality reduction on {self.mode} set...")
+        print(f"Using color palette: {self.color_palette}")
         if self.pth_checkpoint.exists():
             self.load_checkpoint()
         if not self.checkpoint_loaded:
