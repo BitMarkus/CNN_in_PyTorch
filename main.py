@@ -218,8 +218,14 @@ def main():
 
         elif(menu1 == 13):  
             print("\n:DIMENSION REDUCTION:") 
+            # DimRed simple version
             dimred = DimRed(device)
             dimred()
+            # DimRed version with Streamlit
+            # print("Starting Streamlit... Open http://localhost:8501 in your browser")
+            # import subprocess
+            # import sys
+            # subprocess.run([sys.executable, "-m", "streamlit", "run", "dim_red_streamlit.py"])
 
         ##################
         # FID calculator #  

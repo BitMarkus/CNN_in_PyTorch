@@ -14,7 +14,7 @@ setting = {
     ############
 
     # Number of epochs
-    "train_num_epochs": 50,  # 30
+    "train_num_epochs": 40,  # 30
     # Batch size for training and validation datasets
     "ds_batch_size": 50, 
 
@@ -123,7 +123,7 @@ setting = {
     # Shuffle dataset
     "ds_shuffle": True,
     # Shuffle seed
-    "ds_shuffle_seed": 234,
+    "ds_shuffle_seed": 111,
     # How many subprocesses are used to load data in parallel
     "ds_num_workers": 3, # Intel Core i7-10700 CPU: 3
     # Validation split settings
@@ -190,7 +190,7 @@ setting = {
     # Set to True, if checkpoints shall be saved during training
     "chckpt_save": True,  
     # Mininmun validation accuracy from which on checkpoints are saved
-    "chckpt_min_acc": 0.75,  # 0.8 for 2 classes, 0.6 for 9 classess
+    "chckpt_min_acc": 0.65,  # 0.8 for 2 classes, 0.6 for 9 classess
 
     #######################
     # CONFIDENCE ANALYZER #
@@ -287,6 +287,14 @@ setting = {
     "dimred_use_trimap": True,
     "dimred_use_pacmap": True,
 
+    # INTERACTIVE PLOT SETTINGS:
+    # Set to True to enable interactive plots
+    'dimred_create_interactive': True,  
+    # Number of points to show in interactive plot
+    'dimred_interactive_sample_size': 2000,  
+    # Thumbnail size in pixels
+    'dimred_interactive_thumbnail_size': 80,  
+
     # Mode can be "train", "test", or "groups"
     # "test": Images are test images in the data/test/ folder
     # "train": Images are training images in the data/training/ folder
@@ -328,7 +336,7 @@ setting = {
     "fid_batch_size": 32,
     # When this is set to True, the number of images is determined by the folder with the least images
     # to balance the number of images for the calculation
-    "fid_balance_samples": False,
+    "fid_balance_samples": True,
     # Random seed for randomly choosing images if balance samples is set to True
     "fid_random_seed": 123,
 
