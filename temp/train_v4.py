@@ -58,7 +58,6 @@ class Train():
             },
             'Data': {
                 'Class Distribution': ['Multiline', [f'Data/class_count/{cls}' for cls in self.classes]],
-                'Class Weights': ['Multiline', [f'Data/class_weight/{cls}' for cls in self.classes]],
             },
             'System': {
                 'GPU Memory': ['Scalar', 'System/GPU_Memory']
@@ -138,15 +137,12 @@ class Train():
         if self.use_weighted_loss:
             print("\n> Using WEIGHTED loss function. Calculating class weights...")
             if self.val_from_train_split is not False:
-                class_weights, class_counts = self._calculate_weights_from_dataloader()
+                class_weights = self._calculate_weights_from_dataloader()
             else:
-                class_weights, class_counts = self._calculate_weights_from_folder(dataset.pth_train)
-            
-            # Print BOTH class distribution AND weights
-            self._print_class_analysis(class_counts, class_weights)
-            
-            # Store class counts for TensorBoard logging
-            self.class_counts = class_counts
+                class_weights = self._calculate_weights_from_folder(dataset.pth_train)
+            # Print class weights
+            formatted_weights, _ = self.format_class_weights(class_weights, self.classes)
+            print(formatted_weights)
 
             self.loss_function = nn.CrossEntropyLoss(
                 weight=class_weights.to(device),
@@ -154,12 +150,6 @@ class Train():
             )
         else:
             print("\n> Using NON-WEIGHTED loss function.")
-            # Still calculate and show distribution for reference
-            if self.val_from_train_split is not False:
-                _, class_counts = self._calculate_weights_from_dataloader()
-            else:
-                _, class_counts = self._calculate_weights_from_folder(dataset.pth_train)
-            self._print_class_distribution(class_counts)
             self.loss_function = nn.CrossEntropyLoss(label_smoothing=self.label_smoothing)
 
         # Learning rate scheduler
@@ -192,105 +182,14 @@ class Train():
     def _get_class_weights_for_metrics(self, dataset):
         if self.use_weighted_loss:
             if self.val_from_train_split is not False:
-                weights, _ = self._calculate_weights_from_dataloader()
+                weights = self._calculate_weights_from_dataloader()
             else:
-                weights, _ = self._calculate_weights_from_folder(dataset.pth_train)
+                weights = self._calculate_weights_from_folder(dataset.pth_train)
         else:
             # Return equal weights for all classes (on CPU initially)
             weights = torch.ones(len(self.classes))
         
         return weights  # Keep on CPU initially, will move to device when needed
-
-    # Calculate class weights from a DataLoader
-    def _calculate_weights_from_dataloader(self):
-        train_dataset = self.ds_train.dataset
-        class_counts = torch.zeros(len(self.classes))
-        for _, label in train_dataset:
-            class_counts[label] += 1
-        
-        # Calculate inverse frequency weights
-        weights = 1.0 / (class_counts + 1e-6)
-        weights_normalized = weights / weights.sum()
-        
-        return weights_normalized, class_counts
-
-    # For standalone train/val folders
-    def _calculate_weights_from_folder(self, folder_path):
-        class_counts = []
-        for class_dir in sorted(Path(folder_path).iterdir()):
-            if class_dir.is_dir():
-                class_counts.append(len(list(class_dir.glob("*.*"))))
-        
-        counts = torch.tensor(class_counts, dtype=torch.float32)
-        
-        # Calculate inverse frequency weights (higher weight for minority class)
-        weights = 1.0 / (counts + 1e-6)
-        weights_normalized = weights / weights.sum()
-        
-        return weights_normalized, counts
-
-    # Print both class distribution and weights
-    def _print_class_analysis(self, class_counts, class_weights):
-        """Print comprehensive class analysis including distribution and weights"""
-        total = class_counts.sum().item()
-        
-        print("\n" + "="*60)
-        print("CLASS DISTRIBUTION ANALYSIS")
-        print("="*60)
-        
-        # Print actual class distribution
-        print("\n📊 ACTUAL CLASS DISTRIBUTION:")
-        max_len = max(len(cls) for cls in self.classes)
-        for i, cls in enumerate(self.classes):
-            count = int(class_counts[i].item())
-            percentage = (class_counts[i] / total) * 100
-            print(f"  {cls.ljust(max_len)} : {count:6d} images ({percentage:.2f}%)")
-        print(f"  {'Total'.ljust(max_len)} : {int(total):6d} images (100.00%)")
-        
-        # Print loss weights
-        print("\n⚖️  LOSS FUNCTION WEIGHTS (for CrossEntropyLoss):")
-        print("  Note: Higher weight = more importance in loss calculation")
-        for i, cls in enumerate(self.classes):
-            weight_pct = class_weights[i].item() * 100
-            print(f"  {cls.ljust(max_len)} : {weight_pct:.2f}% weight")
-        
-        # Print explanation
-        print("\n📝 INTERPRETATION:")
-        majority_idx = torch.argmax(class_counts).item()
-        minority_idx = torch.argmin(class_counts).item()
-        majority_class = self.classes[majority_idx]
-        minority_class = self.classes[minority_idx]
-        
-        majority_weight = class_weights[majority_idx].item() * 100
-        minority_weight = class_weights[minority_idx].item() * 100
-        
-        print(f"  • {majority_class} is MAJORITY class ({class_counts[majority_idx].item():.0f} images)")
-        print(f"  • {minority_class} is MINORITY class ({class_counts[minority_idx].item():.0f} images)")
-        print(f"  • Loss weight ratio: {minority_class}:{majority_class} = {minority_weight/majority_weight:.2f}:1")
-        print(f"  • Each {minority_class} sample gets {minority_weight/majority_weight:.2f}x more importance")
-        print("="*60 + "\n")
-        
-        # Log to TensorBoard
-        for i, cls in enumerate(self.classes):
-            self.writer.add_scalar(f'Data/class_count/{cls}', class_counts[i].item(), 0)
-            self.writer.add_scalar(f'Data/class_weight/{cls}', class_weights[i].item(), 0)
-
-    # Print only class distribution (for non-weighted loss)
-    def _print_class_distribution(self, class_counts):
-        """Print class distribution when not using weighted loss"""
-        total = class_counts.sum().item()
-        
-        print("\n📊 CLASS DISTRIBUTION:")
-        max_len = max(len(cls) for cls in self.classes)
-        for i, cls in enumerate(self.classes):
-            count = int(class_counts[i].item())
-            percentage = (class_counts[i] / total) * 100
-            print(f"  {cls.ljust(max_len)} : {count:6d} images ({percentage:.2f}%)")
-        print(f"  {'Total'.ljust(max_len)} : {int(total):6d} images")
-        
-        # Log to TensorBoard
-        for i, cls in enumerate(self.classes):
-            self.writer.add_scalar(f'Data/class_count/{cls}', class_counts[i].item(), 0)
 
     # Calculate weighted accuracy if using weighted loss, otherwise standard accuracy
     def _calculate_weighted_accuracy(self, preds, labels):
@@ -424,6 +323,47 @@ class Train():
         plt.tight_layout()
 
         return fig
+    
+    # Calculate class weights from a DataLoader
+    def _calculate_weights_from_dataloader(self):
+        train_dataset = self.ds_train.dataset
+        class_counts = torch.zeros(len(self.classes))
+        for _, label in train_dataset:
+            class_counts[label] += 1
+        weights = 1.0 / (class_counts + 1e-6)
+        return weights / weights.sum()
+
+    # For standalone train/val folders
+    def _calculate_weights_from_folder(self, folder_path):
+        class_counts = []
+        for class_dir in Path(folder_path).iterdir():
+            if class_dir.is_dir():
+                class_counts.append(len(list(class_dir.glob("*.*"))))
+        weights = 1.0 / (torch.tensor(class_counts, dtype=torch.float32) + 1e-6)
+        return weights / weights.sum()
+
+    # Formats class weights (Tensor or dict) for clean display. 
+    def format_class_weights(self, class_weights, class_names=None):
+        # Convert Tensor to dictionary if needed
+        if torch.is_tensor(class_weights):
+            if class_names is None:
+                class_names = [f'Class {i}' for i in range(len(class_weights))]
+            weights_dict = {name: weight.item() for name, weight in zip(class_names, class_weights)}
+        elif isinstance(class_weights, dict):
+            weights_dict = class_weights
+        else:
+            raise ValueError("class_weights must be Tensor or dictionary")
+        
+        # Generate formatted output as percentages
+        max_len = max(len(cls) for cls in weights_dict.keys())
+        header = "Class Weights [%]:"
+        lines = [header]
+        
+        for cls, weight in weights_dict.items():
+            percentage = weight * 100
+            lines.append(f"  {cls.ljust(max_len)} : {percentage:.2f}%")
+        
+        return "\n".join(lines), weights_dict
 
     ##################
     # TRAIN FUNCTION #
@@ -443,6 +383,15 @@ class Train():
 
         # Track best accuracy for checkpoint saving
         best_accuracy = 0.0
+
+        """
+        # Print training configuration
+        print(f"\n> Training Configuration:")
+        print(f"> Weighted Loss: {self.use_weighted_loss}")
+        print(f"> Classes: {self.classes}")
+        print(f"> Optimizer: {self.optimizer_type}")
+        print(f"> Initial LR: {self.init_lr}")
+        """
 
         # Iterate over epochs
         for epoch in range(self.num_epochs):
