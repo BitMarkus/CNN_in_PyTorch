@@ -130,7 +130,7 @@ setting = {
     # Validation split from training dataset (False or percentage 0.0-1.0)
     "ds_val_from_train_split": False, # 0.2
     # Validation split from test dataset (False or percentage 0.0-1.0)
-    "ds_val_from_test_split": 1.0, # 0.3
+    "ds_val_from_test_split": 0.3, # 0.3
 
     # Classes:
     # Define cell lines (for dataset generator)
@@ -190,7 +190,7 @@ setting = {
     # Set to True, if checkpoints shall be saved during training
     "chckpt_save": True,  
     # Mininmun validation accuracy from which on checkpoints are saved
-    "chckpt_min_acc": 0.65,  # 0.8 for 2 classes, 0.6 for 9 classess
+    "chckpt_min_acc": 0.75,  # 0.8 for 2 classes, 0.6 for 9 classess
 
     #######################
     # CONFIDENCE ANALYZER #

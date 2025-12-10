@@ -10,7 +10,7 @@ from class_analyzer import ClassAnalyzer
 from captum_analyzer import CaptumAnalyzer
 from gradcam_analyzer import GradCAMAnalyzer
 from gradcampp_analyzer import GradCAMpp_Analyzer
-from dim_red import DimRed
+# from dim_red import DimRed
 from fid_calculator import FIDCalculator
 from settings import setting
 
@@ -219,13 +219,8 @@ def main():
         elif(menu1 == 13):  
             print("\n:DIMENSION REDUCTION:") 
             # DimRed simple version
-            dimred = DimRed(device)
-            dimred()
-            # DimRed version with Streamlit
-            # print("Starting Streamlit... Open http://localhost:8501 in your browser")
-            # import subprocess
-            # import sys
-            # subprocess.run([sys.executable, "-m", "streamlit", "run", "dim_red_streamlit.py"])
+            # dimred = DimRed(device)
+            # dimred()
 
         ##################
         # FID calculator #  

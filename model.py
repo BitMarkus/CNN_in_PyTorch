@@ -2,6 +2,7 @@
 # Predefined model architectures #
 ##################################
 
+from sklearn.metrics import confusion_matrix
 import torchvision.models as models
 import pathlib
 from torch import nn
@@ -15,6 +16,7 @@ from captum.attr import IntegratedGradients
 from captum.attr import visualization as viz
 import os
 from pathlib import Path
+import numpy as np
 # Own modules
 from custom_cnn import CustomCNN
 import functions as fn

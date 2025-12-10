@@ -7,6 +7,7 @@ from torchvision.transforms import transforms
 import torchvision
 import numpy as np
 import random 
+from pathlib import Path
 from torch.utils.data.sampler import SubsetRandomSampler
 from torch.utils.data import DataLoader
 import matplotlib.pyplot as plt
@@ -519,3 +520,60 @@ class Dataset():
         # Show plot
         if show_plot:
             plt.show()
+
+    #############################################################################################################################
+    # Only for cross validation with synthetic images
+
+    # Check if an image is synthetic based on filename pattern
+    # Synthetic images start with 's' (=seed) followed by a number
+    def _is_synthetic_image(self, path):
+
+        filename = Path(path).name
+        # Check if starts with 's' and next character is a digit
+        return filename.startswith('s') and filename[1:2].isdigit()
+    
+    # Load ONLY real test images for final evaluation
+    # Otherwise, load all images (for pure real data)
+    def load_real_test_dataset_only(self, real_image_names=None):
+
+        transformer = self.get_transformer_test()
+        if not transformer:
+            print("Loading of dataset failed!")
+            return False
+        
+        # Create full dataset
+        full_dataset = torchvision.datasets.ImageFolder(self.pth_test, transform=transformer)
+        
+        if real_image_names is not None:
+            # Load only specified real images (for synthetic data case)
+            real_indices = []
+            for idx, (path, _) in enumerate(full_dataset.samples):
+                filename = Path(path).name
+                if filename in real_image_names:
+                    real_indices.append(idx)
+            
+            if len(real_indices) == 0:
+                print("ERROR: No specified real test images found!")
+                return False
+            
+            print(f"Creating test dataset with {len(real_indices)} specified real images")
+            
+            # Create subset
+            test_dataset = torch.utils.data.Subset(full_dataset, real_indices)
+            self.num_pred_real = len(real_indices)
+        else:
+            # Load all images (for pure real data case)
+            test_dataset = full_dataset
+            self.num_pred_real = len(full_dataset)
+            print(f"Creating test dataset with all {self.num_pred_real} images (pure real data)")
+        
+        # Create DataLoader
+        self.ds_test_real_only = DataLoader(
+            test_dataset,
+            batch_size=self.batch_size_pred,
+            num_workers=self.num_workers,
+            persistent_workers=True,
+            pin_memory=True
+        )
+        
+        return True

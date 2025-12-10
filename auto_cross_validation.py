@@ -40,13 +40,14 @@ class AutoCrossValidation:
         # Create a dataset object
         self.ds = Dataset()
         # Create model wrapper
-        self.cnn_wrapper = CNN_Model()  
+        self.cnn_wrapper = None
 
     #############################################################################################################
     # METHODS:
 
     # Record which images were used for validation vs testing
     # Record validation/test split only when validation comes from test dataset
+    # Only records REAL images (filters out synthetic)
     def _record_val_test_split(self, dataset_idx):
         if self.val_from_test_split is False:
             return
@@ -61,40 +62,77 @@ class AutoCrossValidation:
                 for loader in [val_loader, test_loader]):
                 raise ValueError("DataLoaders don't have proper sampler indices")
 
-            # Get the full dataset (should be the same for both)
-            full_dataset = val_loader.dataset
+            # Get the dataset
+            dataset = val_loader.dataset
+            
+            # Check if it's a Subset and get the underlying dataset
+            if hasattr(dataset, 'dataset'):  # It's a Subset
+                full_dataset = dataset.dataset
+                # Map Subset indices to original dataset indices
+                val_indices = [dataset.indices[i] for i in val_loader.sampler.indices]
+                test_indices = [dataset.indices[i] for i in test_loader.sampler.indices]
+            else:
+                full_dataset = dataset
+                val_indices = list(val_loader.sampler.indices)
+                test_indices = list(test_loader.sampler.indices)
             
             # Convert to sets for proper comparison
-            val_indices = set(val_loader.sampler.indices)
-            test_indices = set(test_loader.sampler.indices)
+            val_indices_set = set(val_indices)
+            test_indices_set = set(test_indices)
             
             # Create guaranteed unique splits
-            true_val_indices = val_indices - test_indices
-            true_test_indices = test_indices - val_indices
+            true_val_indices = val_indices_set - test_indices_set
+            true_test_indices = test_indices_set - val_indices_set
             
             # Report any issues
-            if len(val_indices & test_indices) > 0:
-                print(f"Warning: Corrected {len(val_indices & test_indices)} overlapping images")
+            if len(val_indices_set & test_indices_set) > 0:
+                print(f"Warning: Corrected {len(val_indices_set & test_indices_set)} overlapping images")
             
             # Get image paths from the guaranteed unique sets
             val_images = [full_dataset.samples[i][0] for i in true_val_indices]
             test_images = [full_dataset.samples[i][0] for i in true_test_indices]
             
-            # Verify it was accounted for all images
-            total_images = len(full_dataset.samples)
-            recorded = len(val_images) + len(test_images)
-            if recorded != total_images:
-                print(f"Note: {total_images - recorded} images not in either set (may be intentional)")
-
-            # Prepare split info text
+            # Function to identify synthetic vs real
+            def is_synthetic_image(path):
+                filename = Path(path).name
+                # Synthetic images start with 's' followed by numbers
+                return filename.startswith('s') and filename[1:2].isdigit()
+            
+            # FILTER OUT SYNTHETIC IMAGES - ALWAYS (only record real images)
+            original_val_count = len(val_images)
+            original_test_count = len(test_images)
+            
+            real_val_images = [p for p in val_images if not is_synthetic_image(p)]
+            real_test_images = [p for p in test_images if not is_synthetic_image(p)]
+            
+            synthetic_val_filtered = original_val_count - len(real_val_images)
+            synthetic_test_filtered = original_test_count - len(real_test_images)
+            
+            if synthetic_val_filtered > 0 or synthetic_test_filtered > 0:
+                print(f"Filtered out {synthetic_val_filtered} synthetic images from validation set")
+                print(f"Filtered out {synthetic_test_filtered} synthetic images from test set")
+            
+            # Verify we still have enough images
+            if len(real_val_images) == 0:
+                print("WARNING: No real images left in validation set!")
+            if len(real_test_images) == 0:
+                print("WARNING: No real images left in test set!")
+            
+            # Prepare split info with ONLY REAL images
             split_info = {
                 'validation': {
-                    'WT': sorted(list({Path(p).name for p in val_images if 'WT' in str(p)})),
-                    'KO': sorted(list({Path(p).name for p in val_images if 'KO' in str(p)}))
+                    'WT': sorted(list({Path(p).name for p in real_val_images if 'WT' in str(p)})),
+                    'KO': sorted(list({Path(p).name for p in real_val_images if 'KO' in str(p)}))
                 },
                 'test': {
-                    'WT': sorted(list({Path(p).name for p in test_images if 'WT' in str(p)})),
-                    'KO': sorted(list({Path(p).name for p in test_images if 'KO' in str(p)}))
+                    'WT': sorted(list({Path(p).name for p in real_test_images if 'WT' in str(p)})),
+                    'KO': sorted(list({Path(p).name for p in real_test_images if 'KO' in str(p)}))
+                },
+                'metadata': {
+                    'total_images_found': original_val_count + original_test_count,
+                    'real_images_used': len(real_val_images) + len(real_test_images),
+                    'synthetic_filtered': synthetic_val_filtered + synthetic_test_filtered,
+                    'note': 'Only real images are recorded for validation/testing'
                 }
             }
             
@@ -103,9 +141,13 @@ class AutoCrossValidation:
             output_path.parent.mkdir(parents=True, exist_ok=True)
             with open(output_path, 'w') as f:
                 json.dump(split_info, f, indent=2)
+            
+            print(f"Recorded {len(real_val_images)} real validation images and {len(real_test_images)} real test images")
                 
         except Exception as e:
             print(f"Failed to record splits: {str(e)}")
+            import traceback
+            traceback.print_exc()
             raise
 
     # Reinitializes the model by creating a fresh instance
@@ -121,7 +163,7 @@ class AutoCrossValidation:
 
     def __call__(self):
 
-        # Clean up folders train and test in the data directory (old training and test data)
+        # Clean up folders train and test in the data directory
         print("\nCleaning up old train and test data...")
         self.ds_gen.cleanup(self.data_dir) 
         print("Cleanup finished.")  
@@ -134,14 +176,18 @@ class AutoCrossValidation:
 
         # Iterate over each dataset
         for config in configs:
-
-            # Model Reset
-            print("Resetting model for new training...")
+            
+            # Create FRESH dataset object for this fold
+            self.ds = Dataset()
+            
+            # Create FRESH model wrapper for this fold  
+            self.cnn_wrapper = CNN_Model() 
             self.reset_model()
-            torch.cuda.empty_cache()
-
-            # Clean up before creating new dataset to ensure fresh start
+            
+            # Clean up data folders for this fold
             self.ds_gen.cleanup(self.data_dir)
+            # Clear GPU memory
+            torch.cuda.empty_cache()  
 
             ##################
             # Create dataset #
@@ -153,12 +199,11 @@ class AutoCrossValidation:
             print(f"Cell line for testing KO group: {config['test_ko']}")
 
             print(f"\n> Create dataset {config['dataset_idx']}...")
-            dataset_dir = self.ds_gen.generate_dataset(**config) # Unpacks dict as kwargs
+            dataset_dir = self.ds_gen.generate_dataset(**config)
 
-            # Create a subfolder for checkpoints
+            # Create subfolders
             checkpoint_dir = dataset_dir / "checkpoints"
             checkpoint_dir.mkdir(exist_ok=True)
-            # Create a subfolder for plots
             plot_dir = dataset_dir / "plots"
             plot_dir.mkdir(exist_ok=True)
             print(f"Dataset {config['dataset_idx']} successfully created.")
@@ -169,13 +214,12 @@ class AutoCrossValidation:
 
             print(f"\n> Load dataset {config['dataset_idx']} for training...")
             
-            # Check for correct settings in settings file
+            # Check for correct settings
             self.ds.validate_validation_settings()
 
-            # Load training dataset (always needed)
+            # Load datasets
             self.ds.load_training_dataset()
-
-            # Load test dataset if validation should come from test images
+            
             if self.val_from_test_split is not False: 
                 self.ds.load_test_dataset()
                 self._record_val_test_split(config['dataset_idx']) 
@@ -202,46 +246,51 @@ class AutoCrossValidation:
 
             # Always load fresh test dataset for final evaluation
             print(f"\n> Load test images for final evaluation...")
-            self.ds.load_test_dataset()
 
-            # Update test images in split info (in case final evaluation uses different images)
-            if self.val_from_test_split is not False:
-                try:
-                    # Load current split info
-                    split_file = Path(self.acv_results_dir) / f"dataset_{config['dataset_idx']}" / "split_info.json"
-                    if split_file.exists():
-                        with open(split_file, 'r') as f:
-                            split_info = json.load(f)
-                        
-                        # Get the ORIGINAL validation set
-                        original_val_set = set(split_info['validation']['WT'] + split_info['validation']['KO'])
-                        
-                        # Get current test images
-                        test_images = [x[0] for x in self.ds.ds_test.dataset.samples]
-                        current_test_set = {Path(p).name for p in test_images}
-                        
-                        # Remove validation images from test set
-                        filtered_test_set = current_test_set - original_val_set
-                        
-                        # Update only the test portion while preserving validation
-                        split_info['test'] = {
-                            'WT': sorted([name for name in split_info['test']['WT'] if name in filtered_test_set] + 
-                                        [Path(p).name for p in test_images 
-                                        if 'WT' in str(p) and Path(p).name in filtered_test_set]),
-                            'KO': sorted([name for name in split_info['test']['KO'] if name in filtered_test_set] + 
-                                        [Path(p).name for p in test_images 
-                                        if 'KO' in str(p) and Path(p).name in filtered_test_set])
-                        }
-                        
-                        with open(split_file, 'w') as f:
-                            json.dump(split_info, f, indent=2)
-                            
-                except Exception as e:
-                    print(f"Warning: Could not update split info - {str(e)}")
+            # Load split info if it exists
+            split_file = Path(self.acv_results_dir) / f"dataset_{config['dataset_idx']}" / "split_info.json"
+            real_test_images = None
 
-            print(f"Test images for dataset {config['dataset_idx']} successfully loaded.")             
-            print(f"Number test images/batch size: {self.ds.num_pred_img}/1")
-            
+            if split_file.exists():
+                with open(split_file, 'r') as f:
+                    split_info = json.load(f)
+                
+                # Check if this split_info contains filtered data (has metadata about synthetic filtering)
+                if 'metadata' in split_info and split_info['metadata'].get('synthetic_filtered', 0) > 0:
+                    # This dataset has synthetic images that were filtered
+                    real_test_images = set(split_info['test']['WT'] + split_info['test']['KO'])
+                    print(f"Found {len(real_test_images)} real test images (synthetic data detected)")
+                else:
+                    # Pure real data - use all images
+                    print(f"Using all test images (pure real data detected)")
+                    real_test_images = None
+            else:
+                print("WARNING: No split_info.json found. Loading all test images.")
+                real_test_images = None
+
+            # Load appropriate dataset
+            if real_test_images is not None:
+                # Load only real images (synthetic data case)
+                success = self.ds.load_real_test_dataset_only(real_test_images)
+            else:
+                # Load all images (pure real data case)
+                success = self.ds.load_real_test_dataset_only()  # No filter
+                
+            if success:
+                test_dataset_to_use = self.ds.ds_test_real_only
+                data_type = "real-only" if real_test_images is not None else "all (pure real)"
+            else:
+                print("Failed to load filtered dataset, using standard loading")
+                self.ds.load_test_dataset()
+                test_dataset_to_use = self.ds.ds_test
+                data_type = "all (fallback)"
+                self.ds.num_pred_real = self.ds.num_pred_img  # Estimate
+
+            # Clear output
+            print(f"Test images for dataset {config['dataset_idx']} successfully loaded.")
+            print(f"Evaluating on {self.ds.num_pred_real} test images ({data_type})")
+            print(f"Batch size: 1")
+
             # Load checkpoint
             checkpoint_list = self.cnn_wrapper.get_checkpoints_list(checkpoint_dir)
             if not checkpoint_list:
@@ -251,8 +300,10 @@ class AutoCrossValidation:
                     print(f"\n> Load weight file {checkpoint_file[1]} for dataset {config['dataset_idx']}...")
                     self.cnn_wrapper.load_weights(checkpoint_dir, checkpoint_file[1])
 
-                    print('\n> Starting prediction...')
-                    _, cm = self.cnn_wrapper.predict(self.ds.ds_test)
+                    print('\n> Starting prediction on REAL test images only...')
+                    
+                    # Use the filtered dataset
+                    _, cm = self.cnn_wrapper.predict(test_dataset_to_use)
 
                     # Plot confusion matrix and results
                     fn.plot_confusion_matrix(cm, self.class_list, plot_dir, chckpt_name=checkpoint_file[1], show_plot=False, save_plot=True)
@@ -264,16 +315,9 @@ class AutoCrossValidation:
                     print(f"WT accuracy: {(loaded_results['class_accuracy']['WT']*100):.2f}%")
                     print(f"KO accuracy: {(loaded_results['class_accuracy']['KO']*100):.2f}%")
 
-                    print(f'Prediction successfully finished. Confusion matrix and results saved to {plot_dir}.')
+                    print(f'Prediction successfully finished. Confusion matrix and results saved to {plot_dir}.')    
 
-            # Cleanup dataset
-            print(f"Cleaning up resources for dataset {config['dataset_idx']}...")
-            if hasattr(self, 'train'):
-                del self.train
-            if hasattr(self, 'cnn'):
-                del self.cnn
-            torch.cuda.empty_cache()
-            gc.collect()                 
+            print(f"Completed dataset {config['dataset_idx']}. Moving to next fold...")    
 
         # Final cleanup (once at the end)
         print("\nCleaning up all temporary data...")
