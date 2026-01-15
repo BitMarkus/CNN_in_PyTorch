@@ -9,7 +9,7 @@ from train import Train
 from class_analyzer import ClassAnalyzer
 from captum_analyzer import CaptumAnalyzer
 from gradcam_analyzer import GradCAMAnalyzer
-from gradcampp_analyzer import GradCAMpp_Analyzer
+from class_sorter import ClassSorter
 # from dim_red import DimRed
 from fid_calculator import FIDCalculator
 from settings import setting
@@ -51,7 +51,7 @@ def main():
         print("9) Confidence Analyzer (based on ACV)")
         print("10) Captum (Integrated Gradients) Analyzer")
         print("11) GradCAM Analyzer (for DenseNet-121)")
-        print("12) Combined GradCAM and IG Analyzer (for DenseNet-121)")
+        print("12) Class Sorter")
         print("13) Dimension reduction (for DenseNet-121)")
         print("14) FID Calculator")
         print("15) Exit Program")
@@ -203,14 +203,15 @@ def main():
             gradcam = GradCAMAnalyzer(device)
             gradcam()
 
-        ###################
-        # Captum Analyzer #  
-        ###################
+        ################
+        # Class Sorter #  
+        ################
 
         elif(menu1 == 12):  
-            print("\n:GradCAM AND IG ANALYZER:") 
-            gradcampp = GradCAMpp_Analyzer(device, debug=True)
-            gradcampp()
+            print("\n:CLASS SORTER:") 
+            # Create and run sorter (all configuration is loaded from settings.py)
+            sorter = ClassSorter(device=device)
+            output_dir = sorter.run()
 
         #######################
         # Dimension Reduction #  

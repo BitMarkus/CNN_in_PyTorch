@@ -138,9 +138,9 @@ setting = {
     "ko_lines": ["KO_1096-01", "KO_1618-01", "KO_BR2986", "KO_BR3075"],
     # Define classes
     # 2 classes (WT and KO):
-    "classes": ["KO", "WT"],
+    # "classes": ["KO", "WT"],
     # 9 classes (one for each cell line):
-    # "classes": ["KO_1096-01", "KO_1618-01", "KO_BR2986", "KO_BR3075", "WT_1618-02", "WT_JG", "WT_JT", "WT_KM", "WT_MS"],
+    "classes": ["KO_1096-01", "KO_1618-01", "KO_BR2986", "KO_BR3075", "WT_1618-02", "WT_JG", "WT_JT", "WT_KM", "WT_MS"],
 
     #########
     # MODEL #
@@ -192,12 +192,25 @@ setting = {
     # Mininmun validation accuracy from which on checkpoints are saved
     "chckpt_min_acc": 0.75,  # 0.8 for 2 classes, 0.6 for 9 classess
 
+    ################
+    # CLASS SORTER #
+    ################
+
+    # Selection mode and value: "top_n" or "threshold"
+    "sort_selection_mode": "top_n", 
+    # Number of images for top_n, or threshold value (0.0-1.0) 
+    "sort_selection_value": 1000, 
+    # Rename files with confidence scores
+    "sort_rename_with_confidence": True,
+    # Batch size for prediction   
+    "sort_pred_batch_size": 50,  
+
     #######################
     # CONFIDENCE ANALYZER #
     #######################
 
     # Min confidence for image sorting
-    "ca_min_conf": 0.7,     # 80%
+    "ca_min_conf": 0.8,     # 80%
     # Max confidence for image sorting
     'ca_max_conf': 1.0,
     # Filter type for image sorting
@@ -357,4 +370,8 @@ setting = {
     "pth_acv_results": BASE_DIR / "acv_results/",
     # Confidence analyzer results
     "pth_conf_analizer_results": BASE_DIR / "ca_results/",
+    # Class sorter
+    # Input dir: folder "prediction"
+    # Output dir:
+    "pth_sort_output": BASE_DIR / "sort_output/",
 }
