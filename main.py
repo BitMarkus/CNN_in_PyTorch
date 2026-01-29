@@ -152,7 +152,7 @@ def main():
             print("\n:PREDICT CLASS FROM PREDICTION FOLDER:") 
 
             analyzer = ClassAnalyzer(device)
-            analyzer.analyze_prediction_folder(rename_images=True)
+            analyzer.analyze_prediction_folder()
 
         #####################
         # Dataset Generator #  
@@ -210,7 +210,7 @@ def main():
         elif(menu1 == 12):  
             print("\n:CLASS SORTER:") 
             # Create and run sorter (all configuration is loaded from settings.py)
-            sorter = ClassSorter(device=device)
+            sorter = ClassSorter(device)
             output_dir = sorter.run()
 
         #######################

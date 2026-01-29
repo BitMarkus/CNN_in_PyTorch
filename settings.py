@@ -197,13 +197,26 @@ setting = {
     ################
 
     # Selection mode and value: "top_n" or "threshold"
-    "sort_selection_mode": "top_n", 
+    "sort_selection_mode": "threshold", 
     # Number of images for top_n, or threshold value (0.0-1.0) 
-    "sort_selection_value": 1000, 
-    # Rename files with confidence scores
-    "sort_rename_with_confidence": True,
+    "sort_selection_value": 0.55, 
+    # Filter criteria: 'confidence_only', 'logits_only', or 'combined'
+    'sort_filter_mode': 'combined',
+    # Minimum max_logit value to keep
+    "sort_logit_threshold": 0.0,
+    # Rename files with either confidence scores, logit values, or both
+    "sort_rename_images": True,
     # Batch size for prediction   
     "sort_pred_batch_size": 50,  
+
+    ##################
+    # CLASS ANALYZER #
+    ##################
+
+    # Rename files with confidence scores
+    'analyze_rename_with_confidence': True,
+    # Include logits in filenames  
+    'analyze_include_logits_in_rename': True,
 
     #######################
     # CONFIDENCE ANALYZER #

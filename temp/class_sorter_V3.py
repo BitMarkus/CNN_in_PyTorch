@@ -21,19 +21,19 @@ Solution: Use logit threshold to filter out images where max_logit < threshold.
 Features:
 1. Works with arbitrary number of classes (2, 9, or more)
 2. Two selection modes: Top N images or confidence threshold
-3. Three filtering options: confidence_only, logits_only, or combined
+3. Logit threshold filtering to remove misleading high-softmax predictions
 4. Only keeps correctly predicted images
-5. Automatically renames files with appropriate metrics based on filter mode
-6. Creates organized output folder structure with comprehensive statistics
+5. Renames files with confidence scores and predicted class
+6. NEW: Optional inclusion of logit values in filenames
+7. Creates organized output folder structure with comprehensive statistics
 
 Selection Modes:
 1. 'top_n': Select top N most confident images per class
 2. 'threshold': Select all images with confidence >= threshold
 
-Filtering Options:
-1. 'confidence_only': Filter only by softmax confidence
-2. 'logits_only': Filter only by max_logit threshold  
-3. 'combined': Require BOTH confidence AND logit thresholds
+Additional Filtering:
+• Logit threshold: Filter images where max_logit >= threshold
+• When enabled, prevents selection of images where model lacks positive evidence
 
 Output Files:
 1. selection_statistics.csv - Per-class statistics
@@ -41,19 +41,6 @@ Output Files:
 3. selection_config.json - Configuration used
 4. logit_statistics.json - Detailed logit distribution analysis
 5. README.txt - Complete documentation of the filtering process
-
-Best order to filter synthetic FLUX.1 images:
-RUN 1: Logit threshold for 9 classes
-  • Filter: max_logit ≥ 0.0
-  • Purpose: Remove biologically uncertain cell line predictions
-
-RUN 2: Confidence threshold for 9 classes  
-  • Filter: confidence ≥ 0.2 (or similar)
-  • Purpose: Select high-confidence cell line predictions
-
-RUN 3: Confidence threshold for 2 classes
-  • Filter: confidence ≥ 0.55 (or similar)
-  • Purpose: Validate WT vs KO genotype
 """
 
 import torch
@@ -80,9 +67,8 @@ class ClassSorter:
         # Load all configuration from settings
         self.selection_mode = setting['sort_selection_mode']
         self.selection_value = setting['sort_selection_value']
-        # Filtering settings
-        self.filter_mode = setting['sort_filter_mode']
-        self.confidence_threshold = setting['sort_selection_value'] if self.selection_mode == 'threshold' else None
+        # Logit threshold settings
+        self.use_logit_threshold = setting['sort_use_logit_threshold']
         self.logit_threshold = setting['sort_logit_threshold']
         # Paths
         self.pth_prediction = setting['pth_prediction'].resolve()
@@ -93,8 +79,10 @@ class ClassSorter:
         self.classes = setting['classes']  
         # Inference batch size
         self.batch_size_pred = setting['sort_pred_batch_size']  
-        # File naming option
-        self.rename_images = setting['sort_rename_images']
+        # File naming options
+        self.rename_with_confidence = setting['sort_rename_with_confidence'] 
+        # Option to include logits in renamed filenames
+        self.include_logits_in_rename = setting['sort_include_logits_in_rename']
         
         # Validate configuration
         self._validate_configuration()
@@ -119,13 +107,11 @@ class ClassSorter:
         self.loaded_checkpoint_name = None
         self._load_checkpoint()
         
-        # Statistics tracking
+        # Statistics tracking - UPDATED to include logit stats
         self.stats = {
             'total_processed': 0,
             'correct_predictions': 0,
-            'passed_confidence': 0,
-            'passed_logits': 0,
-            'passed_both': 0,
+            'passed_logit_threshold': 0,
             'per_class': {cls: {'total': 0, 'correct': 0, 'selected': 0} for cls in self.classes}
         }
         # Display configuration
@@ -151,23 +137,22 @@ class ClassSorter:
             if not (0.0 <= self.selection_value <= 1.0):
                 raise ValueError(f"For 'threshold' mode, sort_selection_value must be between 0.0 and 1.0, got {self.selection_value}")
         
-        # Validate filter mode
-        if self.filter_mode not in ['confidence_only', 'logits_only', 'combined']:
-            raise ValueError(f"sort_filter_mode must be 'confidence_only', 'logits_only', or 'combined', got {self.filter_mode}")
+        # Validate logit threshold settings
+        if not isinstance(self.use_logit_threshold, bool):
+            raise ValueError(f"sort_use_logit_threshold must be boolean, got {type(self.use_logit_threshold)}")
         
-        # Validate logit threshold
         if not isinstance(self.logit_threshold, (int, float)):
             raise ValueError(f"sort_logit_threshold must be numeric, got {type(self.logit_threshold)}")
         
-        # Validate rename_images setting - UPDATED variable name
-        if not isinstance(self.rename_images, bool):
-            raise ValueError(f"sort_rename_images must be boolean, got {type(self.rename_images)}")
+        # Validate include_logits_in_rename setting
+        if not isinstance(self.include_logits_in_rename, bool):
+            raise ValueError(f"sort_include_logits_in_rename must be boolean, got {type(self.include_logits_in_rename)}")
         
         # Validate input directory exists
         if not self.pth_prediction.exists():
             raise ValueError(f"Input directory does not exist: {self.pth_prediction}")
         
-        # Create output directory if it doesn't exist
+        # Create output directory if it doesn't exist - FIXED
         self.sort_output_dir.mkdir(parents=True, exist_ok=True)
     
     # Set up input and output paths with timestamp for uniqueness
@@ -175,22 +160,14 @@ class ClassSorter:
         
         # Create timestamped output directory
         timestamp = pd.Timestamp.now().strftime("%Y%m%d_%H%M%S")
-        
         if self.selection_mode == 'top_n':
             output_name = f"top{self.selection_value}"
         else:
             output_name = f"thresh{self.selection_value:.2f}"
         
-        # Add filter mode and thresholds to folder name
-        if self.filter_mode == 'confidence_only':
-            output_name += f"_conf-only"
-        elif self.filter_mode == 'logits_only':
-            output_name += f"_logit{self.logit_threshold}-only"
-        elif self.filter_mode == 'combined':
-            if self.selection_mode == 'threshold':
-                output_name += f"_conf{self.selection_value:.2f}+logit{self.logit_threshold}"
-            else:
-                output_name += f"_top{self.selection_value}+logit{self.logit_threshold}"
+        # Add logit threshold info to folder name if used
+        if self.use_logit_threshold:
+            output_name += f"_logit{self.logit_threshold}"
         
         self.output_dir = self.sort_output_dir / output_name / timestamp
         self.output_dir.mkdir(parents=True, exist_ok=True)
@@ -205,40 +182,18 @@ class ClassSorter:
         print(f"Output directory: {self.output_dir}")
         print(f"Selection mode: {self.selection_mode}")
         print(f"Selection value: {self.selection_value}")
-        print(f"Filter mode: {self.filter_mode}")
-        
-        if self.filter_mode == 'confidence_only':
-            print(f"Filtering: CONFIDENCE ONLY")
-            if self.selection_mode == 'threshold':
-                print(f"Confidence threshold: ≥ {self.selection_value:.3f}")
-            else:
-                print(f"Top N images: {self.selection_value} per class")
-        
-        elif self.filter_mode == 'logits_only':
-            print(f"Filtering: LOGITS ONLY")
-            print(f"Logit threshold: max_logit ≥ {self.logit_threshold}")
-            print(f"  Interpretation:")
+        print(f"Use logit threshold: {self.use_logit_threshold}")
+        if self.use_logit_threshold:
+            print(f"Logit threshold: {self.logit_threshold}")
+            print(f"  Interpretation: Keep images where max_logit >= {self.logit_threshold}")
+            print(f"  What this means:")
             print(f"    • max_logit > 0: Model thinks it's more likely than not")
             print(f"    • max_logit > 2: Model is quite confident")
             print(f"    • max_logit < 0: Model is uncertain/negative")
-            if self.selection_mode == 'threshold':
-                print(f"Note: Also applying confidence threshold: ≥ {self.selection_value:.3f}")
-            else:
-                print(f"Note: Selecting top {self.selection_value} images by confidence")
-        
-        elif self.filter_mode == 'combined':
-            print(f"Filtering: COMBINED (BOTH)")
-            if self.selection_mode == 'threshold':
-                print(f"Confidence threshold: ≥ {self.selection_value:.3f}")
-            else:
-                print(f"Top N images: {self.selection_value} per class")
-            print(f"Logit threshold: max_logit ≥ {self.logit_threshold}")
-        
-        print(f"\nNumber of classes: {len(self.classes)}")
+        print(f"Number of classes: {len(self.classes)}")
         print(f"Classes: {', '.join(self.classes)}")
-        print(f"Rename images: {self.rename_images}")  # UPDATED variable name
-        if self.rename_images:
-            print(f"  Filename format: Auto-matched to filter mode")
+        print(f"Rename with confidence: {self.rename_with_confidence}")
+        print(f"Include logits in filenames: {self.include_logits_in_rename}")
         print(f"Checkpoint directory: {self.pth_checkpoint}")
         print(f"{'='*60}\n")
     
@@ -322,16 +277,21 @@ class ClassSorter:
                 if Path(path).parent.name == folder_name]
     
     # Analyze all images to collect confidence data for each class
+    # Returns:
+    # Dictionary with structure: {class_name: [image_data_dict, ...]}
+    # where image_data_dict contains:
+    #    'original_path': Path to original image
+    #    'confidence': float confidence score
+    #    'predicted_class': str class name
+    #    'true_class': str class name (from folder name)
     def analyze_images(self) -> Dict[str, List[Dict]]:
 
         print(f"\n{'='*60}")
         print(f"Analyzing all {len(self.classes)} classes")
-        print(f"Filter mode: {self.filter_mode}")
         print(f"Selection mode: {self.selection_mode}")
-        if self.filter_mode in ['logits_only', 'combined']:
+        print(f"Selection value: {self.selection_value}")
+        if self.use_logit_threshold:
             print(f"Logit threshold: {self.logit_threshold}")
-        if self.filter_mode in ['confidence_only', 'combined'] and self.selection_mode == 'threshold':
-            print(f"Confidence threshold: ≥ {self.selection_value:.3f}")
         print(f"{'='*60}")
         
         # Dictionary to store all image data by true class
@@ -376,27 +336,12 @@ class ClassSorter:
                         min_logit = current_logits.min()
                         logit_range = max_logit - min_logit
                         
-                        # Check if image passes filters
-                        passes_confidence = True
-                        passes_logits = True
-                        
-                        # Check confidence threshold (for 'threshold' mode)
-                        if self.selection_mode == 'threshold' and self.filter_mode in ['confidence_only', 'combined']:
-                            passes_confidence = (confidence >= self.selection_value)
-                            if passes_confidence:
-                                self.stats['passed_confidence'] += 1
-                        
-                        # Check logit threshold
-                        if self.filter_mode in ['logits_only', 'combined']:
-                            passes_logits = (max_logit >= self.logit_threshold)
-                            if passes_logits:
-                                self.stats['passed_logits'] += 1
-                        
-                        # Check combined
-                        if self.filter_mode == 'combined':
-                            passes_both = passes_confidence and passes_logits
-                            if passes_both:
-                                self.stats['passed_both'] += 1
+                        # Check if logits pass threshold
+                        passes_logit_threshold = True  # Default if not using threshold
+                        if self.use_logit_threshold:
+                            passes_logit_threshold = (max_logit >= self.logit_threshold)
+                            if passes_logit_threshold:
+                                self.stats['passed_logit_threshold'] += 1
                         
                         # Store image data with logit information
                         image_data = {
@@ -405,14 +350,12 @@ class ClassSorter:
                             'predicted_class': predicted_class,
                             'true_class': class_name,
                             'is_correct': predicted_class == class_name,
-                            # Logit information
+                            # NEW: Logit information
                             'max_logit': float(max_logit),
                             'min_logit': float(min_logit),
                             'logit_range': float(logit_range),
-                            'passes_confidence': passes_confidence,
-                            'passes_logits': passes_logits,
-                            'passes_both': passes_confidence and passes_logits,
-                            'all_logits': current_logits.tolist()
+                            'passes_logit_threshold': passes_logit_threshold,
+                            'all_logits': current_logits.tolist()  # Store all logits for export
                         }
                         
                         # Update statistics
@@ -423,42 +366,24 @@ class ClassSorter:
                             self.stats['correct_predictions'] += 1
                             self.stats['per_class'][class_name]['correct'] += 1
                             
-                            # Store image based on filter mode
-                            store_image = False
-                            
-                            if self.filter_mode == 'confidence_only':
-                                # For 'top_n' mode, store all correct images (filter later)
-                                # For 'threshold' mode, only store if passes threshold
-                                if self.selection_mode == 'top_n':
-                                    store_image = True
-                                else:  # threshold mode
-                                    store_image = passes_confidence
-                            
-                            elif self.filter_mode == 'logits_only':
-                                # Store if passes logit threshold
-                                store_image = passes_logits
-                            
-                            elif self.filter_mode == 'combined':
-                                # Store if passes both thresholds
-                                store_image = passes_confidence and passes_logits
-                            
-                            if store_image:
+                            # Only store correctly predicted images
+                            # AND only if they pass logit threshold (when enabled)
+                            if not self.use_logit_threshold or passes_logit_threshold:
                                 class_image_data[class_name].append(image_data)
         
         return class_image_data
     
     # Select images based on the chosen selection mode.
+    # Args: class_image_data: Dictionary from analyze_images()   
+    # Returns: Dictionary with selected images per class   
     def select_images(self, class_image_data: Dict[str, List[Dict]]) -> Dict[str, List[Dict]]:
 
         selected_images = {}
         
         print(f"\n{'='*60}")
-        print(f"Selecting images using {self.filter_mode} filtering")
-        print(f"Selection mode: {self.selection_mode}")
-        if self.filter_mode in ['logits_only', 'combined']:
-            print(f"Logit threshold: ≥ {self.logit_threshold}")
-        if self.filter_mode in ['confidence_only', 'combined'] and self.selection_mode == 'threshold':
-            print(f"Confidence threshold: ≥ {self.selection_value:.3f}")
+        print(f"Selecting images using {self.selection_mode} mode")
+        if self.use_logit_threshold:
+            print(f"Logit threshold filtering: Enabled (≥ {self.logit_threshold})")
         print(f"{'='*60}")
         
         for class_name, images in tqdm(class_image_data.items(), desc="Selecting images"):
@@ -467,62 +392,34 @@ class ClassSorter:
                 selected_images[class_name] = []
                 continue
             
-            # Start with all stored images
-            filtered_images = images
+            # Sort by confidence (descending)
+            sorted_images = sorted(images, key=lambda x: x['confidence'], reverse=True)
             
-            # For 'confidence_only' with 'top_n' mode, apply confidence sorting
-            if self.filter_mode == 'confidence_only' and self.selection_mode == 'top_n':
-                # Sort by confidence (descending)
-                sorted_images = sorted(filtered_images, key=lambda x: x['confidence'], reverse=True)
-                # Select top N
+            if self.selection_mode == 'top_n':
+                # Select top N images
                 n = min(self.selection_value, len(sorted_images))
                 selected = sorted_images[:n]
-            
-            # For 'logits_only' with 'top_n' mode, sort by logits
-            elif self.filter_mode == 'logits_only' and self.selection_mode == 'top_n':
-                # Sort by max_logit (descending)
-                sorted_images = sorted(filtered_images, key=lambda x: x['max_logit'], reverse=True)
-                # Select top N
-                n = min(self.selection_value, len(sorted_images))
-                selected = sorted_images[:n]
-            
-            # For 'combined' with 'top_n' mode, sort by confidence (already filtered for logits)
-            elif self.filter_mode == 'combined' and self.selection_mode == 'top_n':
-                # Sort by confidence (descending)
-                sorted_images = sorted(filtered_images, key=lambda x: x['confidence'], reverse=True)
-                # Select top N
-                n = min(self.selection_value, len(sorted_images))
-                selected = sorted_images[:n]
-            
-            # For 'threshold' mode, images are already filtered
+                
             elif self.selection_mode == 'threshold':
-                # All stored images already pass the threshold(s)
-                selected = filtered_images
-            
-            else:
-                selected = []
+                # Select all images above threshold
+                selected = [img for img in sorted_images if img['confidence'] >= self.selection_value]
             
             # Store selected images
             selected_images[class_name] = selected
             self.stats['per_class'][class_name]['selected'] = len(selected)
             
             if selected:
-                if self.filter_mode == 'logits_only':
-                    top_logit = selected[0]['max_logit']
-                    top_conf = selected[0]['confidence']
-                    print(f"  {class_name}: {len(selected)} images selected "
-                          f"(top logit: {top_logit:.2f}, conf: {top_conf:.3f})")
-                else:
-                    top_conf = selected[0]['confidence']
-                    top_logit = selected[0]['max_logit']
-                    print(f"  {class_name}: {len(selected)} images selected "
-                          f"(conf: {top_conf:.3f}, max_logit: {top_logit:.2f})")
+                top_conf = selected[0]['confidence']
+                top_logit = selected[0]['max_logit']
+                print(f"  {class_name}: {len(selected)}/{len(images)} images selected "
+                      f"(conf: {top_conf:.3f}, max_logit: {top_logit:.2f})")
             else:
                 print(f"  {class_name}: 0 images selected")
         
         return selected_images
     
-    # Copy selected images to output directory and rename with appropriate metrics
+    # Copy selected images to output directory and rename with confidence info.
+    # Args: selected_images: Dictionary from select_images()    
     def copy_and_rename_images(self, selected_images: Dict[str, List[Dict]]):
         print(f"\n{'='*60}")
         print(f"Copying and renaming selected images")
@@ -545,27 +442,14 @@ class ClassSorter:
                 confidence_pct = int(img_data['confidence'] * 100)
                 max_logit_val = img_data['max_logit']
                 
-                # Create new filename based on filter mode
-                if self.rename_images:
+                # Create new filename
+                if self.rename_with_confidence:
                     original_stem = src_path.stem.rstrip('_')
-                    
-                    # Determine filename format based on filter mode
-                    if self.filter_mode == 'confidence_only':
-                        # Only include confidence
-                        new_stem = f"{original_stem}_conf{confidence_pct}-{img_data['predicted_class']}"
-                    
-                    elif self.filter_mode == 'logits_only':
-                        # Only include logits
-                        new_stem = f"{original_stem}_logit{max_logit_val:.1f}-{img_data['predicted_class']}"
-                    
-                    elif self.filter_mode == 'combined':
-                        # Include both confidence and logits
+                    # Include logit value in filename if option is enabled
+                    if self.include_logits_in_rename:
                         new_stem = f"{original_stem}_conf{confidence_pct}_logit{max_logit_val:.1f}-{img_data['predicted_class']}"
-                    
                     else:
-                        # Fallback: only confidence
                         new_stem = f"{original_stem}_conf{confidence_pct}-{img_data['predicted_class']}"
-                    
                     new_filename = f"{new_stem}{src_path.suffix}"
                 else:
                     # Keep original filename
@@ -638,10 +522,8 @@ class ClassSorter:
                     'max_logit': img_data['max_logit'],
                     'min_logit': img_data['min_logit'],
                     'logit_range': img_data['logit_range'],
-                    'passes_confidence': img_data.get('passes_confidence', True),
-                    'passes_logits': img_data.get('passes_logits', True),
-                    'passes_both': img_data.get('passes_both', True),
-                    'all_logits': img_data.get('all_logits', [])
+                    'passes_logit_threshold': img_data.get('passes_logit_threshold', True),
+                    'all_logits': img_data.get('all_logits', [])  # NEW: Include all logits
                 })
         
         if detailed_data:
@@ -654,19 +536,18 @@ class ClassSorter:
         config = {
             'selection_mode': self.selection_mode,
             'selection_value': self.selection_value,
-            'filter_mode': self.filter_mode,
-            'logit_threshold': self.logit_threshold if self.filter_mode in ['logits_only', 'combined'] else None,
+            'use_logit_threshold': self.use_logit_threshold,
+            'logit_threshold': self.logit_threshold,
             'loaded_checkpoint': self.loaded_checkpoint_name,
             'classes': self.classes,
             'input_directory': str(self.pth_prediction),
             'output_directory': str(self.output_dir),
             'total_processed': self.stats['total_processed'],
             'total_correct': self.stats['correct_predictions'],
-            'passed_confidence': self.stats.get('passed_confidence', 0),
-            'passed_logits': self.stats.get('passed_logits', 0),
-            'passed_both': self.stats.get('passed_both', 0),
+            'passed_logit_threshold': self.stats.get('passed_logit_threshold', 0),
             'overall_accuracy': self.stats['correct_predictions'] / self.stats['total_processed'] if self.stats['total_processed'] > 0 else 0,
-            'rename_images': self.rename_images  # UPDATED variable name
+            'rename_with_confidence': self.rename_with_confidence,
+            'include_logits_in_rename': self.include_logits_in_rename  # NEW
         }
         
         config_json_path = self.output_dir / "selection_config.json"
@@ -674,19 +555,18 @@ class ClassSorter:
             json.dump(config, f, indent=2)
         print(f"Saved configuration to: {config_json_path}")
         
-        # Save logit statistics summary
+        # NEW: Save logit statistics summary
         self._save_logit_statistics(class_image_data, selected_images)
     
-    # Save detailed logit statistics
+    # NEW: Save detailed logit statistics
     def _save_logit_statistics(self, class_image_data: Dict[str, List[Dict]], 
                               selected_images: Dict[str, List[Dict]]):
         """Save detailed logit statistics to JSON file"""
         
         logit_stats = {
-            'filter_mode': self.filter_mode,
-            'logit_threshold': self.logit_threshold if self.filter_mode in ['logits_only', 'combined'] else None,
-            'confidence_threshold': self.selection_value if (self.selection_mode == 'threshold' and self.filter_mode in ['confidence_only', 'combined']) else None,
-            'rename_images': self.rename_images,  # UPDATED variable name
+            'logit_threshold_applied': self.use_logit_threshold,
+            'logit_threshold_value': self.logit_threshold if self.use_logit_threshold else None,
+            'include_logits_in_rename': self.include_logits_in_rename,  # NEW
             'logit_interpretation': {
                 'max_logit_greater_than_0': 'Model thinks the image belongs to this class (positive evidence)',
                 'max_logit_less_than_0': 'Model is uncertain or thinks it does NOT belong (negative evidence)',
@@ -724,10 +604,9 @@ class ClassSorter:
                         'min': float(np.min(max_logits_selected)) if max_logits_selected else 0,
                         'max': float(np.max(max_logits_selected)) if max_logits_selected else 0
                     },
-                    'filter_compliance': {
-                        'images_passing_confidence': sum(1 for img in all_images if img.get('passes_confidence', True)),
-                        'images_passing_logits': sum(1 for img in all_images if img.get('passes_logits', True)),
-                        'images_passing_both': sum(1 for img in all_images if img.get('passes_both', True))
+                    'logit_threshold_compliance': {
+                        'images_above_threshold': sum(1 for img in all_images if img['max_logit'] >= self.logit_threshold) if self.use_logit_threshold else len(all_images),
+                        'images_below_threshold': sum(1 for img in all_images if img['max_logit'] < self.logit_threshold) if self.use_logit_threshold else 0
                     }
                 }
         
@@ -749,71 +628,23 @@ class ClassSorter:
             f.write(f"Output Directory: {self.output_dir}\n")
             f.write(f"Selection Mode: {self.selection_mode}\n")
             f.write(f"Selection Value: {self.selection_value}\n")
-            f.write(f"Filter Mode: {self.filter_mode}\n")
-            
-            if self.filter_mode == 'confidence_only':
-                f.write(f"Filtering: CONFIDENCE ONLY\n")
-                if self.selection_mode == 'threshold':
-                    f.write(f"Confidence threshold: ≥ {self.selection_value:.3f}\n")
-                else:
-                    f.write(f"Top N images: {self.selection_value} per class\n")
-            
-            elif self.filter_mode == 'logits_only':
-                f.write(f"Filtering: LOGITS ONLY\n")
-                f.write(f"Logit threshold: max_logit ≥ {self.logit_threshold}\n")
-                if self.selection_mode == 'threshold':
-                    f.write(f"Note: Also applying confidence threshold: ≥ {self.selection_value:.3f}\n")
-                else:
-                    f.write(f"Note: Selecting top {self.selection_value} images by confidence\n")
-            
-            elif self.filter_mode == 'combined':
-                f.write(f"Filtering: COMBINED (BOTH)\n")
-                if self.selection_mode == 'threshold':
-                    f.write(f"Confidence threshold: ≥ {self.selection_value:.3f}\n")
-                else:
-                    f.write(f"Top N images: {self.selection_value} per class\n")
-                f.write(f"Logit threshold: max_logit ≥ {self.logit_threshold}\n")
-            
-            f.write(f"Rename images: {self.rename_images}\n")  # UPDATED variable name
+            f.write(f"Use Logit Threshold: {self.use_logit_threshold}\n")
+            if self.use_logit_threshold:
+                f.write(f"Logit Threshold: {self.logit_threshold}\n")
+            f.write(f"Include Logits in Filenames: {self.include_logits_in_rename}\n")  # NEW
             f.write(f"Number of Classes: {len(self.classes)}\n")
             f.write(f"Classes: {', '.join(self.classes)}\n")
-            f.write(f"Loaded Checkpoint: {self.loaded_checkpoint_name}\n\n")
+            f.write(f"Loaded Checkpoint: {self.loaded_checkpoint_name}\n")
+            f.write(f"Rename with Confidence: {self.rename_with_confidence}\n\n")
             
             f.write(f"Total Images Processed: {self.stats['total_processed']}\n")
             f.write(f"Correct Predictions: {self.stats['correct_predictions']}\n")
             f.write(f"Overall Accuracy: {self.stats['correct_predictions']/self.stats['total_processed']:.2%}\n")
-            
-            if self.filter_mode == 'confidence_only':
-                f.write(f"Images Passing Confidence Threshold: {self.stats.get('passed_confidence', 0)}\n")
-            elif self.filter_mode == 'logits_only':
-                f.write(f"Images Passing Logit Threshold: {self.stats.get('passed_logits', 0)}\n")
-            elif self.filter_mode == 'combined':
-                f.write(f"Images Passing Both Thresholds: {self.stats.get('passed_both', 0)}\n")
-            
+            if self.use_logit_threshold:
+                f.write(f"Images Passing Logit Threshold: {self.stats.get('passed_logit_threshold', 0)}\n")
             f.write("\n")
             
-            f.write("Filter Mode Explanation:\n")
-            f.write("-" * 40 + "\n")
-            if self.filter_mode == 'confidence_only':
-                f.write("Filtering by SOFTMAX CONFIDENCE only\n")
-                f.write("  • Images selected based on softmax probability\n")
-                f.write("  • Ignores raw logit values\n")
-                f.write("  • May include images where model is uncertain (low/negative logits)\n")
-            
-            elif self.filter_mode == 'logits_only':
-                f.write("Filtering by RAW LOGITS only\n")
-                f.write("  • Images selected based on max_logit value\n")
-                f.write("  • Filters out uncertain predictions (max_logit < 0)\n")
-                f.write("  • For 'top_n' mode: selects images with highest logits\n")
-                f.write("  • For 'threshold' mode: also applies confidence threshold\n")
-            
-            elif self.filter_mode == 'combined':
-                f.write("Filtering by BOTH confidence AND logits\n")
-                f.write("  • Images must pass BOTH thresholds\n")
-                f.write("  • Removes uncertain predictions (max_logit < threshold)\n")
-                f.write("  • Ensures both high confidence AND positive evidence\n")
-            
-            f.write("\nLogit Threshold Explanation:\n")
+            f.write("Logit Threshold Explanation:\n")
             f.write("-" * 40 + "\n")
             f.write("The logit threshold filters out images where the model's maximum logit\n")
             f.write("value is below the specified threshold.\n\n")
@@ -827,28 +658,6 @@ class ClassSorter:
             f.write("For example, logits [-2, -1.8, -1.9] give softmax [0.25, 0.45, 0.3]\n")
             f.write("which looks like 45% confidence, but the model is actually uncertain.\n\n")
             
-            if self.rename_images:
-                f.write("\nFilename Convention (auto-matched to filter mode):\n")
-                f.write("-" * 40 + "\n")
-                
-                if self.filter_mode == 'confidence_only':
-                    f.write("Example: image_name_conf95-KO_1096-01.png\n")
-                    f.write("  - conf95: 95% confidence (softmax probability)\n")
-                    f.write("  - KO_1096-01: Predicted class\n")
-                
-                elif self.filter_mode == 'logits_only':
-                    f.write("Example: image_name_logit3.2-KO_1096-01.png\n")
-                    f.write("  - logit3.2: Maximum logit value (raw model output)\n")
-                    f.write("  - KO_1096-01: Predicted class\n")
-                
-                elif self.filter_mode == 'combined':
-                    f.write("Example: image_name_conf95_logit3.2-KO_1096-01.png\n")
-                    f.write("  - conf95: 95% confidence (softmax probability)\n")
-                    f.write("  - logit3.2: Maximum logit value (raw model output)\n")
-                    f.write("  - KO_1096-01: Predicted class\n")
-                
-                f.write("\n")
-            
             f.write("Per-Class Statistics:\n")
             f.write("-" * 40 + "\n")
             for class_name in self.classes:
@@ -859,6 +668,20 @@ class ClassSorter:
                     f.write(f"  Total: {stats['total']}\n")
                     f.write(f"  Correct: {stats['correct']} ({accuracy:.2%})\n")
                     f.write(f"  Selected: {stats['selected']}\n\n")
+            
+            if self.rename_with_confidence:
+                f.write("\nFilename Convention:\n")
+                f.write("-" * 40 + "\n")
+                f.write("Images are renamed with confidence percentage and predicted class:\n")
+                if self.include_logits_in_rename:
+                    f.write("Example: image_name_conf95_logit3.2-KO_1096-01.png\n")
+                    f.write("  - conf95: 95% confidence (softmax probability)\n")
+                    f.write("  - logit3.2: Maximum logit value (raw model output)\n")
+                    f.write("  - KO_1096-01: Predicted class\n")
+                else:
+                    f.write("Example: image_name_conf95-KO_1096-01.png\n")
+                    f.write("  - conf95: 95% confidence\n")
+                    f.write("  - KO_1096-01: Predicted class\n\n")
         
         print(f"Created README file: {readme_path}")
     
@@ -892,14 +715,8 @@ class ClassSorter:
             print(f"{'='*60}")
             print(f"Total images processed: {self.stats['total_processed']}")
             print(f"Correct predictions: {self.stats['correct_predictions']} ({self.stats['correct_predictions']/self.stats['total_processed']:.2%})")
-            
-            if self.filter_mode == 'confidence_only':
-                print(f"Images passing confidence threshold: {self.stats.get('passed_confidence', 0)}")
-            elif self.filter_mode == 'logits_only':
-                print(f"Images passing logit threshold: {self.stats.get('passed_logits', 0)}")
-            elif self.filter_mode == 'combined':
-                print(f"Images passing both thresholds: {self.stats.get('passed_both', 0)}")
-            
+            if self.use_logit_threshold:
+                print(f"Images passing logit threshold: {self.stats.get('passed_logit_threshold', 0)}")
             print(f"Images selected: {total_selected}")
             print(f"Output directory: {self.output_dir}")
             print(f"\nReady for LoRA training with clean, high-confidence examples!")

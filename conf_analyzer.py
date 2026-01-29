@@ -676,18 +676,7 @@ class ConfidenceAnalyzer:
 
     # Main analysis method
     def __call__(self):
-        """
-        # temporary debug code to inspect your split_info.json
-        split_file = self.pth_acv_results / "dataset_1" / "split_info.json"
-        with open(split_file, 'r') as f:
-            split_info = json.load(f)
-        test_set = set(split_info['test']['WT'] + split_info['test']['KO'])
-        val_set = set(split_info['validation']['WT'] + split_info['validation']['KO'])
-        print(f"Total test images: {len(test_set)}")
-        print(f"Total validation images: {len(val_set)}")
-        print(f"Images in both sets: {len(test_set & val_set)}")
-        print("Examples of duplicates:", list(test_set & val_set)[:5])
-        """
+
         # Get results from all datasets
         results = self.analyze_all_datasets()
         
