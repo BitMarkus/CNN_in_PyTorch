@@ -14,7 +14,7 @@ setting = {
     ############
 
     # Number of epochs
-    "train_num_epochs": 40,  # 30
+    "train_num_epochs": 30,  # 30
     # Batch size for training and validation datasets
     "ds_batch_size": 50, 
 
@@ -130,7 +130,7 @@ setting = {
     # Validation split from training dataset (False or percentage 0.0-1.0)
     "ds_val_from_train_split": False, # 0.2
     # Validation split from test dataset (False or percentage 0.0-1.0)
-    "ds_val_from_test_split": 0.3, # 0.3
+    "ds_val_from_test_split": 1.0, # 0.3
 
     # Classes:
     # Define cell lines (for dataset generator)
@@ -138,9 +138,9 @@ setting = {
     "ko_lines": ["KO_1096-01", "KO_1618-01", "KO_BR2986", "KO_BR3075"],
     # Define classes
     # 2 classes (WT and KO):
-    # "classes": ["KO", "WT"],
+    "classes": ["KO", "WT"],
     # 9 classes (one for each cell line):
-    "classes": ["KO_1096-01", "KO_1618-01", "KO_BR2986", "KO_BR3075", "WT_1618-02", "WT_JG", "WT_JT", "WT_KM", "WT_MS"],
+    # "classes": ["KO_1096-01", "KO_1618-01", "KO_BR2986", "KO_BR3075", "WT_1618-02", "WT_JG", "WT_JT", "WT_KM", "WT_MS"],
 
     #########
     # MODEL #
@@ -199,9 +199,9 @@ setting = {
     # Selection mode and value: "top_n" or "threshold"
     "sort_selection_mode": "threshold", 
     # Number of images for top_n, or threshold value (0.0-1.0) 
-    "sort_selection_value": 0.55, 
+    "sort_selection_value": 0.2, 
     # Filter criteria: 'confidence_only', 'logits_only', or 'combined'
-    'sort_filter_mode': 'combined',
+    'sort_filter_mode': 'logits_only',
     # Minimum max_logit value to keep
     "sort_logit_threshold": 0.0,
     # Rename files with either confidence scores, logit values, or both

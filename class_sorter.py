@@ -44,15 +44,15 @@ Output Files:
 
 Best order to filter synthetic FLUX.1 images:
 RUN 1: Logit threshold for 9 classes
-  • Filter: max_logit ≥ 0.0
+  • Filter: max_logit >= 0.0
   • Purpose: Remove biologically uncertain cell line predictions
 
 RUN 2: Confidence threshold for 9 classes  
-  • Filter: confidence ≥ 0.2 (or similar)
+  • Filter: confidence >= 0.2 (or similar)
   • Purpose: Select high-confidence cell line predictions
 
 RUN 3: Confidence threshold for 2 classes
-  • Filter: confidence ≥ 0.55 (or similar)
+  • Filter: confidence >= 0.55 (or similar)
   • Purpose: Validate WT vs KO genotype
 """
 
@@ -210,29 +210,29 @@ class ClassSorter:
         if self.filter_mode == 'confidence_only':
             print(f"Filtering: CONFIDENCE ONLY")
             if self.selection_mode == 'threshold':
-                print(f"Confidence threshold: ≥ {self.selection_value:.3f}")
+                print(f"Confidence threshold: >= {self.selection_value:.3f}")
             else:
                 print(f"Top N images: {self.selection_value} per class")
         
         elif self.filter_mode == 'logits_only':
             print(f"Filtering: LOGITS ONLY")
-            print(f"Logit threshold: max_logit ≥ {self.logit_threshold}")
+            print(f"Logit threshold: max_logit >= {self.logit_threshold}")
             print(f"  Interpretation:")
             print(f"    • max_logit > 0: Model thinks it's more likely than not")
             print(f"    • max_logit > 2: Model is quite confident")
             print(f"    • max_logit < 0: Model is uncertain/negative")
             if self.selection_mode == 'threshold':
-                print(f"Note: Also applying confidence threshold: ≥ {self.selection_value:.3f}")
+                print(f"Note: Also applying confidence threshold: >= {self.selection_value:.3f}")
             else:
                 print(f"Note: Selecting top {self.selection_value} images by confidence")
         
         elif self.filter_mode == 'combined':
             print(f"Filtering: COMBINED (BOTH)")
             if self.selection_mode == 'threshold':
-                print(f"Confidence threshold: ≥ {self.selection_value:.3f}")
+                print(f"Confidence threshold: >= {self.selection_value:.3f}")
             else:
                 print(f"Top N images: {self.selection_value} per class")
-            print(f"Logit threshold: max_logit ≥ {self.logit_threshold}")
+            print(f"Logit threshold: max_logit >= {self.logit_threshold}")
         
         print(f"\nNumber of classes: {len(self.classes)}")
         print(f"Classes: {', '.join(self.classes)}")
@@ -331,7 +331,7 @@ class ClassSorter:
         if self.filter_mode in ['logits_only', 'combined']:
             print(f"Logit threshold: {self.logit_threshold}")
         if self.filter_mode in ['confidence_only', 'combined'] and self.selection_mode == 'threshold':
-            print(f"Confidence threshold: ≥ {self.selection_value:.3f}")
+            print(f"Confidence threshold: >= {self.selection_value:.3f}")
         print(f"{'='*60}")
         
         # Dictionary to store all image data by true class
@@ -456,9 +456,9 @@ class ClassSorter:
         print(f"Selecting images using {self.filter_mode} filtering")
         print(f"Selection mode: {self.selection_mode}")
         if self.filter_mode in ['logits_only', 'combined']:
-            print(f"Logit threshold: ≥ {self.logit_threshold}")
+            print(f"Logit threshold: >= {self.logit_threshold}")
         if self.filter_mode in ['confidence_only', 'combined'] and self.selection_mode == 'threshold':
-            print(f"Confidence threshold: ≥ {self.selection_value:.3f}")
+            print(f"Confidence threshold: >= {self.selection_value:.3f}")
         print(f"{'='*60}")
         
         for class_name, images in tqdm(class_image_data.items(), desc="Selecting images"):
@@ -754,25 +754,25 @@ class ClassSorter:
             if self.filter_mode == 'confidence_only':
                 f.write(f"Filtering: CONFIDENCE ONLY\n")
                 if self.selection_mode == 'threshold':
-                    f.write(f"Confidence threshold: ≥ {self.selection_value:.3f}\n")
+                    f.write(f"Confidence threshold: >= {self.selection_value:.3f}\n")
                 else:
                     f.write(f"Top N images: {self.selection_value} per class\n")
             
             elif self.filter_mode == 'logits_only':
                 f.write(f"Filtering: LOGITS ONLY\n")
-                f.write(f"Logit threshold: max_logit ≥ {self.logit_threshold}\n")
+                f.write(f"Logit threshold: max_logit >= {self.logit_threshold}\n")
                 if self.selection_mode == 'threshold':
-                    f.write(f"Note: Also applying confidence threshold: ≥ {self.selection_value:.3f}\n")
+                    f.write(f"Note: Also applying confidence threshold: >= {self.selection_value:.3f}\n")
                 else:
                     f.write(f"Note: Selecting top {self.selection_value} images by confidence\n")
             
             elif self.filter_mode == 'combined':
                 f.write(f"Filtering: COMBINED (BOTH)\n")
                 if self.selection_mode == 'threshold':
-                    f.write(f"Confidence threshold: ≥ {self.selection_value:.3f}\n")
+                    f.write(f"Confidence threshold: >= {self.selection_value:.3f}\n")
                 else:
                     f.write(f"Top N images: {self.selection_value} per class\n")
-                f.write(f"Logit threshold: max_logit ≥ {self.logit_threshold}\n")
+                f.write(f"Logit threshold: max_logit >= {self.logit_threshold}\n")
             
             f.write(f"Rename images: {self.rename_images}\n")  # UPDATED variable name
             f.write(f"Number of Classes: {len(self.classes)}\n")
