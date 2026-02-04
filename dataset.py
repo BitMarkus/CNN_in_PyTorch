@@ -1,6 +1,82 @@
-####################
-# Dataset handling #
-####################
+"""
+DATASET LOADING AND AUGMENTATION HANDLER
+
+Purpose:
+Loads and transforms image datasets for training, validation, and testing with
+configurable augmentations and validation strategies.
+
+Key Features:
+1. Dual validation strategies:
+   - Split from training set (ds_val_from_train_split)
+   - Split from test set (ds_val_from_test_split)
+2. Comprehensive image augmentations:
+   - Spatial: Flips, rotations (90° and small angles)
+   - Intensity: Brightness, contrast, saturation, gamma correction
+   - Optical: Gaussian blur, Poisson noise
+3. Synthetic image filtering for validation/testing
+4. Normalization for grayscale ([-1, 1]) or RGB (ImageNet stats)
+
+Validation Strategies:
+1. From Training Set (ds_val_from_train_split = 0.2):
+   - Training: 80% of training cell line images
+   - Validation: 20% of training cell line images  
+   - Testing: 100% of test cell line images
+
+2. From Test Set (ds_val_from_test_split = 1.0):
+   - Training: 100% of training cell line images
+   - Validation: 100% of test cell line images (real only)
+   - Testing: 0% (no separate test - validation = testing)
+
+Augmentation Pipeline:
+Training images go through:
+1. Spatial transforms (flips, rotations)
+2. Convert to tensor
+3. Intensity adjustments (brightness, contrast, gamma)
+4. Optical effects (blur, noise)
+5. Normalization
+
+Validation/Test images:
+- No augmentations
+- Only normalization applied
+
+Synthetic Image Handling:
+- Synthetic images identified by filenames starting with 's' followed by numbers
+- Automatically filtered out during validation/test recording
+- Can load only real images using load_real_test_dataset_only()
+
+Usage:
+# Initialize dataset handler
+ds = Dataset()
+
+# Load training data (with optional validation split from training)
+ds.load_training_dataset()
+
+# Or load test data for validation/testing
+ds.load_test_dataset()
+
+# Load only real images for final evaluation
+real_image_names = {"real1.jpg", "real2.jpg"}  # From split_info.json
+ds.load_real_test_dataset_only(real_image_names)
+
+# Access data loaders:
+train_loader = ds.ds_train      # Training data
+val_loader = ds.ds_val          # Validation data (may be None)
+test_loader = ds.ds_test        # Test data
+
+Important Methods:
+- load_training_dataset(): Loads training data with optional validation split
+- load_test_dataset(): Loads test data, can split for validation
+- load_real_test_dataset_only(): Loads only specified real images
+- validate_validation_settings(): Checks validation configuration
+- get_transformer_train(): Returns augmentation pipeline
+- get_transformer_test(): Returns simple normalization pipeline
+
+Configuration (settings.py):
+- ds_val_from_train_split: % of training set for validation
+- ds_val_from_test_split: % of test set for validation  
+- train_use_augment: Enable/disable training augmentations
+- Various aug_* parameters: Control augmentation probabilities/intensities
+"""
 
 import torch
 from torchvision.transforms import transforms

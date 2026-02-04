@@ -160,12 +160,26 @@ def main():
 
         elif(menu1 == 7):  
             print("\n:DATASET GENERATOR FOR CROSS VALIDATION:")  
+            # Quick verification
+            synthetic_dir = setting["pth_ds_gen_input_synthetic"]
+            real_dir = setting["pth_ds_gen_input_real"]
+            print(f"Training data source: {setting['train_data_source']}")
+            print(f"Synthetic folder: {synthetic_dir}")
+            print(f"Real folder: {real_dir}")
+            if not synthetic_dir.exists():
+                print(f"ERROR: Synthetic folder not found!")
+                continue
+            if not real_dir.exists():
+                print(f"ERROR: Real folder not found!")
+                continue
             # Create a dataset generation object (in generation mode)
-            ds_gen = DatasetGenerator(mode = "gen")
-            print('Generation of datasets is starting...')
+            ds_gen = DatasetGenerator(mode="gen")
+            print('\nGeneration of datasets is starting...')
+            print(f"Mode: {ds_gen.training_data_source}")
             # Create datasets for cross validation
             ds_gen.generate_all_datasets()
-            print(f"Datasets successfully created and saved to {setting['pth_ds_gen_output']}!")
+            print(f"\nDatasets successfully created and saved to {setting['pth_ds_gen_output']}!")
+            print("You can inspect the generated datasets in that folder.")
 
         ##############################
         # Automatic Cross Validation #  

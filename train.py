@@ -424,6 +424,45 @@ class Train():
         plt.tight_layout()
 
         return fig
+    
+    def debug_real_validation(self, val_loader):
+        """Debug what's happening during real image validation"""
+        print("\n=== DEBUG REAL IMAGE VALIDATION ===")
+        
+        # Get one batch
+        images, labels = next(iter(val_loader))
+        
+        print(f"Batch size: {images.shape[0]}")
+        print(f"Image shape: {images.shape}")
+        
+        # Check label distribution
+        unique, counts = torch.unique(labels, return_counts=True)
+        print(f"Labels in batch: KO={counts[0].item() if 0 in unique else 0}, "
+            f"WT={counts[1].item() if 1 in unique else 0}")
+        
+        # Make predictions
+        with torch.no_grad():
+            images = images.to(self.device)
+            outputs = self.model(images)
+            probabilities = torch.softmax(outputs, dim=1)
+            predictions = torch.argmax(outputs, dim=1)
+            
+            print(f"\nFirst 5 predictions:")
+            for i in range(min(5, len(predictions))):
+                true_label = "KO" if labels[i] == 0 else "WT"
+                pred_label = "KO" if predictions[i] == 0 else "WT"
+                ko_prob = probabilities[i][0].item()
+                wt_prob = probabilities[i][1].item()
+                print(f"  Image {i}: True={true_label}, Pred={pred_label}, "
+                    f"P(KO)={ko_prob:.3f}, P(WT)={wt_prob:.3f}")
+        
+        # Check if model outputs are extremely confident
+        print(f"\nPrediction confidence analysis:")
+        print(f"  Mean WT probability: {probabilities[:, 1].mean().item():.3f}")
+        print(f"  Mean KO probability: {probabilities[:, 0].mean().item():.3f}")
+        print(f"  % predicting WT: {(predictions == 1).float().mean().item():.1%}")
+        
+        return predictions, labels
 
     ##################
     # TRAIN FUNCTION #

@@ -1,3 +1,259 @@
+"""
+AUTOMATIC CROSS-VALIDATION SYSTEM FOR CELL LINE CLASSIFICATION
+
+================================================================================
+PURPOSE:
+Performs leave-one-WT-line-out AND leave-one-KO-line-out cross-validation
+for binary classification of fibroblast images (WT = healthy vs KO = diseased).
+
+KEY CONCEPT:
+TRAIN on N-1 cell lines, TEST on the 1 left-out cell line.
+For 5 WT lines + 4 KO lines = 20 total folds (5 × 4 combinations).
+
+================================================================================
+EXACT FOLDER STRUCTURE REQUIREMENTS:
+
+MODE 1: "train_data_source": "synthetic_only" (Recommended for your use case)
+------------------------------------------------
+dataset_gen/
+├── input_synthetic/           # SYNTHETIC IMAGES ONLY - FOR TRAINING
+│   ├── WT_1618-02/           # Wild-type cell line 1
+│   │   ├── s001.jpg          # Synthetic images start with 's' + numbers
+│   │   ├── s002.jpg
+│   │   └── ... (100s of synthetic images)
+│   ├── WT_JG/                # Wild-type cell line 2
+│   ├── WT_JT/                # WT cell line 3
+│   ├── WT_KM/                # WT cell line 4
+│   ├── WT_MS/                # WT cell line 5
+│   ├── KO_1096-01/           # Knockout cell line 1
+│   ├── KO_1618-01/           # KO cell line 2
+│   ├── KO_BR2986/            # KO cell line 3
+│   └── KO_BR3075/            # KO cell line 4
+└── input_real/               # REAL IMAGES ONLY - FOR VALIDATION/TESTING
+    ├── WT_1618-02/           # Same cell line names as above
+    │   ├── img001.jpg        # Real images (ANY filename NOT starting with 's')
+    │   ├── cell_02.png
+    │   └── ... (typically 20-50 real images per cell line)
+    ├── WT_JG/
+    ├── WT_JT/
+    ├── WT_KM/
+    ├── WT_MS/
+    ├── KO_1096-01/
+    ├── KO_1618-01/
+    ├── KO_BR2986/
+    └── KO_BR3075/
+
+MODE 2: "train_data_source": "mixed" (Backward compatibility)
+------------------------------------------------
+dataset_gen/
+└── input/                    # MIXED synthetic + real images
+    ├── WT_1618-02/
+    │   ├── s001.jpg          # Synthetic
+    │   ├── s002.jpg          # Synthetic
+    │   ├── real_001.jpg      # Real
+    │   └── ... (both types mixed)
+    ├── WT_JG/
+    └── ... (same structure for all cell lines)
+
+================================================================================
+EXACT VALIDATION/TESTING STRATEGIES:
+
+STRATEGY A: VALIDATE ON TRAINING SET SPLIT
+------------------------------------------
+settings.py:
+    "ds_val_from_train_split": 0.2,    # 20% of training images
+    "ds_val_from_test_split": False,   # No validation from test set
+
+HOW IT WORKS for Fold 1 (test_wt="WT_1618-02", test_ko="KO_1096-01"):
+1. DATASET GENERATION:
+   - Training cell lines: WT_JG, WT_JT, WT_KM, WT_MS, KO_1618-01, KO_BR2986, KO_BR3075
+   - Test cell lines: WT_1618-02, KO_1096-01
+
+2. DATA ALLOCATION:
+   Training folder (data/train/):
+     - WT/ (images from WT_JG, WT_JT, WT_KM, WT_MS) - 100% synthetic
+     - KO/ (images from KO_1618-01, KO_BR2986, KO_BR3075) - 100% synthetic
+   
+   Test folder (data/test/):
+     - WT/ (images from WT_1618-02) - 100% REAL
+     - KO/ (images from KO_1096-01) - 100% REAL
+
+3. VALIDATION SPLIT (20% from training):
+   - Training: 80% of synthetic images from training cell lines
+   - Validation: 20% of synthetic images from training cell lines
+   - Test: 100% of REAL images from test cell lines
+
+4. USAGE SCENARIO:
+   - You have LOTS of synthetic data, FEW real images
+   - Want to validate DURING training on synthetic data
+   - Final test on completely unseen REAL data
+
+STRATEGY B: VALIDATE ON TEST SET SPLIT (RECOMMENDED FOR YOU)
+------------------------------------------------------------
+settings.py:
+    "ds_val_from_train_split": False,   # No validation from training
+    "ds_val_from_test_split": 1.0,      # 100% of test set for validation
+
+HOW IT WORKS for Fold 1 (test_wt="WT_1618-02", test_ko="KO_1096-01"):
+1. DATASET GENERATION (Same as above):
+   - Training cell lines: WT_JG, WT_JT, WT_KM, WT_MS, KO_1618-01, KO_BR2986, KO_BR3075
+   - Test cell lines: WT_1618-02, KO_1096-01
+
+2. DATA ALLOCATION (Same as above):
+   Training folder (data/train/):
+     - WT/ (images from WT_JG, WT_JT, WT_KM, WT_MS) - 100% synthetic
+     - KO/ (images from KO_1618-01, KO_BR2986, KO_BR3075) - 100% synthetic
+   
+   Test folder (data/test/):
+     - WT/ (images from WT_1618-02) - 100% REAL
+     - KO/ (images from KO_1096-01) - 100% REAL
+
+3. VALIDATION SPLIT (100% from test = NO separate testing):
+   - Training: 100% of synthetic images from training cell lines
+   - Validation: 100% of REAL images from test cell lines
+   - Test: NONE (validation and testing are the SAME images)
+
+4. CRITICAL POINT - What gets recorded in split_info.json:
+   The system will record that ALL real images from test cell lines were used
+   for validation. Since ds_val_from_test_split = 1.0, there's NO separate test set.
+
+5. USAGE SCENARIO (YOUR CASE):
+   - Train on synthetic images only
+   - Validate at end of each epoch on REAL images from left-out cell lines
+   - No separate "final test" - validation IS your performance metric
+   - This mimics real-world: model sees only synthetic during training,
+     performance measured on real biological data
+
+STRATEGY C: SPLIT TEST SET FOR VALIDATION + TESTING
+---------------------------------------------------
+settings.py:
+    "ds_val_from_train_split": False,   # No validation from training
+    "ds_val_from_test_split": 0.7,      # 70% of test set for validation, 30% for testing
+
+HOW IT WORKS:
+1. Same dataset generation as above
+2. Test folder images (100% REAL) are split:
+   - Validation: 70% of real images from test cell lines
+   - Test: 30% of real images from test cell lines
+3. split_info.json records which specific images went to validation vs test
+
+================================================================================
+EXACT CROSS-VALIDATION FOLDS (20 total):
+
+FOLD 1:
+  Training: WT_JG, WT_JT, WT_KM, WT_MS + KO_1618-01, KO_BR2986, KO_BR3075
+  Test: WT_1618-02 + KO_1096-01
+
+FOLD 2:
+  Training: WT_1618-02, WT_JT, WT_KM, WT_MS + KO_1618-01, KO_BR2986, KO_BR3075
+  Test: WT_JG + KO_1096-01
+
+... (continues through all combinations) ...
+
+FOLD 20:
+  Training: WT_1618-02, WT_JG, WT_JT, WT_KM + KO_1096-01, KO_1618-01, KO_BR2986
+  Test: WT_MS + KO_BR3075
+
+================================================================================
+EXACT WORKFLOW FOR YOUR USE CASE:
+
+settings.py:
+    "train_data_source": "synthetic_only",
+    "ds_val_from_train_split": False,
+    "ds_val_from_test_split": 1.0,
+    "wt_lines": ["WT_1618-02", "WT_JG", "WT_JT", "WT_KM", "WT_MS"],
+    "ko_lines": ["KO_1096-01", "KO_1618-01", "KO_BR2986", "KO_BR3075"]
+
+1. FOLD PREPARATION (e.g., Fold 1):
+   - Copies synthetic images from WT_JG, WT_JT, WT_KM, WT_MS to data/train/WT/
+   - Copies synthetic images from KO_1618-01, KO_BR2986, KO_BR3075 to data/train/KO/
+   - Copies REAL images from WT_1618-02 to data/test/WT/
+   - Copies REAL images from KO_1096-01 to data/test/KO/
+
+2. TRAINING:
+   - Model trains ONLY on synthetic data (data/train/)
+   - At end of each epoch: validates on REAL data (data/test/)
+   - Since ds_val_from_test_split = 1.0, ALL real test images are used for validation
+
+3. RECORDING:
+   - split_info.json created in acv_results/dataset_1/
+   - Lists ALL real images used for validation (since no separate test)
+
+4. FINAL EVALUATION:
+   - Loads model checkpoint
+   - Runs prediction on SAME validation set (data/test/ images)
+   - Calculates accuracy on REAL images only
+
+================================================================================
+OUTPUT STRUCTURE:
+
+acv_results/
+├── dataset_1/                    # Results for Fold 1
+│   ├── checkpoints/              # Model weights saved each epoch
+│   │   ├── epoch_01.pt
+│   │   ├── epoch_02.pt
+│   │   └── ...
+│   ├── plots/                    # Visual results
+│   │   ├── confusion_matrix_epoch_01.png
+│   │   ├── loss_curve.png
+│   │   └── ...
+│   ├── split_info.json           # EXACT images used for validation
+│   │   {
+│   │     "validation": {
+│   │       "WT": ["img001.jpg", "img002.jpg", ...],  # REAL images only
+│   │       "KO": ["cell_01.png", "cell_02.png", ...] # REAL images only
+│   │     },
+│   │     "test": { ... },        # Empty if ds_val_from_test_split = 1.0
+│   │     "metadata": {
+│   │       "note": "Only real images are recorded for validation/testing"
+│   │     }
+│   │   }
+│   └── dataset_1_info.txt        # Configuration for this fold
+├── dataset_2/                    # Results for Fold 2
+└── ... (20 total folders)
+
+================================================================================
+USAGE:
+
+# Initialize
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+acv = AutoCrossValidation(device)
+
+# Run complete cross-validation (20 folds)
+acv()
+
+# After completion, analyze results in acv_results/ folder
+# Each fold has independent results
+
+================================================================================
+KEY SETTINGS FOR DIFFERENT SCENARIOS:
+
+SCENARIO 1: Train on synthetic, validate on real (YOUR CASE)
+    "train_data_source": "synthetic_only",
+    "ds_val_from_train_split": False,
+    "ds_val_from_test_split": 1.0,
+
+SCENARIO 2: Train on mixed data, validate on training split
+    "train_data_source": "mixed",
+    "ds_val_from_train_split": 0.2,
+    "ds_val_from_test_split": False,
+
+SCENARIO 3: Train on real only, validate on test split
+    "train_data_source": "real_only",
+    "ds_val_from_train_split": False,
+    "ds_val_from_test_split": 0.7,
+
+================================================================================
+IMPORTANT NOTES:
+
+1. SYNTHETIC IMAGE NAMING: Must start with 's' followed by numbers (s001.jpg, s123.png)
+2. REAL IMAGE NAMING: Can be anything EXCEPT starting with 's' followed by numbers
+3. IMAGE FORMATS: Can mix .jpg, .png, .tif, etc.
+4. FOLDER NAMES: Must exactly match wt_lines and ko_lines in settings.py
+5. MEMORY: Each fold creates fresh model instance (prevents weight contamination)
+6. CLEANUP: data/ folder is cleaned between folds (temporary storage only)
+"""
+
 from pathlib import Path
 import json
 import torch
@@ -194,6 +450,7 @@ class AutoCrossValidation:
             ##################
 
             print(f"\n>> PROCESSING DATASET {config['dataset_idx']} OF {len(configs)}:")
+            print(f"Training data source: {self.ds_gen.training_data_source}")
 
             print(f"Cell line for testing WT group: {config['test_wt']}")
             print(f"Cell line for testing KO group: {config['test_ko']}")
@@ -251,22 +508,27 @@ class AutoCrossValidation:
             split_file = Path(self.acv_results_dir) / f"dataset_{config['dataset_idx']}" / "split_info.json"
             real_test_images = None
 
+            # Load split info if it exists
+            split_file = Path(self.acv_results_dir) / f"dataset_{config['dataset_idx']}" / "split_info.json"
+            real_test_images = None
+
             if split_file.exists():
                 with open(split_file, 'r') as f:
                     split_info = json.load(f)
                 
-                # Check if this split_info contains filtered data (has metadata about synthetic filtering)
-                if 'metadata' in split_info and split_info['metadata'].get('synthetic_filtered', 0) > 0:
-                    # This dataset has synthetic images that were filtered
+                # ALWAYS use split_info when we have validation split from test
+                # (unless val_from_test_split = 1.0, which means all test images are validation)
+                if self.val_from_test_split is not False and self.val_from_test_split != 1.0:
+                    # We have a separate test set (not all test images used for validation)
                     real_test_images = set(split_info['test']['WT'] + split_info['test']['KO'])
-                    print(f"Found {len(real_test_images)} real test images (synthetic data detected)")
+                    print(f"Found {len(real_test_images)} test images from split_info.json (70% of real images)")
                 else:
-                    # Pure real data - use all images
-                    print(f"Using all test images (pure real data detected)")
+                    # Either val_from_test_split = 1.0 (no separate test) or not using test for validation
+                    if self.val_from_test_split == 1.0:
+                        print("Using all test images for validation (ds_val_from_test_split = 1.0)")
+                    else:
+                        print("Not using test set for validation, loading all test images")
                     real_test_images = None
-            else:
-                print("WARNING: No split_info.json found. Loading all test images.")
-                real_test_images = None
 
             # Load appropriate dataset
             if real_test_images is not None:
@@ -291,31 +553,24 @@ class AutoCrossValidation:
             print(f"Evaluating on {self.ds.num_pred_real} test images ({data_type})")
             print(f"Batch size: 1")
 
-            # Load checkpoint
-            checkpoint_list = self.cnn_wrapper.get_checkpoints_list(checkpoint_dir)
-            if not checkpoint_list:
-                print("No checkpoint for this dataset!")
-            else:
-                for checkpoint_file in checkpoint_list:
-                    print(f"\n> Load weight file {checkpoint_file[1]} for dataset {config['dataset_idx']}...")
-                    self.cnn_wrapper.load_weights(checkpoint_dir, checkpoint_file[1])
+            print('\n> Starting prediction on REAL test images using FINAL trained weights...')
 
-                    print('\n> Starting prediction on REAL test images only...')
-                    
-                    # Use the filtered dataset
-                    _, cm = self.cnn_wrapper.predict(test_dataset_to_use)
+            # Use the CURRENT model weights (already trained) - NO checkpoint loading needed!
+            _, cm = self.cnn_wrapper.predict(test_dataset_to_use)
 
-                    # Plot confusion matrix and results
-                    fn.plot_confusion_matrix(cm, self.class_list, plot_dir, chckpt_name=checkpoint_file[1], show_plot=False, save_plot=True)
-                    fn.save_confusion_matrix_results(cm, self.class_list, plot_dir, chckpt_name=checkpoint_file[1])
+            # Plot confusion matrix and results
+            chckpt_name = f"final_trained_model_fold_{config['dataset_idx']}"
+            fn.plot_confusion_matrix(cm, self.class_list, plot_dir, chckpt_name=chckpt_name, show_plot=False, save_plot=True)
+            fn.save_confusion_matrix_results(cm, self.class_list, plot_dir, chckpt_name=chckpt_name)
 
-                    # Load confusion matrix results
-                    loaded_results = fn.load_confusion_matrix_results(plot_dir, file_name=checkpoint_file[1])
-                    print(f"Overall accuracy: {(loaded_results['overall_accuracy']*100):.2f}%")
-                    print(f"WT accuracy: {(loaded_results['class_accuracy']['WT']*100):.2f}%")
-                    print(f"KO accuracy: {(loaded_results['class_accuracy']['KO']*100):.2f}%")
+            # Load confusion matrix results
+            loaded_results = fn.load_confusion_matrix_results(plot_dir, file_name=chckpt_name)
+            print(f"=== REAL IMAGE TEST RESULTS ===")
+            print(f"Overall accuracy: {(loaded_results['overall_accuracy']*100):.2f}%")
+            print(f"WT accuracy: {(loaded_results['class_accuracy']['WT']*100):.2f}%")
+            print(f"KO accuracy: {(loaded_results['class_accuracy']['KO']*100):.2f}%")
 
-                    print(f'Prediction successfully finished. Confusion matrix and results saved to {plot_dir}.')    
+            print(f'Prediction successfully finished. Confusion matrix and results saved to {plot_dir}.')
 
             print(f"Completed dataset {config['dataset_idx']}. Moving to next fold...")    
 

@@ -1,207 +1,16 @@
-"""
-CONFIDENCE ANALYZER FOR CROSS-VALIDATION RESULTS
 
-================================================================================
-PURPOSE:
-Analyzes predictions across ALL cross-validation folds to identify images with
-specific confidence patterns. Filters images based on their confidence scores
-and correctness across multiple models/datasets.
+# Filter types in settings file:
+# Filter Type	    Confidence Range	    Considers Correctness?	        Typical Use Case
+# correct	        [min_conf, max_conf]	Must be correct in all folds	Reliable predictions
+# incorrect	        [min_conf, max_conf]	Must be wrong in all folds	    High-confidence errors
+# low_confidence	Below min_conf	        Ignores correctness	            Ambiguous/poor-quality images
+# unsure	        [min_conf, max_conf]	Ignores correctness	            Intermediate-confidence cases
 
-KEY CONCEPT:
-Analyze how EACH IMAGE is predicted across ALL 20 cross-validation folds and
-multiple checkpoints within each fold, then filter images based on consistent
-patterns.
-
-================================================================================
-WHAT THIS SCRIPT DOES:
-
-1. For each of the 20 cross-validation folds:
-   - Loads the test set (real images from left-out cell lines)
-   - Loads multiple model checkpoints from that fold's training
-   - Runs predictions on ALL test images with EACH checkpoint
-
-2. For each individual image across ALL folds and checkpoints:
-   - Tracks: true class, predicted class, confidence score
-   - Calculates: average confidence, correctness rate (% of times correctly predicted)
-
-3. Filters images based on consistent patterns:
-   - HIGH-CONFIDENCE CORRECT: Always correct with high confidence
-   - HIGH-CONFIDENCE INCORRECT: Always wrong but model is confident
-   - LOW-CONFIDENCE: Model is never confident about these
-   - MEDIUM-CONFIDENCE UNSURE: Intermediate confidence (needs review)
-
-4. Organizes filtered images into folders for downstream use.
-
-================================================================================
-WORKFLOW EXAMPLE:
-
-For a single image "cell_001.jpg" that appears in:
-- Fold 1: WT_1618-02 + KO_1096-01 test set
-- Fold 2: WT_JG + KO_1096-01 test set
-- ... etc. (whenever its cell line is in test set)
-
-The script tracks predictions from:
-- Fold 1: Checkpoint epoch_10.model → 95% confidence, correct
-- Fold 1: Checkpoint epoch_20.model → 98% confidence, correct
-- Fold 2: Checkpoint epoch_15.model → 92% confidence, correct
-- ... etc.
-
-If this image is CORRECT in ALL predictions with confidence >80%,
-it gets saved to: ca_results/high_confidence_correct/WT/cell_001_conf95_corr100.jpg
-
-================================================================================
-INPUT REQUIREMENTS:
-
-1. COMPLETED CROSS-VALIDATION:
-   acv_results/
-   ├── dataset_1/
-   │   ├── checkpoints/        # Model weights (epoch_XX.model)
-   │   ├── plots/
-   │   │   └── epoch_XX_cm.json  # Confusion matrix results
-   │   └── split_info.json     # Which images were test vs validation
-   ├── dataset_2/
-   └── ... (20 total)
-
-2. SOURCE IMAGES (based on train_data_source setting):
-   
-   MODE: "synthetic_only" or "real_only":
-   dataset_gen/input_real/      # REAL images for testing
-   ├── WT_1618-02/
-   │   ├── cell_001.jpg
-   │   └── ...
-   ├── WT_JG/
-   └── ...
-   
-   MODE: "mixed" (backward compatibility):
-   dataset_gen/input/           # MIXED synthetic+real images
-   ├── WT_1618-02/
-   └── ...
-
-================================================================================
-FILTER TYPES AND THEIR USES:
-
-1. "correct" (High-Confidence Correct):
-   - Images that are CORRECTLY classified in ALL predictions
-   - Confidence ALWAYS between min_conf-max_conf (e.g., 80-100%)
-   - USES: Most reliable images for validation sets, publication figures
-
-2. "incorrect" (High-Confidence Errors):
-   - Images that are WRONGLY classified in ALL predictions  
-   - Confidence ALWAYS between min_conf-max_conf (e.g., 80-100%)
-   - USES: Identify systematic errors, problematic cases to fix
-
-3. "low_confidence" (Low-Confidence):
-   - Confidence ALWAYS below min_conf (e.g., <80%)
-   - Ignores correctness (could be right or wrong)
-   - USES: Ambiguous cases, poor-quality images, needs manual review
-
-4. "unsure" (Medium-Confidence):
-   - Confidence ALWAYS between min_conf-max_conf (e.g., 50-80%)
-   - Ignores correctness
-   - USES: Borderline cases, interesting for further analysis
-
-================================================================================
-SETTINGS CONFIGURATION (settings.py):
-
-# REQUIRED SETTINGS:
-"train_data_source": "synthetic_only",  # or "real_only", "mixed"
-"pth_ds_gen_input_real": BASE_DIR / "dataset_gen/input_real/",
-"pth_acv_results": BASE_DIR / "acv_results/",
-"pth_conf_analizer_results": BASE_DIR / "ca_results/",
-
-# CONFIDENCE THRESHOLDS:
-"ca_min_conf": 0.8,     # Minimum confidence (e.g., 80%)
-"ca_max_conf": 1.0,     # Maximum confidence (e.g., 100%)
-"ca_filter_type": "correct",  # "correct", "incorrect", "low_confidence", "unsure"
-
-# CHECKPOINT SELECTION:
-"ca_max_ckpts": 1,      # Max checkpoints per fold to analyze (None = all)
-"ca_ckpt_select_method": "balanced_accuracy",  # How to select "best" checkpoints
-
-================================================================================
-CHECKPOINT SELECTION METHODS:
-
-When ca_max_ckpts = 3 and a fold has 30 checkpoints, selects top 3 using:
-
-1. "balanced_sum": (WT_acc + KO_acc) - |WT_acc - KO_acc|
-   - Rewards balanced performance
-   - Penalizes large differences between classes
-
-2. "f1_score": 2 * (WT_acc * KO_acc) / (WT_acc + KO_acc)
-   - Harmonic mean of class accuracies
-   - Strongly penalizes one poor class
-
-3. "min_difference": min(WT_acc, KO_acc)
-   - Most conservative
-   - Ensures both classes perform reasonably
-
-4. "balanced_accuracy": sklearn.metrics.balanced_accuracy_score
-   - Gold standard for imbalanced data
-   - Requires true/predicted labels in JSON
-
-================================================================================
-OUTPUT STRUCTURE:
-
-ca_results/
-├── confidence_analysis.csv          # Main analysis results
-├── used_checkpoints.csv             # Which checkpoints were analyzed
-├── high_confidence_correct/         # Filtered images (if filter_type="correct")
-│   ├── WT/
-│   │   ├── cell_001_conf95_corr100.jpg
-│   │   └── ...
-│   └── KO/
-│       ├── cell_045_conf88_corr100.jpg
-│       └── ...
-├── high_confidence_incorrect/       # (if filter_type="incorrect")
-├── low_confidence/                  # (if filter_type="low_confidence")  
-└── medium_confidence_unsure/        # (if filter_type="unsure")
-
-EACH FILTERED IMAGE IS RENAMED WITH:
-   OriginalName_confXX_corrYY.jpg
-   Where: XX = average confidence percentage
-          YY = correctness rate percentage
-
-================================================================================
-ANALYSIS DETAILS:
-
-For EACH IMAGE across ALL folds where it appears:
-
-1. HISTORY TRACKING:
-   - Which folds included this image in test set
-   - Which checkpoints predicted it
-   - Prediction results for each checkpoint
-
-2. STATISTICS CALCULATION:
-   - Average confidence across all predictions
-   - Correctness rate (% of times correctly predicted)
-   - Consistency of predictions (all agree on class?)
-
-3. FILTERING LOGIC:
-   Image is included if it meets ALL criteria:
-   - Appears in at least one test set
-   - Has predictions from selected checkpoints
-   - Meets confidence/correctness criteria for ALL predictions
-
-================================================================================
-SPECIAL HANDLING OF VALIDATION/TEST SPLITS:
-
-If split_info.json exists (when ds_val_from_test_split < 1.0):
-- Only uses images marked as "test" in split_info.json
-- Excludes images marked as "validation"
-- This ensures pure test-set evaluation
-
-If NO split_info.json (when ds_val_from_test_split = 1.0):
-- Uses ALL images in test folder
-- Since 100% used for validation, all are considered "test"
-
-================================================================================
-INTERPRETATION:
-
-- 50%: The model is completely uncertain (equivalent to random guessing).
-- <50%: The model is less confident than a coin flip (rare, but possible if predictions are miscalibrated).
-- >50%: The model favors one class over the other. Higher values indicate stronger certainty.
-- ~100%: The model is extremely confident (may indicate overfitting or easy examples).
-"""
+# Confidence interpretation
+# 50%:	The model is completely uncertain (equivalent to random guessing).
+# <50%:	The model is less confident than a coin flip (rare, but possible if predictions are miscalibrated).
+# >50%:	The model favors one class over the other. Higher values indicate stronger certainty.
+# ~100%:The model is extremely confident (may indicate overfitting or easy examples).
 
 import os
 import shutil
@@ -229,19 +38,12 @@ class ConfidenceAnalyzer:
 
         # Passed parameters
         self.device = device
-        
         # Settings parameters
         # Paths
         self.pth_acv_results = Path(setting['pth_acv_results']).absolute()
         self.pth_ds_gen_input = Path(setting['pth_ds_gen_input']).absolute()
         self.pth_test = Path(setting['pth_test']).absolute()
         self.pth_conf_analizer_results = Path(setting['pth_conf_analizer_results']).absolute()
-        
-        # NEW: Training data source configuration
-        self.training_data_source = setting.get('train_data_source', 'mixed')
-        self.pth_ds_gen_input_synthetic = Path(setting.get('pth_ds_gen_input_synthetic', '')).absolute() if setting.get('pth_ds_gen_input_synthetic') else None
-        self.pth_ds_gen_input_real = Path(setting.get('pth_ds_gen_input_real', '')).absolute() if setting.get('pth_ds_gen_input_real') else None
-        
         # Classes and cell lines
         self.classes = setting['classes']
         self.wt_lines = setting['wt_lines']
@@ -270,24 +72,6 @@ class ConfidenceAnalyzer:
         self.pth_conf_analizer_results.mkdir(parents=True, exist_ok=True)
         # List of confidences for each testing for each image
         self.image_history = defaultdict(list)
-        
-        # Print configuration
-        print(f"\nConfidence Analyzer Configuration:")
-        print(f"  Training data source: {self.training_data_source}")
-        print(f"  Mixed folder: {self.pth_ds_gen_input}")
-        if self.pth_ds_gen_input_synthetic:
-            print(f"  Synthetic folder: {self.pth_ds_gen_input_synthetic}")
-        if self.pth_ds_gen_input_real:
-            print(f"  Real folder: {self.pth_ds_gen_input_real}")
-        
-        # Validate folder existence
-        if self.training_data_source in ['synthetic_only', 'real_only']:
-            if not self.pth_ds_gen_input_real or not self.pth_ds_gen_input_real.exists():
-                print(f"  ⚠️  WARNING: Real folder not found or not configured")
-                print(f"     Make sure 'pth_ds_gen_input_real' is set correctly in settings.py")
-        
-        if not self.pth_ds_gen_input.exists():
-            print(f"  ⚠️  WARNING: Mixed folder not found: {self.pth_ds_gen_input}")
 
     #############################################################################################################
     # METHODS:
@@ -305,57 +89,24 @@ class ConfidenceAnalyzer:
     # Generates test set directly from input files
     # and copies the images to the data/test folder
     def _generate_test_set(self, test_wt, test_ko, current_dataset=None, total_datasets=None):
-        """Generate test set using appropriate source directory based on configuration"""
-        
         # Clear and recreate test folder
         shutil.rmtree(self.pth_test, ignore_errors=True)
         for cls in self.classes:
             (self.pth_test / cls).mkdir(parents=True)
-        
-        # Determine source directory based on training_data_source
-        if self.training_data_source in ['synthetic_only', 'real_only'] and self.pth_ds_gen_input_real:
-            source_dir = self.pth_ds_gen_input_real
-        else:
-            source_dir = self.pth_ds_gen_input  # Mixed mode or real folder not available
-        
         # Copy images using single shutil.copytree call per class
         if current_dataset is not None and total_datasets is not None:
             tqdm.write(f"\n>> PROCESSING DATASET {current_dataset} OF {total_datasets}:")
-        
         tqdm.write(f"Generating test set with WT: {test_wt}, KO: {test_ko}")
-        tqdm.write(f"Source directory: {source_dir}")
-        
-        # Copy WT images
-        wt_source = source_dir / test_wt
-        if wt_source.exists():
-            shutil.copytree(
-                wt_source,
-                self.pth_test / 'WT',
-                dirs_exist_ok=True
-            )
-            wt_count = len(list(wt_source.glob("*.*")))
-            tqdm.write(f"  Copied {wt_count} WT images from {wt_source}")
-        else:
-            tqdm.write(f"  ⚠️  WARNING: WT source folder not found: {wt_source}")
-        
-        # Copy KO images
-        ko_source = source_dir / test_ko
-        if ko_source.exists():
-            shutil.copytree(
-                ko_source,
-                self.pth_test / 'KO',
-                dirs_exist_ok=True
-            )
-            ko_count = len(list(ko_source.glob("*.*")))
-            tqdm.write(f"  Copied {ko_count} KO images from {ko_source}")
-        else:
-            tqdm.write(f"  ⚠️  WARNING: KO source folder not found: {ko_source}")
-        
-        # Check if any images were copied
-        total_images = len(list((self.pth_test / 'WT').glob("*.*"))) + \
-                      len(list((self.pth_test / 'KO').glob("*.*")))
-        if total_images == 0:
-            tqdm.write(f"  ⚠️  CRITICAL: No images copied to test folder!")
+        shutil.copytree(
+            self.pth_ds_gen_input / test_wt,
+            self.pth_test / 'WT',
+            dirs_exist_ok=True
+        )
+        shutil.copytree(
+            self.pth_ds_gen_input / test_ko,
+            self.pth_test / 'KO',
+            dirs_exist_ok=True
+        )
 
     # Analyze a single datasets checkpoints with optional checkpoint selection
     def _analyze_single_dataset(self, dataset_num, total_datasets):
@@ -579,17 +330,14 @@ class ConfidenceAnalyzer:
             true_class = None
             
             # Determine true class by checking original locations
-            # Use appropriate source directory based on training_data_source
-            source_dir = self._get_source_directory_for_search()
-            
             for wt_line in self.wt_lines:
-                if (source_dir / wt_line / img_key).exists():
+                if (self.pth_ds_gen_input / wt_line / img_key).exists():
                     true_class = 'WT'
                     break
                     
             if true_class is None:  # If not found in WT, check KO lines
                 for ko_line in self.ko_lines:
-                    if (source_dir / ko_line / img_key).exists():
+                    if (self.pth_ds_gen_input / ko_line / img_key).exists():
                         true_class = 'KO'
                         break
             
@@ -632,13 +380,6 @@ class ConfidenceAnalyzer:
         
         return filtered_images
     
-    # Helper method to get the appropriate source directory for searching
-    def _get_source_directory_for_search(self):
-        """Get the source directory to search for original images"""
-        if self.training_data_source in ['synthetic_only', 'real_only'] and self.pth_ds_gen_input_real:
-            return self.pth_ds_gen_input_real
-        return self.pth_ds_gen_input
-    
     # Build history of all image predictions
     def _build_image_history(self, results):
         for dataset_num, checkpoints in results.items():
@@ -675,22 +416,10 @@ class ConfidenceAnalyzer:
 
     # Find original image path by checking all possible locations
     def _find_original_image_path(self, img_key):
-        """Find original image in the appropriate source directory"""
-        
-        # Use appropriate source directory based on training_data_source
-        source_dir = self._get_source_directory_for_search()
-        
-        for line in self.wt_lines + self.ko_lines:
-            candidate = source_dir / line / img_key
-            if candidate.exists():
-                return str(candidate)
-        
-        # Fallback: check mixed folder
         for line in self.wt_lines + self.ko_lines:
             candidate = self.pth_ds_gen_input / line / img_key
             if candidate.exists():
                 return str(candidate)
-        
         raise FileNotFoundError(f"Original image not found for {img_key}")
 
     # Organize filtered images into appropriate folder structure
@@ -844,7 +573,6 @@ class ConfidenceAnalyzer:
         
         tqdm.write("Starting confidence analysis...")
         tqdm.write(f"Found {total_datasets} datasets to analyze")
-        tqdm.write(f"Training data source: {self.training_data_source}")
         
         # Check if any datasets use test-only filtering
         test_only_count = sum(
@@ -952,21 +680,13 @@ class ConfidenceAnalyzer:
         # Get results from all datasets
         results = self.analyze_all_datasets()
         
-        if not results:
-            print("No results generated. Analysis failed.")
-            return None
-        
         # Find and organize filtered images
         tqdm.write(f"\n>> SAVING {self.filter_type.upper()} IMAGES:")
         filtered_images = self.find_filtered_images(results)
         
-        if not any(filtered_images.values()):
-            tqdm.write(f"No images found matching {self.filter_type} filter criteria.")
-            tqdm.write(f"Consider adjusting min_conf={self.min_conf:.2f}, max_conf={self.max_conf:.2f}")
-        else:
-            tqdm.write(f"Organizing {self.filter_type} images...")
-            output_dir = self.organize_filtered_images(filtered_images)
-            tqdm.write(f"Filtered images saved to: {output_dir}")
+        tqdm.write(f"Organizing {self.filter_type} images...")
+        output_dir = self.organize_filtered_images(filtered_images)
+        tqdm.write(f"Filtered images saved to: {output_dir}")
 
         # Export checkpoint usage report
         self._export_used_checkpoints(results)
@@ -976,3 +696,5 @@ class ConfidenceAnalyzer:
         
         tqdm.write("\nAnalysis complete!\n")
         return results
+        
+        
