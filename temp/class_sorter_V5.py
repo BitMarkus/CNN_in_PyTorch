@@ -20,7 +20,7 @@ Solution: Use logit threshold to filter out images where max_logit < threshold.
 
 Features:
 1. Works with arbitrary number of classes (2, 9, or more)
-2. Three selection modes: Top N images, confidence threshold, or confidence interval
+2. Two selection modes: Top N images or confidence threshold
 3. Three filtering options: confidence_only, logits_only, or combined
 4. Only keeps correctly predicted images
 5. Automatically renames files with appropriate metrics based on filter mode
@@ -29,7 +29,6 @@ Features:
 Selection Modes:
 1. 'top_n': Select top N most confident images per class
 2. 'threshold': Select all images with confidence >= threshold
-3. 'interval': Select all images with confidence between min and max values (inclusive)
 
 Filtering Options:
 1. 'confidence_only': Filter only by softmax confidence
@@ -63,7 +62,7 @@ import shutil
 from torch.utils.data import DataLoader, Subset
 from tqdm import tqdm
 from pathlib import Path
-from typing import List, Dict, Union
+from typing import List, Dict
 import json
 import numpy as np
 # Own modules
@@ -81,17 +80,6 @@ class ClassSorter:
         # Load all configuration from settings
         self.selection_mode = setting['sort_selection_mode']
         self.selection_value = setting['sort_selection_value']
-        # For interval mode, we need min and max values
-        if self.selection_mode == 'interval':
-            if isinstance(self.selection_value, (list, tuple)) and len(self.selection_value) == 2:
-                self.confidence_min = self.selection_value[0]
-                self.confidence_max = self.selection_value[1]
-            else:
-                raise ValueError("For 'interval' mode, sort_selection_value must be a list/tuple of [min, max]")
-        else:
-            self.confidence_min = None
-            self.confidence_max = None
-            
         # Filtering settings
         self.filter_mode = setting['sort_filter_mode']
         self.confidence_threshold = setting['sort_selection_value'] if self.selection_mode == 'threshold' else None
@@ -147,9 +135,8 @@ class ClassSorter:
     def _validate_configuration(self):
         
         # Validate selection mode
-        valid_modes = ['top_n', 'threshold', 'interval']
-        if self.selection_mode not in valid_modes:
-            raise ValueError(f"Invalid selection_mode in settings: {self.selection_mode}. Must be 'top_n', 'threshold', or 'interval'")
+        if self.selection_mode not in ['top_n', 'threshold']:
+            raise ValueError(f"Invalid selection_mode in settings: {self.selection_mode}. Must be 'top_n' or 'threshold'")
         
         # Validate selection value based on mode
         if self.selection_mode == 'top_n':
@@ -164,15 +151,6 @@ class ClassSorter:
             if not (0.0 <= self.selection_value <= 1.0):
                 raise ValueError(f"For 'threshold' mode, sort_selection_value must be between 0.0 and 1.0, got {self.selection_value}")
         
-        elif self.selection_mode == 'interval':
-            if not isinstance(self.selection_value, (list, tuple)) or len(self.selection_value) != 2:
-                raise ValueError(f"For 'interval' mode, sort_selection_value must be a list/tuple of [min, max], got {self.selection_value}")
-            min_val, max_val = self.selection_value
-            if not all(isinstance(v, (int, float)) for v in [min_val, max_val]):
-                raise ValueError(f"Interval values must be numeric, got {min_val} ({type(min_val)}) and {max_val} ({type(max_val)})")
-            if not (0.0 <= min_val <= max_val <= 1.0):
-                raise ValueError(f"Interval must satisfy 0.0 <= min <= max <= 1.0, got min={min_val}, max={max_val}")
-        
         # Validate filter mode
         if self.filter_mode not in ['confidence_only', 'logits_only', 'combined']:
             raise ValueError(f"sort_filter_mode must be 'confidence_only', 'logits_only', or 'combined', got {self.filter_mode}")
@@ -181,7 +159,7 @@ class ClassSorter:
         if not isinstance(self.logit_threshold, (int, float)):
             raise ValueError(f"sort_logit_threshold must be numeric, got {type(self.logit_threshold)}")
         
-        # Validate rename_images setting
+        # Validate rename_images setting - UPDATED variable name
         if not isinstance(self.rename_images, bool):
             raise ValueError(f"sort_rename_images must be boolean, got {type(self.rename_images)}")
         
@@ -200,10 +178,8 @@ class ClassSorter:
         
         if self.selection_mode == 'top_n':
             output_name = f"top{self.selection_value}"
-        elif self.selection_mode == 'threshold':
+        else:
             output_name = f"thresh{self.selection_value:.2f}"
-        else:  # interval
-            output_name = f"interval{self.confidence_min:.2f}-{self.confidence_max:.2f}"
         
         # Add filter mode and thresholds to folder name
         if self.filter_mode == 'confidence_only':
@@ -213,9 +189,7 @@ class ClassSorter:
         elif self.filter_mode == 'combined':
             if self.selection_mode == 'threshold':
                 output_name += f"_conf{self.selection_value:.2f}+logit{self.logit_threshold}"
-            elif self.selection_mode == 'interval':
-                output_name += f"_conf{self.confidence_min:.2f}-{self.confidence_max:.2f}+logit{self.logit_threshold}"
-            else:  # top_n
+            else:
                 output_name += f"_top{self.selection_value}+logit{self.logit_threshold}"
         
         self.output_dir = self.sort_output_dir / output_name / timestamp
@@ -237,9 +211,7 @@ class ClassSorter:
             print(f"Filtering: CONFIDENCE ONLY")
             if self.selection_mode == 'threshold':
                 print(f"Confidence threshold: >= {self.selection_value:.3f}")
-            elif self.selection_mode == 'interval':
-                print(f"Confidence interval: {self.confidence_min:.3f} <= confidence <= {self.confidence_max:.3f}")
-            else:  # top_n
+            else:
                 print(f"Top N images: {self.selection_value} per class (sorted by confidence)")
         
         elif self.filter_mode == 'logits_only':
@@ -251,9 +223,7 @@ class ClassSorter:
             print(f"    • max_logit < 0: Model is uncertain/negative")
             if self.selection_mode == 'threshold':
                 print(f"Note: Filtering by LOGITS ONLY - confidence threshold is NOT applied")
-            elif self.selection_mode == 'interval':
-                print(f"Note: Filtering by LOGITS ONLY - confidence interval is NOT applied")
-            else:  # top_n
+            else:
                 print(f"Note: Selecting top {self.selection_value} images by logit value")
         
         elif self.filter_mode == 'combined':
@@ -262,22 +232,18 @@ class ClassSorter:
                 print(f"Confidence threshold: >= {self.selection_value:.3f}")
                 print(f"Logit threshold: max_logit >= {self.logit_threshold}")
                 print(f"Note: Images must pass BOTH thresholds")
-            elif self.selection_mode == 'interval':
-                print(f"Confidence interval: {self.confidence_min:.3f} <= confidence <= {self.confidence_max:.3f}")
-                print(f"Logit threshold: max_logit >= {self.logit_threshold}")
-                print(f"Note: Images must pass BOTH the confidence interval AND logit threshold")
-            else:  # top_n
+            else:
                 print(f"Top N images: {self.selection_value} per class")
                 print(f"Logit threshold: max_logit >= {self.logit_threshold}")
                 print(f"Note: First filter by logit threshold, then sort remaining by confidence")
         
         print(f"\nNumber of classes: {len(self.classes)}")
         print(f"Classes: {', '.join(self.classes)}")
-        print(f"Rename images: {self.rename_images}")
+        print(f"Rename images: {self.rename_images}")  # UPDATED variable name
         if self.rename_images:
             print(f"  Filename format: Auto-matched to filter mode")
         print(f"Checkpoint directory: {self.pth_checkpoint}")
-        print(f"{'='=}\n")
+        print(f"{'='*60}\n")
     
     # Load model weights from a selected checkpoint
     def _load_checkpoint(self):
@@ -367,13 +333,10 @@ class ClassSorter:
         print(f"Selection mode: {self.selection_mode}")
         if self.filter_mode in ['logits_only', 'combined']:
             print(f"Logit threshold: {self.logit_threshold}")
-        if self.filter_mode in ['confidence_only', 'combined']:
-            if self.selection_mode == 'threshold':
-                print(f"Confidence threshold: >= {self.selection_value:.3f}")
-            elif self.selection_mode == 'interval':
-                print(f"Confidence interval: {self.confidence_min:.3f} <= confidence <= {self.confidence_max:.3f}")
-        elif self.filter_mode == 'logits_only' and self.selection_mode in ['threshold', 'interval']:
-            print(f"Filtering by LOGITS ONLY (no confidence filtering)")
+        if self.filter_mode in ['confidence_only', 'combined'] and self.selection_mode == 'threshold':
+            print(f"Confidence threshold: >= {self.selection_value:.3f}")
+        elif self.filter_mode == 'logits_only' and self.selection_mode == 'threshold':
+            print(f"Filtering by LOGITS ONLY (no confidence threshold)")
         print(f"{'='*60}")
         
         # Dictionary to store all image data by true class
@@ -422,22 +385,18 @@ class ClassSorter:
                         passes_confidence = True
                         passes_logits = True
                         
-                        # Check confidence criteria (for confidence_only or combined modes)
-                        if self.filter_mode in ['confidence_only', 'combined']:
-                            if self.selection_mode == 'threshold':
-                                # Apply confidence threshold
+                        # Check confidence threshold (ONLY for confidence_only or combined modes in threshold mode)
+                        if self.selection_mode == 'threshold':
+                            if self.filter_mode in ['confidence_only', 'combined']:
+                                # Apply confidence threshold only for these modes
                                 passes_confidence = (confidence >= self.selection_value)
-                            elif self.selection_mode == 'interval':
-                                # Apply confidence interval
-                                passes_confidence = (self.confidence_min <= confidence <= self.confidence_max)
-                            else:  # top_n
-                                # For top_n mode, don't apply threshold during analysis
-                                passes_confidence = True
-                            
-                            if passes_confidence:
-                                self.stats['passed_confidence'] += 1
+                                if passes_confidence:
+                                    self.stats['passed_confidence'] += 1
+                            else:
+                                # For logits_only mode, don't check confidence at all
+                                passes_confidence = True  # Always passes
                         else:
-                            # For logits_only mode, don't check confidence at all
+                            # For top_n mode, don't apply threshold during analysis
                             passes_confidence = True
                         
                         # Check logit threshold (ONLY for logits_only or combined modes)
@@ -485,26 +444,26 @@ class ClassSorter:
                             
                             if self.filter_mode == 'confidence_only':
                                 # For 'top_n' mode, store all correct images (filter later)
-                                # For 'threshold' or 'interval' mode, only store if passes confidence criteria
+                                # For 'threshold' mode, only store if passes confidence threshold
                                 if self.selection_mode == 'top_n':
                                     store_image = True
-                                else:  # threshold or interval mode
+                                else:  # threshold mode
                                     store_image = passes_confidence
                             
                             elif self.filter_mode == 'logits_only':
                                 # For 'top_n' mode, store all correct images (filter later by sorting)
-                                # For 'threshold' or 'interval' mode, only store if passes logit threshold
+                                # For 'threshold' mode, only store if passes logit threshold
                                 if self.selection_mode == 'top_n':
                                     store_image = True
-                                else:  # threshold or interval mode
+                                else:  # threshold mode
                                     store_image = passes_logits
                             
                             elif self.filter_mode == 'combined':
-                                # Store if passes both confidence criteria AND logit threshold
+                                # Store if passes both thresholds (for threshold mode)
                                 # For top_n mode, store all correct (filter later)
                                 if self.selection_mode == 'top_n':
                                     store_image = True
-                                else:  # threshold or interval mode
+                                else:  # threshold mode
                                     store_image = passes_confidence and passes_logits
                             
                             if store_image:
@@ -522,13 +481,10 @@ class ClassSorter:
         print(f"Selection mode: {self.selection_mode}")
         if self.filter_mode in ['logits_only', 'combined']:
             print(f"Logit threshold: >= {self.logit_threshold}")
-        if self.filter_mode in ['confidence_only', 'combined']:
-            if self.selection_mode == 'threshold':
-                print(f"Confidence threshold: >= {self.selection_value:.3f}")
-            elif self.selection_mode == 'interval':
-                print(f"Confidence interval: {self.confidence_min:.3f} <= confidence <= {self.confidence_max:.3f}")
-        elif self.filter_mode == 'logits_only' and self.selection_mode in ['threshold', 'interval']:
-            print(f"Filtering by LOGITS ONLY (no confidence filtering)")
+        if self.filter_mode in ['confidence_only', 'combined'] and self.selection_mode == 'threshold':
+            print(f"Confidence threshold: >= {self.selection_value:.3f}")
+        elif self.filter_mode == 'logits_only' and self.selection_mode == 'threshold':
+            print(f"Filtering by LOGITS ONLY (no confidence threshold)")
         print(f"{'='*60}")
         
         for class_name, images in tqdm(class_image_data.items(), desc="Selecting images"):
@@ -566,8 +522,8 @@ class ClassSorter:
                 n = min(self.selection_value, len(sorted_images))
                 selected = sorted_images[:n]
             
-            # For 'threshold' or 'interval' mode, images are already filtered in analyze_images()
-            elif self.selection_mode in ['threshold', 'interval']:
+            # For 'threshold' mode, images are already filtered in analyze_images()
+            elif self.selection_mode == 'threshold':
                 # All stored images already pass the required filter(s)
                 selected = filtered_images
             
@@ -624,11 +580,7 @@ class ClassSorter:
                     # Determine filename format based on filter mode
                     if self.filter_mode == 'confidence_only':
                         # Only include confidence
-                        if self.selection_mode == 'interval':
-                            # For interval mode, indicate it's within the interval
-                            new_stem = f"{original_stem}_conf{confidence_pct}-in-interval-{img_data['predicted_class']}"
-                        else:
-                            new_stem = f"{original_stem}_conf{confidence_pct}-{img_data['predicted_class']}"
+                        new_stem = f"{original_stem}_conf{confidence_pct}-{img_data['predicted_class']}"
                     
                     elif self.filter_mode == 'logits_only':
                         # Only include logits
@@ -636,11 +588,7 @@ class ClassSorter:
                     
                     elif self.filter_mode == 'combined':
                         # Include both confidence and logits
-                        if self.selection_mode == 'interval':
-                            # For interval mode, indicate it's within the interval
-                            new_stem = f"{original_stem}_conf{confidence_pct}-in-interval_logit{max_logit_val:.1f}-{img_data['predicted_class']}"
-                        else:
-                            new_stem = f"{original_stem}_conf{confidence_pct}_logit{max_logit_val:.1f}-{img_data['predicted_class']}"
+                        new_stem = f"{original_stem}_conf{confidence_pct}_logit{max_logit_val:.1f}-{img_data['predicted_class']}"
                     
                     else:
                         # Fallback: only confidence
@@ -737,7 +685,6 @@ class ClassSorter:
             'filter_mode': self.filter_mode,
             'logit_threshold': self.logit_threshold if self.filter_mode in ['logits_only', 'combined'] else None,
             'confidence_threshold': self.selection_value if (self.selection_mode == 'threshold' and self.filter_mode in ['confidence_only', 'combined']) else None,
-            'confidence_interval': [self.confidence_min, self.confidence_max] if self.selection_mode == 'interval' else None,
             'loaded_checkpoint': self.loaded_checkpoint_name,
             'classes': self.classes,
             'input_directory': str(self.pth_prediction),
@@ -748,7 +695,7 @@ class ClassSorter:
             'passed_logits': self.stats.get('passed_logits', 0),
             'passed_both': self.stats.get('passed_both', 0),
             'overall_accuracy': self.stats['correct_predictions'] / self.stats['total_processed'] if self.stats['total_processed'] > 0 else 0,
-            'rename_images': self.rename_images
+            'rename_images': self.rename_images  # UPDATED variable name
         }
         
         config_json_path = self.output_dir / "selection_config.json"
@@ -768,7 +715,6 @@ class ClassSorter:
             'filter_mode': self.filter_mode,
             'logit_threshold': self.logit_threshold if self.filter_mode in ['logits_only', 'combined'] else None,
             'confidence_threshold': self.selection_value if (self.selection_mode == 'threshold' and self.filter_mode in ['confidence_only', 'combined']) else None,
-            'confidence_interval': [self.confidence_min, self.confidence_max] if self.selection_mode == 'interval' else None,
             'rename_images': self.rename_images,
             'logit_interpretation': {
                 'max_logit_greater_than_0': 'Model thinks the image belongs to this class (positive evidence)',
@@ -838,9 +784,7 @@ class ClassSorter:
                 f.write(f"Filtering: CONFIDENCE ONLY\n")
                 if self.selection_mode == 'threshold':
                     f.write(f"Confidence threshold: >= {self.selection_value:.3f}\n")
-                elif self.selection_mode == 'interval':
-                    f.write(f"Confidence interval: {self.confidence_min:.3f} <= confidence <= {self.confidence_max:.3f}\n")
-                else:  # top_n
+                else:
                     f.write(f"Top N images: {self.selection_value} per class (sorted by confidence)\n")
             
             elif self.filter_mode == 'logits_only':
@@ -848,9 +792,7 @@ class ClassSorter:
                 f.write(f"Logit threshold: max_logit >= {self.logit_threshold}\n")
                 if self.selection_mode == 'threshold':
                     f.write(f"Note: Filtering by LOGITS ONLY - confidence threshold is NOT applied\n")
-                elif self.selection_mode == 'interval':
-                    f.write(f"Note: Filtering by LOGITS ONLY - confidence interval is NOT applied\n")
-                else:  # top_n
+                else:
                     f.write(f"Top N images: {self.selection_value} per class (sorted by logit value)\n")
             
             elif self.filter_mode == 'combined':
@@ -859,10 +801,7 @@ class ClassSorter:
                 if self.selection_mode == 'threshold':
                     f.write(f"Confidence threshold: >= {self.selection_value:.3f}\n")
                     f.write(f"Note: Images must pass BOTH thresholds\n")
-                elif self.selection_mode == 'interval':
-                    f.write(f"Confidence interval: {self.confidence_min:.3f} <= confidence <= {self.confidence_max:.3f}\n")
-                    f.write(f"Note: Images must pass BOTH the confidence interval AND logit threshold\n")
-                else:  # top_n
+                else:
                     f.write(f"Top N images: {self.selection_value} per class\n")
                     f.write(f"Note: First filter by logit threshold, then sort remaining by confidence\n")
             
@@ -876,11 +815,11 @@ class ClassSorter:
             f.write(f"Overall Accuracy: {self.stats['correct_predictions']/self.stats['total_processed']:.2%}\n")
             
             if self.filter_mode == 'confidence_only':
-                f.write(f"Images Passing Confidence Criteria: {self.stats.get('passed_confidence', 0)}\n")
+                f.write(f"Images Passing Confidence Threshold: {self.stats.get('passed_confidence', 0)}\n")
             elif self.filter_mode == 'logits_only':
                 f.write(f"Images Passing Logit Threshold: {self.stats.get('passed_logits', 0)}\n")
             elif self.filter_mode == 'combined':
-                f.write(f"Images Passing Both Criteria: {self.stats.get('passed_both', 0)}\n")
+                f.write(f"Images Passing Both Thresholds: {self.stats.get('passed_both', 0)}\n")
             
             f.write("\n")
             
@@ -891,21 +830,17 @@ class ClassSorter:
                 f.write("  • Images selected based on softmax probability\n")
                 f.write("  • Ignores raw logit values\n")
                 f.write("  • May include images where model is uncertain (low/negative logits)\n")
-                if self.selection_mode == 'interval':
-                    f.write("  • Selects images with confidence values within a specific range\n")
-                    f.write("  • Useful for excluding both low-confidence and extremely high-confidence images\n")
             
             elif self.filter_mode == 'logits_only':
                 f.write("Filtering by RAW LOGITS only\n")
                 f.write("  • Images selected based on max_logit value\n")
                 f.write("  • Filters out uncertain predictions (max_logit < 0)\n")
                 f.write("  • For 'top_n' mode: selects images with highest logits\n")
-                f.write("  • For 'threshold' or 'interval' mode: applies logit threshold ONLY\n")
+                f.write("  • For 'threshold' mode: applies logit threshold ONLY\n")
             
             elif self.filter_mode == 'combined':
                 f.write("Filtering by BOTH confidence AND logits\n")
                 f.write("  • For 'threshold' mode: images must pass BOTH thresholds\n")
-                f.write("  • For 'interval' mode: images must fall within confidence interval AND pass logit threshold\n")
                 f.write("  • For 'top_n' mode: first filter by logit threshold, then sort by confidence\n")
                 f.write("  • Removes uncertain predictions (max_logit < threshold)\n")
                 f.write("  • Ensures both high confidence AND positive evidence\n")
@@ -929,15 +864,9 @@ class ClassSorter:
                 f.write("-" * 40 + "\n")
                 
                 if self.filter_mode == 'confidence_only':
-                    if self.selection_mode == 'interval':
-                        f.write("Example: image_name_conf95-in-interval-KO_1096-01.png\n")
-                        f.write("  - conf95: 95% confidence (softmax probability)\n")
-                        f.write("  - in-interval: Indicates image falls within the specified confidence interval\n")
-                        f.write("  - KO_1096-01: Predicted class\n")
-                    else:
-                        f.write("Example: image_name_conf95-KO_1096-01.png\n")
-                        f.write("  - conf95: 95% confidence (softmax probability)\n")
-                        f.write("  - KO_1096-01: Predicted class\n")
+                    f.write("Example: image_name_conf95-KO_1096-01.png\n")
+                    f.write("  - conf95: 95% confidence (softmax probability)\n")
+                    f.write("  - KO_1096-01: Predicted class\n")
                 
                 elif self.filter_mode == 'logits_only':
                     f.write("Example: image_name_logit3.2-KO_1096-01.png\n")
@@ -945,17 +874,10 @@ class ClassSorter:
                     f.write("  - KO_1096-01: Predicted class\n")
                 
                 elif self.filter_mode == 'combined':
-                    if self.selection_mode == 'interval':
-                        f.write("Example: image_name_conf95-in-interval_logit3.2-KO_1096-01.png\n")
-                        f.write("  - conf95: 95% confidence (softmax probability)\n")
-                        f.write("  - in-interval: Indicates image falls within the specified confidence interval\n")
-                        f.write("  - logit3.2: Maximum logit value (raw model output)\n")
-                        f.write("  - KO_1096-01: Predicted class\n")
-                    else:
-                        f.write("Example: image_name_conf95_logit3.2-KO_1096-01.png\n")
-                        f.write("  - conf95: 95% confidence (softmax probability)\n")
-                        f.write("  - logit3.2: Maximum logit value (raw model output)\n")
-                        f.write("  - KO_1096-01: Predicted class\n")
+                    f.write("Example: image_name_conf95_logit3.2-KO_1096-01.png\n")
+                    f.write("  - conf95: 95% confidence (softmax probability)\n")
+                    f.write("  - logit3.2: Maximum logit value (raw model output)\n")
+                    f.write("  - KO_1096-01: Predicted class\n")
                 
                 f.write("\n")
             
@@ -1004,11 +926,11 @@ class ClassSorter:
             print(f"Correct predictions: {self.stats['correct_predictions']} ({self.stats['correct_predictions']/self.stats['total_processed']:.2%})")
             
             if self.filter_mode == 'confidence_only':
-                print(f"Images passing confidence criteria: {self.stats.get('passed_confidence', 0)}")
+                print(f"Images passing confidence threshold: {self.stats.get('passed_confidence', 0)}")
             elif self.filter_mode == 'logits_only':
                 print(f"Images passing logit threshold: {self.stats.get('passed_logits', 0)}")
             elif self.filter_mode == 'combined':
-                print(f"Images passing both criteria: {self.stats.get('passed_both', 0)}")
+                print(f"Images passing both thresholds: {self.stats.get('passed_both', 0)}")
             
             print(f"Images selected: {total_selected}")
             print(f"Output directory: {self.output_dir}")

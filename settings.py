@@ -146,9 +146,9 @@ setting = {
     "ko_lines": ["KO_1096-01", "KO_1618-01", "KO_BR2986", "KO_BR3075"],
     # Define classes
     # 2 classes (WT and KO):
-    # "classes": ["KO", "WT"],
+    "classes": ["KO", "WT"],
     # 9 classes (one for each cell line):
-    "classes": ["KO_1096-01", "KO_1618-01", "KO_BR2986", "KO_BR3075", "WT_1618-02", "WT_JG", "WT_JT", "WT_KM", "WT_MS"],
+    # "classes": ["KO_1096-01", "KO_1618-01", "KO_BR2986", "KO_BR3075", "WT_1618-02", "WT_JG", "WT_JT", "WT_KM", "WT_MS"],
 
     #########
     # MODEL #
@@ -198,18 +198,21 @@ setting = {
     # Set to True, if checkpoints shall be saved during training
     "chckpt_save": True,  
     # Mininmun validation accuracy from which on checkpoints are saved
-    "chckpt_min_acc": 0.25,  # 0.8 for 2 classes, 0.6 for 9 classess
+    "chckpt_min_acc": 0.8,  # 0.8 for 2 classes, 0.6 for 9 classess
 
     ################
     # CLASS SORTER #
     ################
 
-    # Selection mode and value: "top_n" or "threshold"
-    "sort_selection_mode": "threshold", 
-    # Number of images for top_n, or threshold value (0.0-1.0) 
-    "sort_selection_value": 0.55, 
+    # Selection mode and value: "top_n", "threshold" or "interval"
+    "sort_selection_mode": "interval", 
+    # Number of images for top_n, or threshold value
+    # If sort_selection_mode is "top_n", this selects the top X most confident images per class (e.g. 50)
+    # If sort_selection_mode is "threshold", this needs to be a single number (e.g. 0.2) 
+    # If sort_selection_mode is "interval", this needs to be a list of min/max values (e.g. [0.2, 0.8])
+    "sort_selection_value": [0.55, 0.95], 
     # Filter criteria: 'confidence_only', 'logits_only', or 'combined'
-    'sort_filter_mode': 'confidence_only',
+    'sort_filter_mode': 'combined',
     # Minimum max_logit value to keep
     "sort_logit_threshold": 0.0,
     # Rename files with either confidence scores, logit values, or both
