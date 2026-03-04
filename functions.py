@@ -74,9 +74,11 @@ def create_prg_folders():
     # Other folders
     setting["pth_checkpoint"].mkdir(parents=True, exist_ok=True)
     setting["pth_plots"].mkdir(parents=True, exist_ok=True)
-    setting["pth_ds_gen_input"].mkdir(parents=True, exist_ok=True)
-    setting["pth_ds_gen_output"].mkdir(parents=True, exist_ok=True)
     setting["pth_prediction"].mkdir(parents=True, exist_ok=True)
+    setting["pth_ds_gen_input_synthetic"].mkdir(parents=True, exist_ok=True)
+    setting["pth_ds_gen_input_real"].mkdir(parents=True, exist_ok=True)
+    setting["pth_ds_gen_input_mixed"].mkdir(parents=True, exist_ok=True)
+    setting["pth_ds_gen_output"].mkdir(parents=True, exist_ok=True)
     
     return True
 
