@@ -42,7 +42,19 @@ Output Files:
 3. selection_config.json - Configuration used
 4. logit_statistics.json - Detailed logit distribution analysis
 5. README.txt - Complete documentation of the filtering process
-6. statistics.txt - Universal confidence and logit interval statistics
+
+Best order to filter synthetic FLUX.1 images:
+RUN 1: Logit threshold for 9 classes
+  • Filter: max_logit >= 0.0
+  • Purpose: Remove biologically uncertain cell line predictions
+
+RUN 2: Confidence threshold for 9 classes  
+  • Filter: confidence >= 0.2 (or similar)
+  • Purpose: Select high-confidence cell line predictions
+
+RUN 3: Confidence threshold for 2 classes
+  • Filter: confidence >= 0.55 (or similar)
+  • Purpose: Validate WT vs KO genotype
 """
 
 import torch
@@ -84,14 +96,6 @@ class ClassSorter:
         self.filter_mode = setting['sort_filter_mode']
         self.confidence_threshold = setting['sort_selection_value'] if self.selection_mode == 'threshold' else None
         self.logit_threshold = setting['sort_logit_threshold']
-
-        # Confidence intervals (in percentage points, e.g., [10,20,30,...,90])
-        # These will be moved to settings file later
-        self.sort_intervals = setting.get('sort_intervals', [10, 20, 30, 40, 50, 60, 70, 80, 90])
-        # Logit intervals - values that make sense for your model's logit range
-        # Based on your model's typical logit values (-10 to +10 range)
-        self.logit_intervals = setting.get('logit_intervals', [-10, -5, -2, 0, 2, 5, 10])
-        
         # Paths
         self.pth_prediction = setting['pth_prediction'].resolve()
         self.sort_output_dir = setting['pth_sort_output'].resolve()
@@ -136,111 +140,8 @@ class ClassSorter:
             'passed_both': 0,
             'per_class': {cls: {'total': 0, 'correct': 0, 'selected': 0} for cls in self.classes}
         }
-        
-        self.interval_stats = {
-            'confidence_intervals': self._create_interval_buckets(self.sort_intervals),
-            'logit_intervals': self._create_logit_buckets(self.logit_intervals),
-            'per_class_confidence': {cls: self._create_interval_buckets(self.sort_intervals) for cls in self.classes},
-            'per_class_logits': {cls: self._create_logit_buckets(self.logit_intervals) for cls in self.classes}
-        }
-        
         # Display configuration
         self._print_configuration()
-    
-    def _create_interval_buckets(self, intervals):
-        """Create bucket structure for confidence intervals"""
-        buckets = {}
-        
-        # Add buckets for each interval
-        for i in range(len(intervals) - 1):
-            lower = intervals[i]
-            upper = intervals[i + 1]
-            bucket_name = f"{lower}-{upper}"
-            buckets[bucket_name] = 0
-        
-        # Add bucket for < min
-        buckets[f"<{intervals[0]}"] = 0
-        
-        # Add bucket for >= max
-        buckets[f">={intervals[-1]}"] = 0
-        
-        return buckets
-    
-    """
-    def _create_logit_buckets(self, intervals):
-
-        buckets = {}
-        
-        # Add buckets for each interval
-        for i in range(len(intervals) - 1):
-            lower = intervals[i]
-            upper = intervals[i + 1]
-            bucket_name = f"{lower}-{upper}"
-            buckets[bucket_name] = 0
-        
-        # Add bucket for < min
-        buckets[f"<{intervals[0]}"] = 0
-        
-        # Add bucket for >= max
-        buckets[f">={intervals[-1]}"] = 0
-        
-        return buckets
-    """
-    def _create_logit_buckets(self, intervals):
-        """Create bucket structure for logit intervals"""
-        buckets = {}
-        
-        # Add buckets for each interval
-        for i in range(len(intervals) - 1):
-            lower = intervals[i]
-            upper = intervals[i + 1]
-            bucket_name = f"{lower}-{upper}"
-            buckets[bucket_name] = 0
-        
-        # Add bucket for < min
-        min_bucket = f"<{intervals[0]}"
-        buckets[min_bucket] = 0
-        
-        # Add bucket for >= max
-        max_bucket = f">={intervals[-1]}"
-        buckets[max_bucket] = 0
-        
-        return buckets
-    
-    def _assign_to_confidence_bucket(self, confidence):
-        """Assign a confidence value to the appropriate bucket"""
-        confidence_pct = confidence * 100  # Convert to percentage
-        
-        # Check if below minimum
-        if confidence_pct < self.sort_intervals[0]:
-            return f"<{self.sort_intervals[0]}"
-        
-        # Check each interval
-        for i in range(len(self.sort_intervals) - 1):
-            lower = self.sort_intervals[i]
-            upper = self.sort_intervals[i + 1]
-            if lower <= confidence_pct < upper:
-                return f"{lower}-{upper}"
-        
-        # If we get here, it's >= max
-        return f">={self.sort_intervals[-1]}"
-    
-    def _assign_to_logit_bucket(self, logit_value):
-        """Assign a logit value to the appropriate bucket"""
-        
-        # Check if below minimum
-        if logit_value < self.logit_intervals[0]:
-            return f"<{self.logit_intervals[0]}"
-        
-        # Check each interval
-        for i in range(len(self.logit_intervals) - 1):
-            lower = self.logit_intervals[i]
-            upper = self.logit_intervals[i + 1]
-            if lower <= logit_value < upper:
-                return f"{lower}-{upper}"
-        
-        # If we get here, it's >= max
-        return f">={self.logit_intervals[-1]}"
     
     # Validate the loaded configuration
     def _validate_configuration(self):
@@ -369,10 +270,6 @@ class ClassSorter:
                 print(f"Top N images: {self.selection_value} per class")
                 print(f"Logit threshold: max_logit >= {self.logit_threshold}")
                 print(f"Note: First filter by logit threshold, then sort remaining by confidence")
-        
-        print(f"\nUniversal Statistics:")
-        print(f"  Confidence intervals: {self.sort_intervals}")
-        print(f"  Logit intervals: {self.logit_intervals}")
         
         print(f"\nNumber of classes: {len(self.classes)}")
         print(f"Classes: {', '.join(self.classes)}")
@@ -520,17 +417,6 @@ class ClassSorter:
                         max_logit = current_logits.max()
                         min_logit = current_logits.min()
                         logit_range = max_logit - min_logit
-
-                        confidence_bucket = self._assign_to_confidence_bucket(confidence)
-                        logit_bucket = self._assign_to_logit_bucket(max_logit)
-                        
-                        # Update global interval stats
-                        self.interval_stats['confidence_intervals'][confidence_bucket] += 1
-                        self.interval_stats['logit_intervals'][logit_bucket] += 1
-                        
-                        # Update per-class interval stats
-                        self.interval_stats['per_class_confidence'][class_name][confidence_bucket] += 1
-                        self.interval_stats['per_class_logits'][class_name][logit_bucket] += 1
                         
                         # Check if image passes filters
                         passes_confidence = True
@@ -583,9 +469,7 @@ class ClassSorter:
                             'passes_confidence': passes_confidence,
                             'passes_logits': passes_logits,
                             'passes_both': passes_confidence and passes_logits,
-                            'all_logits': current_logits.tolist(),
-                            'confidence_bucket': confidence_bucket,
-                            'logit_bucket': logit_bucket
+                            'all_logits': current_logits.tolist()
                         }
                         
                         # Update statistics
@@ -777,187 +661,7 @@ class ClassSorter:
                     print(f"Error copying {src_path}: {e}")
         
         print(f"\nSuccessfully copied {total_copied} images to {self.output_dir}")
-
-    def _save_interval_statistics(self):
-        """Save confidence and logit interval statistics to a text file"""
-        
-        stats_path = self.output_dir / "statistics.txt"
-        
-        """
-        print("\n" + "="*50)
-        print("DEBUG: Logit intervals dictionary keys:")
-        for key in self.interval_stats['logit_intervals'].keys():
-            print(f"  '{key}' (length: {len(key)})")
-        print("="*50 + "\n")
-        """
-        
-        # Clean the dictionaries
-        if '' in self.interval_stats['logit_intervals']:
-            print(f"Warning: Found empty string key in logit_intervals, removing it")
-            del self.interval_stats['logit_intervals']['']
-        
-        for class_name in self.classes:
-            if '' in self.interval_stats['per_class_logits'][class_name]:
-                print(f"Warning: Found empty string key in per_class_logits for {class_name}, removing it")
-                del self.interval_stats['per_class_logits'][class_name]['']
-        
-        with open(stats_path, 'w', encoding='utf-8') as f:
-            f.write("=" * 70 + "\n")
-            f.write("CLASS SORTER - UNIVERSAL IMAGE STATISTICS\n")
-            f.write("=" * 70 + "\n\n")
-            
-            f.write(f"Analysis Date: {pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
-            f.write(f"Model Checkpoint: {self.loaded_checkpoint_name}\n")
-            f.write(f"Total Images Processed: {self.stats['total_processed']}\n")
-            f.write(f"Overall Accuracy: {self.stats['correct_predictions']/self.stats['total_processed']:.2%}\n\n")
-            
-            # Confidence Intervals
-            f.write("-" * 70 + "\n")
-            f.write("CONFIDENCE DISTRIBUTION (all images, all classes)\n")
-            f.write("-" * 70 + "\n")
-            f.write(f"Intervals defined as: {self.sort_intervals}\n\n")
-            
-            total = self.stats['total_processed']
-            cumulative = 0
-            
-            # Sort buckets in logical order
-            confidence_keys = [k for k in self.interval_stats['confidence_intervals'].keys() if k]
-            bucket_order = sorted(confidence_keys, 
-                                key=lambda x: (
-                                    -float('inf') if x.startswith('<') else 
-                                    (float('inf') if x.startswith('>=') else float(x.split('-')[0]))
-                                ))
-            
-            for bucket in bucket_order:
-                count = self.interval_stats['confidence_intervals'][bucket]
-                percentage = (count / total * 100) if total > 0 else 0
-                cumulative += count
-                cum_percentage = (cumulative / total * 100) if total > 0 else 0
-                
-                # Create a simple histogram bar
-                bar_length = int(percentage / 2)
-                bar = "#" * bar_length
-                
-                f.write(f"{bucket:>10} : {count:6d} images ({percentage:5.1f}%) {bar}\n")
-                f.write(f"           Cumulative: {cumulative:6d} ({cum_percentage:5.1f}%)\n\n")
-            
-            # Per-class confidence intervals
-            f.write("\n" + "-" * 70 + "\n")
-            f.write("PER-CLASS CONFIDENCE DISTRIBUTION\n")
-            f.write("-" * 70 + "\n\n")
-            
-            for class_name in self.classes:
-                class_total = self.stats['per_class'][class_name]['total']
-                if class_total == 0:
-                    continue
-                    
-                f.write(f"\n{class_name} (Total: {class_total} images):\n")
-                f.write("=" * 40 + "\n")
-                
-                for bucket in bucket_order:
-                    count = self.interval_stats['per_class_confidence'][class_name].get(bucket, 0)
-                    percentage = (count / class_total * 100) if class_total > 0 else 0
-                    
-                    bar_length = int(percentage / 2)
-                    bar = "#" * bar_length
-                    
-                    f.write(f"{bucket:>10} : {count:4d} ({percentage:5.1f}%) {bar}\n")
-            
-            # Logit Intervals
-            f.write("\n\n" + "-" * 70 + "\n")
-            f.write("LOGIT DISTRIBUTION (max_logit values, all images, all classes)\n")
-            f.write("-" * 70 + "\n")
-            f.write(f"Intervals defined as: {self.logit_intervals}\n\n")
-            f.write("Interpretation of max_logit values:\n")
-            f.write("  • > 0: Positive evidence (model thinks it belongs)\n")
-            f.write("  • > 2: Quite confident\n")
-            f.write("  • > 5: Very confident\n")
-            f.write("  • < 0: Negative evidence (uncertain/does not belong)\n")
-            f.write("  • < -2: Strong negative evidence\n\n")
-            
-            total = self.stats['total_processed']
-            cumulative = 0
-
-            # Get all logit keys and print them for debugging
-            logit_keys_raw = list(self.interval_stats['logit_intervals'].keys())
-            # print(f"DEBUG: Raw logit keys before filtering: {logit_keys_raw}")
-
-            # Filter out empty strings and None
-            logit_keys = []
-            for key in logit_keys_raw:
-                if key is None:
-                    # print(f"DEBUG: Found None key, skipping")
-                    continue
-                if key == '':
-                    # print(f"DEBUG: Found empty string key, skipping")
-                    continue
-                logit_keys.append(key)
-            
-            # print(f"DEBUG: Filtered logit keys: {logit_keys}")
-            
-            # Sort logit buckets
-            logit_bucket_order = sorted(logit_keys,
-                                    key=lambda x: (
-                                        -float('inf') if x.startswith('<') else 
-                                        (float('inf') if x.startswith('>=') else 
-                                            # Handle negative numbers correctly
-                                            float(x.split('-')[0] if x[0] != '-' else '-' + x.split('-')[1]))
-                                    ))
-            
-            for bucket in logit_bucket_order:
-                count = self.interval_stats['logit_intervals'][bucket]
-                percentage = (count / total * 100) if total > 0 else 0
-                cumulative += count
-                cum_percentage = (cumulative / total * 100) if total > 0 else 0
-                
-                bar_length = int(percentage / 2)
-                bar = "#" * bar_length
-                
-                f.write(f"{bucket:>10} : {count:6d} images ({percentage:5.1f}%) {bar}\n")
-                f.write(f"           Cumulative: {cumulative:6d} ({cum_percentage:5.1f}%)\n\n")
-            
-            # Per-class logit intervals
-            f.write("\n" + "-" * 70 + "\n")
-            f.write("PER-CLASS LOGIT DISTRIBUTION\n")
-            f.write("-" * 70 + "\n\n")
-            
-            for class_name in self.classes:
-                class_total = self.stats['per_class'][class_name]['total']
-                if class_total == 0:
-                    continue
-                    
-                f.write(f"\n{class_name} (Total: {class_total} images):\n")
-                f.write("=" * 40 + "\n")
-                
-                for bucket in logit_bucket_order:
-                    count = self.interval_stats['per_class_logits'][class_name].get(bucket, 0)
-                    percentage = (count / class_total * 100) if class_total > 0 else 0
-                    
-                    bar_length = int(percentage / 2)
-                    bar = "#" * bar_length
-                    
-                    f.write(f"{bucket:>10} : {count:4d} ({percentage:5.1f}%) {bar}\n")
-            
-            # Summary statistics
-            f.write("\n\n" + "=" * 70 + "\n")
-            f.write("SUMMARY STATISTICS\n")
-            f.write("=" * 70 + "\n\n")
-            
-            f.write("Note: For detailed per-image statistics including mean/median values,\n")
-            f.write("      please refer to selection_statistics.csv and selected_images_details.csv\n\n")
-            
-            # Selection criteria summary
-            f.write("Selection Criteria Used:\n")
-            f.write(f"  • Selection Mode: {self.selection_mode}\n")
-            f.write(f"  • Selection Value: {self.selection_value}\n")
-            f.write(f"  • Filter Mode: {self.filter_mode}\n")
-            f.write(f"  • Logit Threshold: {self.logit_threshold}\n\n")
-            
-            f.write("=" * 70 + "\n")
-        
-        print(f"Saved universal statistics to: {stats_path}")
-        return stats_path
-
+    
     # Save statistics and configuration to CSV and JSON files
     def save_statistics(self, class_image_data: Dict[str, List[Dict]], 
                        selected_images: Dict[str, List[Dict]]):
@@ -1017,9 +721,7 @@ class ClassSorter:
                     'passes_confidence': img_data.get('passes_confidence', True),
                     'passes_logits': img_data.get('passes_logits', True),
                     'passes_both': img_data.get('passes_both', True),
-                    'all_logits': img_data.get('all_logits', []),
-                    'confidence_bucket': img_data.get('confidence_bucket', ''),
-                    'logit_bucket': img_data.get('logit_bucket', '')
+                    'all_logits': img_data.get('all_logits', [])
                 })
         
         if detailed_data:
@@ -1046,9 +748,7 @@ class ClassSorter:
             'passed_logits': self.stats.get('passed_logits', 0),
             'passed_both': self.stats.get('passed_both', 0),
             'overall_accuracy': self.stats['correct_predictions'] / self.stats['total_processed'] if self.stats['total_processed'] > 0 else 0,
-            'rename_images': self.rename_images,
-            'sort_intervals': self.sort_intervals,
-            'logit_intervals': self.logit_intervals
+            'rename_images': self.rename_images
         }
         
         config_json_path = self.output_dir / "selection_config.json"
@@ -1056,12 +756,12 @@ class ClassSorter:
             json.dump(config, f, indent=2)
         print(f"Saved configuration to: {config_json_path}")
         
-        # Save logit and interval statistics summary
+        # Save logit statistics summary
         self._save_logit_statistics(class_image_data, selected_images)
-        self._save_interval_statistics()
-
+    
     # Save detailed logit statistics
-    def _save_logit_statistics(self, class_image_data: Dict[str, List[Dict]], selected_images: Dict[str, List[Dict]]):
+    def _save_logit_statistics(self, class_image_data: Dict[str, List[Dict]], 
+                              selected_images: Dict[str, List[Dict]]):
         """Save detailed logit statistics to JSON file"""
         
         logit_stats = {
@@ -1140,7 +840,7 @@ class ClassSorter:
                     f.write(f"Confidence threshold: >= {self.selection_value:.3f}\n")
                 elif self.selection_mode == 'interval':
                     f.write(f"Confidence interval: {self.confidence_min:.3f} <= confidence <= {self.confidence_max:.3f}\n")
-                else:  
+                else:  # top_n
                     f.write(f"Top N images: {self.selection_value} per class (sorted by confidence)\n")
             
             elif self.filter_mode == 'logits_only':
@@ -1150,7 +850,7 @@ class ClassSorter:
                     f.write(f"Note: Filtering by LOGITS ONLY - confidence threshold is NOT applied\n")
                 elif self.selection_mode == 'interval':
                     f.write(f"Note: Filtering by LOGITS ONLY - confidence interval is NOT applied\n")
-                else:
+                else:  # top_n
                     f.write(f"Top N images: {self.selection_value} per class (sorted by logit value)\n")
             
             elif self.filter_mode == 'combined':
@@ -1162,7 +862,7 @@ class ClassSorter:
                 elif self.selection_mode == 'interval':
                     f.write(f"Confidence interval: {self.confidence_min:.3f} <= confidence <= {self.confidence_max:.3f}\n")
                     f.write(f"Note: Images must pass BOTH the confidence interval AND logit threshold\n")
-                else:
+                else:  # top_n
                     f.write(f"Top N images: {self.selection_value} per class\n")
                     f.write(f"Note: First filter by logit threshold, then sort remaining by confidence\n")
             
@@ -1312,8 +1012,6 @@ class ClassSorter:
             
             print(f"Images selected: {total_selected}")
             print(f"Output directory: {self.output_dir}")
-            print(f"\nUniversal statistics saved to: {self.output_dir / 'statistics.txt'}")
-            
             print(f"\nReady for LoRA training with clean, high-confidence examples!")
             
             return self.output_dir
