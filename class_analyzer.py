@@ -97,7 +97,7 @@ class ClassAnalyzer:
 
         # File naming options - UPDATED to match class_sorter.py
         self.rename_with_confidence = setting['analyze_rename_with_confidence']
-        # NEW: Option to include logits in renamed filenames
+        # Option to include logits in renamed filenames
         self.include_logits_in_rename = setting.get('analyze_include_logits_in_rename', False)
         
         # Validate setting types
