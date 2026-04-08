@@ -1,65 +1,14 @@
 """
 ClassSorter - High-Confidence Image Selection for LoRA Training
-================================================================================
 
-Purpose:
---------
 This script analyzes images using a trained CNN model to select the highest-confidence
 examples for each class. It creates a filtered dataset ideal for training conditional LoRAs.
 
-Key Features:
--------------
-1. **Flexible Input Structure**: Works with ANY folder organization:
-   - Images can be in nested subfolders (any depth)
-   - Images can be directly in the prediction folder
-   - Folder names are ignored unless they match known classes
-
-2. **Smart Ground Truth Detection**:
-   - If an image is in a folder named after a known class (from settings), 
-     that folder name is used as the true class for accuracy checking
-   - If an image is in an unknown folder (not in class list) OR directly in root,
-     no ground truth is available and all predictions are accepted
-
-3. **Intelligent Filtering**: 
-   - Logit threshold filtering (removes uncertain predictions)
-   - Confidence-based filtering (softmax probability)
-   - Combined mode for maximum quality
-
-4. **Multiple Selection Modes**:
-   - 'top_n': Select top N most confident images per class
-   - 'threshold': Select all images with confidence >= threshold
-   - 'interval': Select all images with confidence between min and max values
-
-5. **Comprehensive Output**:
-   - Organizes selected images into class folders (named from settings)
-   - Saves detailed statistics (CSV, JSON)
-   - Creates README with complete documentation
-   - Generates universal statistics (confidence & logit distributions)
-
-How Ground Truth Detection Works:
----------------------------------
-The script determines true class labels ONLY from parent folder names that match 
-known classes from your settings file:
-
-Example 1 - Known Class Folder (Ground Truth Available):
-    prediction/WT_KM/cell.png → True class = "WT_KM" (if "WT_KM" in settings classes)
-    → Prediction checked for correctness before selection
-
-Example 2 - Unknown Folder (No Ground Truth):
-    prediction/unknown_folder/cell.png → True class = None (folder not in class list)
-    → All predictions accepted regardless of "correctness"
-
-Example 3 - Root Directory (No Ground Truth):
-    prediction/cell.png → True class = None (no parent folder)
-    → All predictions accepted regardless of "correctness"
-
-This design gives you maximum flexibility:
-- Use known class folders for validation/accuracy tracking
-- Use any other folder structure for unlabeled data
-- Mix both types freely in the same input directory
+The script works with images organized in class folders within a prediction directory.
+It predicts each image's class, keeps only correctly predicted ones, and selects the
+most confident examples based on the chosen selection mode.
 
 Logit Threshold Filtering:
--------------------------
 Problem: Softmax creates forced probability distributions even when model is uncertain.
 Example: Logits [-2, -1.8, -1.9] → Softmax [0.25, 0.45, 0.3] shows "45% confidence"
          but the model is actually uncertain (all logits are negative).
@@ -69,30 +18,31 @@ Solution: Use logit threshold to filter out images where max_logit < threshold.
 • max_logit < 0: Model is uncertain or thinks it does NOT belong (negative evidence)
 • Recommended threshold: 0.0 (filters out all negative-evidence images)
 
+Features:
+1. Works with arbitrary number of classes (2, 9, or more)
+2. Three selection modes: Top N images, confidence threshold, or confidence interval
+3. Three filtering options: confidence_only, logits_only, or combined
+4. Only keeps correctly predicted images
+5. Automatically renames files with appropriate metrics based on filter mode
+6. Creates organized output folder structure with comprehensive statistics
+
+Selection Modes:
+1. 'top_n': Select top N most confident images per class
+2. 'threshold': Select all images with confidence >= threshold
+3. 'interval': Select all images with confidence between min and max values (inclusive)
+
+Filtering Options:
+1. 'confidence_only': Filter only by softmax confidence
+2. 'logits_only': Filter only by max_logit threshold  
+3. 'combined': Require BOTH confidence AND logit thresholds
+
 Output Files:
--------------
-output_dir/
-├── [class_folders]/        # Selected images organized by predicted class
-├── selection_statistics.csv    # Per-class statistics
-├── selected_images_details.csv # Detailed info for each selected image
-├── selection_config.json       # Configuration used
-├── logit_statistics.json       # Detailed logit distribution analysis
-├── README.txt                  # Complete documentation
-└── statistics.txt              # Universal confidence and logit statistics
-
-Settings (from settings file):
-------------------------------
-- classes: List of class names (output folders and ground truth reference)
-- sort_selection_mode: 'top_n', 'threshold', or 'interval'
-- sort_selection_value: N (int), threshold (float), or [min, max] (list)
-- sort_filter_mode: 'confidence_only', 'logits_only', or 'combined'
-- sort_logit_threshold: Float value for logit filtering
-- sort_rename_images: Boolean for filename formatting
-- sort_pred_batch_size: Batch size for inference
-
-Author: [Your Name/Project]
-Date: [Current Date]
-Project: Fibroblast LoRA Training - Synthetic Data Curation
+1. selection_statistics.csv - Per-class statistics
+2. selected_images_details.csv - Detailed info for each selected image
+3. selection_config.json - Configuration used
+4. logit_statistics.json - Detailed logit distribution analysis
+5. README.txt - Complete documentation of the filtering process
+6. statistics.txt - Universal confidence and logit interval statistics
 """
 
 import torch
@@ -101,7 +51,7 @@ import shutil
 from torch.utils.data import DataLoader, Subset
 from tqdm import tqdm
 from pathlib import Path
-from typing import List, Dict, Union, Tuple, Optional
+from typing import List, Dict, Union
 import json
 import numpy as np
 # Own modules
@@ -136,8 +86,10 @@ class ClassSorter:
         self.logit_threshold = setting['sort_logit_threshold']
 
         # Confidence intervals (in percentage points, e.g., [10,20,30,...,90])
+        # These will be moved to settings file later
         self.sort_intervals = setting.get('sort_intervals', [10, 20, 30, 40, 50, 60, 70, 80, 90])
         # Logit intervals - values that make sense for your model's logit range
+        # Based on your model's typical logit values (-10 to +10 range)
         self.logit_intervals = setting.get('logit_intervals', [-10, -5, -2, 0, 2, 5, 10])
         
         # Paths
@@ -145,18 +97,12 @@ class ClassSorter:
         self.sort_output_dir = setting['pth_sort_output'].resolve()
         # Model checkpoint path
         self.pth_checkpoint = setting['pth_checkpoint'].resolve()
-        # List of class names (from settings - these are the OUTPUT class folders)
+        # List of class names
         self.classes = setting['classes']  
         # Inference batch size
         self.batch_size_pred = setting['sort_pred_batch_size']  
         # File naming option
         self.rename_images = setting['sort_rename_images']
-        
-        # Track ground truth availability
-        self.has_ground_truth = False
-        self.true_class_mapping = {}  # Maps image path -> true class name (only if folder matches known class)
-        self.unknown_folders = set()  # Track folders not in class list
-        self.known_folders = set()    # Track folders that match class list
         
         # Validate configuration
         self._validate_configuration()
@@ -220,6 +166,26 @@ class ClassSorter:
         
         return buckets
     
+    """
+    def _create_logit_buckets(self, intervals):
+
+        buckets = {}
+        
+        # Add buckets for each interval
+        for i in range(len(intervals) - 1):
+            lower = intervals[i]
+            upper = intervals[i + 1]
+            bucket_name = f"{lower}-{upper}"
+            buckets[bucket_name] = 0
+        
+        # Add bucket for < min
+        buckets[f"<{intervals[0]}"] = 0
+        
+        # Add bucket for >= max
+        buckets[f">={intervals[-1]}"] = 0
+        
+        return buckets
+    """
     def _create_logit_buckets(self, intervals):
         """Create bucket structure for logit intervals"""
         buckets = {}
@@ -275,108 +241,6 @@ class ClassSorter:
         
         # If we get here, it's >= max
         return f">={self.logit_intervals[-1]}"
-    
-    def _analyze_folder_structure(self):
-        """
-        Analyze the input folder structure to determine ground truth availability.
-        Only uses folder names as ground truth if they match a known class from settings.
-        Unknown folders are treated as unlabeled (no ground truth).
-        """
-        print("\n" + "="*60)
-        print("Analyzing input folder structure...")
-        print("="*60)
-        
-        true_class_mapping = {}
-        unknown_folders = set()
-        known_folders = set()
-        
-        # Convert class list to set for faster lookup
-        known_classes_set = set(self.classes)
-        
-        # Recursively find all image files and determine ground truth
-        all_images = self._get_all_image_files_recursive(self.pth_prediction)
-        
-        for img_path in all_images:
-            # Get the parent folder name (if any)
-            parent_folder = img_path.parent
-            folder_name = parent_folder.name if parent_folder != self.pth_prediction else None
-            
-            # Determine if we have ground truth for this image
-            if folder_name and folder_name in known_classes_set:
-                # Image is in a folder that matches a known class
-                true_class_mapping[str(img_path)] = folder_name
-                known_folders.add(folder_name)
-            else:
-                # Image is either:
-                # 1. Directly in root folder (no parent folder)
-                # 2. In an unknown folder (folder name not in class list)
-                true_class_mapping[str(img_path)] = None
-                if folder_name and folder_name not in known_classes_set:
-                    unknown_folders.add(folder_name)
-        
-        self.has_ground_truth = len([v for v in true_class_mapping.values() if v is not None]) > 0
-        self.true_class_mapping = true_class_mapping
-        self.unknown_folders = unknown_folders
-        self.known_folders = known_folders
-        
-        # Print analysis results
-        total_images = len(all_images)
-        images_with_gt = sum(1 for v in true_class_mapping.values() if v is not None)
-        images_without_gt = total_images - images_with_gt
-        
-        print(f"\n📊 Folder Structure Analysis:")
-        print(f"   Total images found: {total_images}")
-        print(f"   Images with ground truth (in known class folders): {images_with_gt}")
-        print(f"   Images without ground truth (root or unknown folders): {images_without_gt}")
-        
-        if known_folders:
-            print(f"\n✅ Known class folders detected (will use for accuracy checking):")
-            for folder in sorted(known_folders):
-                count = sum(1 for k, v in true_class_mapping.items() if v == folder)
-                print(f"   - {folder}/ ({count} images)")
-        
-        if unknown_folders:
-            print(f"\n⚠️  Unknown folders detected (will be treated as unlabeled):")
-            for folder in sorted(unknown_folders):
-                count = sum(1 for img_path in all_images 
-                           if img_path.parent.name == folder and str(img_path) in true_class_mapping)
-                print(f"   - {folder}/ ({count} images) - NOT in class list")
-            print(f"\n   → Images in these folders will be treated like root directory images")
-            print(f"   → All predictions will be accepted regardless of 'correctness'")
-        
-        if not known_folders:
-            print(f"\n📌 No known class folders found.")
-            print(f"   → All images will be treated as unlabeled (no ground truth)")
-            print(f"   → All predictions will be accepted for selection")
-        
-        return true_class_mapping
-    
-    def _get_all_image_files_recursive(self, folder_path: Path) -> List[Path]:
-        """Recursively get all image files from a folder and its subfolders"""
-        image_extensions = {'.png', '.jpg', '.jpeg', '.bmp', '.tiff', '.tif', '.gif', '.webp'}
-        image_files = []
-        
-        if not folder_path.exists():
-            return image_files
-        
-        try:
-            for item in folder_path.iterdir():
-                if item.is_dir():
-                    image_files.extend(self._get_all_image_files_recursive(item))
-                elif item.is_file() and item.suffix.lower() in image_extensions:
-                    image_files.append(item)
-        except PermissionError:
-            print(f"  WARNING: Permission denied accessing: {folder_path}")
-        
-        return image_files
-    
-    def get_true_class_for_image(self, image_path: str) -> Optional[str]:
-        """
-        Get the true class for an image.
-        Returns None if no ground truth available (image in root or unknown folder).
-        Returns class name only if parent folder matches a known class.
-        """
-        return self.true_class_mapping.get(image_path)
     
     # Validate the loaded configuration
     def _validate_configuration(self):
@@ -506,18 +370,17 @@ class ClassSorter:
                 print(f"Logit threshold: max_logit >= {self.logit_threshold}")
                 print(f"Note: First filter by logit threshold, then sort remaining by confidence")
         
-        print(f"\nOutput Classes (from settings): {len(self.classes)} classes")
-        print(f"  {', '.join(self.classes)}")
-        
         print(f"\nUniversal Statistics:")
         print(f"  Confidence intervals: {self.sort_intervals}")
         print(f"  Logit intervals: {self.logit_intervals}")
         
+        print(f"\nNumber of classes: {len(self.classes)}")
+        print(f"Classes: {', '.join(self.classes)}")
         print(f"Rename images: {self.rename_images}")
         if self.rename_images:
             print(f"  Filename format: Auto-matched to filter mode")
         print(f"Checkpoint directory: {self.pth_checkpoint}")
-        print(f"{'='*60}\n")
+        print(f"{'='=}\n")
     
     # Load model weights from a selected checkpoint
     def _load_checkpoint(self):
@@ -543,38 +406,20 @@ class ClassSorter:
         else:
             # Show interactive table for multiple checkpoints
             print(f"\nFound {len(checkpoint_files)} checkpoints:")
-            print("-" * 100)
-            print(f"{'ID':<5} {'Checkpoint File':<60} {'Size (MB)':<10} {'Info':<20}")
-            print("-" * 100)
+            print("-" * 80)
+            print(f"{'ID':<5} {'Checkpoint File':<60} {'Size (MB)':<10}")
+            print("-" * 80)
             
             for idx, file in enumerate(checkpoint_files, 1):
                 size_mb = file.stat().st_size / (1024 * 1024)
-                # Try to infer number of classes from filename (common naming pattern)
-                filename_lower = file.name.lower()
-                if '2class' in filename_lower or '2_class' in filename_lower or 'binary' in filename_lower:
-                    info = "Likely 2-class"
-                elif '9class' in filename_lower or '9_class' in filename_lower or 'multiclass' in filename_lower:
-                    info = "Likely 9-class"
-                else:
-                    info = "Unknown"
-                print(f"{idx:<5} {file.name:<60} {size_mb:<10.1f} {info:<20}")
+                print(f"{idx:<5} {file.name:<60} {size_mb:.1f}")
             
-            print("-" * 100)
-            
-            # SHOW CURRENT SETTINGS CLASS COUNT
-            print(f"\n{'!'*60}")
-            print(f"CURRENT SETTINGS: {len(self.classes)} CLASSES DEFINED")
-            print(f"Classes: {', '.join(self.classes)}")
-            print(f"{'!'*60}")
-            print("\nMake sure you select a checkpoint trained for the correct number of classes!")
-            print("  - For 2 classes (WT/KO): Select a binary classifier checkpoint")
-            print("  - For 9 classes (cell lines): Select a multi-class checkpoint")
-            print()
+            print("-" * 80)
             
             # Let user select
             while True:
                 try:
-                    choice = input("Select a checkpoint (enter ID): ").strip()
+                    choice = input("\nSelect a checkpoint (enter ID): ").strip()
                     if not choice:
                         print("No selection made. Using untrained weights.")
                         self.checkpoint_loaded = False
@@ -592,31 +437,7 @@ class ClassSorter:
                     print("Invalid input. Please enter a number.")
         
         try:
-            # Load checkpoint and verify class compatibility
-            checkpoint = torch.load(checkpoint_file, map_location=self.device)
-            
-            # Try to infer number of classes from checkpoint
-            if hasattr(self.cnn, 'fc'):
-                # For standard CNN with fc layer
-                checkpoint_num_classes = None
-                if 'fc.weight' in checkpoint:
-                    checkpoint_num_classes = checkpoint['fc.weight'].shape[0]
-                elif 'fc.bias' in checkpoint:
-                    checkpoint_num_classes = checkpoint['fc.bias'].shape[0]
-                
-                if checkpoint_num_classes is not None:
-                    if checkpoint_num_classes != len(self.classes):
-                        print(f"\n{'!'*60}")
-                        print(f"WARNING: Checkpoint has {checkpoint_num_classes} classes,")
-                        print(f"         but settings define {len(self.classes)} classes!")
-                        print(f"         This may cause errors or incorrect predictions.")
-                        print(f"{'!'*60}")
-                        proceed = input("\nContinue anyway? (y/n): ").strip().lower()
-                        if proceed != 'y':
-                            print("Aborting. Please select a compatible checkpoint or update settings.")
-                            return False
-            
-            self.cnn.load_state_dict(checkpoint)
+            self.cnn.load_state_dict(torch.load(checkpoint_file))
             self.checkpoint_loaded = True
             self.loaded_checkpoint_name = checkpoint_file.stem
             print(f"Successfully loaded weights from {checkpoint_file.name}")
@@ -635,23 +456,16 @@ class ClassSorter:
             print("WARNING: Using untrained weights!")
             return False
     
-    # Get indices of ALL images (no folder filtering)
-    def get_all_image_indices(self, dataset):
-        """Get indices of ALL images in the dataset (no folder filtering)"""
-        return list(range(len(dataset.samples)))
+    # Return indices of samples belonging to a specific folder
+    def get_folder_indices(self, dataset, folder_name):
+        return [i for i, (path, _) in enumerate(dataset.samples) 
+                if Path(path).parent.name == folder_name]
     
     # Analyze all images to collect confidence data for each class
     def analyze_images(self) -> Dict[str, List[Dict]]:
-        """
-        Analyze all images in the input directory (any folder structure).
-        Predicts class for each image and organizes by predicted class.
-        """
 
-        # First, analyze folder structure to determine ground truth availability
-        self._analyze_folder_structure()
-        
         print(f"\n{'='*60}")
-        print(f"Analyzing all images (any folder structure)")
+        print(f"Analyzing all {len(self.classes)} classes")
         print(f"Filter mode: {self.filter_mode}")
         print(f"Selection mode: {self.selection_mode}")
         if self.filter_mode in ['logits_only', 'combined']:
@@ -663,190 +477,158 @@ class ClassSorter:
                 print(f"Confidence interval: {self.confidence_min:.3f} <= confidence <= {self.confidence_max:.3f}")
         elif self.filter_mode == 'logits_only' and self.selection_mode in ['threshold', 'interval']:
             print(f"Filtering by LOGITS ONLY (no confidence filtering)")
-        
-        if not self.has_ground_truth:
-            print("\n📌 NOTE: No ground truth available for any images.")
-            print("      All predictions will be treated as 'correct' for selection.")
-        else:
-            print("\n📌 NOTE: Some images have ground truth (from known class folders).")
-            print("      Only correctly predicted images from those folders will be selected.")
-            print("      Images without ground truth (root/unknown folders) are always accepted.")
         print(f"{'='*60}")
         
-        # Dictionary to store all image data by PREDICTED class
+        # Dictionary to store all image data by true class
         class_image_data = {cls: [] for cls in self.classes}
         
-        # Get ALL image indices (no folder filtering)
-        all_indices = self.get_all_image_indices(self.ds.ds_pred.dataset)
-        
-        if not all_indices:
-            print("Warning: No images found in input directory!")
-            return class_image_data
-        
-        # Process all images in batches
-        subset = Subset(self.ds.ds_pred.dataset, all_indices)
-        loader = DataLoader(subset, batch_size=self.batch_size_pred, shuffle=False)
-        
-        self.cnn.eval()
-        with torch.no_grad():
-            pbar = tqdm(loader, desc=f"Analyzing images", unit="img")
+        # Process each class folder
+        for class_name in self.classes:
+            folder_indices = self.get_folder_indices(self.ds.ds_pred.dataset, class_name)
+            if not folder_indices:
+                print(f"Warning: No images found for class: {class_name}")
+                continue
             
-            for batch_idx, (images, _) in enumerate(pbar):
-                outputs = self.cnn(images.to(self.device))
-                
-                # Calculate softmax probabilities
-                probabilities = torch.nn.functional.softmax(outputs, dim=1)
-                confidences, predicted = torch.max(probabilities, 1)
-                
-                # Get raw logits for analysis
-                raw_logits = outputs.cpu().numpy()
-                
-                # Process each image in the batch
-                for i in range(len(images)):
-                    pred_class_idx = predicted[i].item()
-                    confidence = confidences[i].item()
-                    predicted_class = self.classes[pred_class_idx]
+            subset = Subset(self.ds.ds_pred.dataset, folder_indices)
+            loader = DataLoader(subset, batch_size=self.batch_size_pred, shuffle=False)
+            
+            self.cnn.eval()
+            with torch.no_grad():
+                pbar = tqdm(loader, desc=f"Analyzing {class_name}", unit="img")
+                for batch_idx, (images, _) in enumerate(pbar):
+                    outputs = self.cnn(images.to(self.device))
                     
-                    # Get the original image path
-                    sample_idx = all_indices[batch_idx * self.batch_size_pred + i]
-                    original_path = self.ds.ds_pred.dataset.samples[sample_idx][0]
+                    # Calculate softmax probabilities
+                    probabilities = torch.nn.functional.softmax(outputs, dim=1)
+                    confidences, predicted = torch.max(probabilities, 1)
                     
-                    # Get true class (if available from known folder)
-                    true_class = self.get_true_class_for_image(str(original_path))
+                    # Get raw logits for analysis
+                    raw_logits = outputs.cpu().numpy()
                     
-                    # Determine if prediction is correct
-                    # Only check correctness if we have ground truth (image in known class folder)
-                    if true_class is not None:
-                        is_correct = (predicted_class == true_class)
-                        accuracy_note = f" (ground truth: {true_class})"
-                    else:
-                        is_correct = True  # No ground truth - accept all predictions
-                        accuracy_note = " (no ground truth)"
-                    
-                    # Calculate logit statistics
-                    current_logits = raw_logits[i]
-                    max_logit = current_logits.max()
-                    min_logit = current_logits.min()
-                    logit_range = max_logit - min_logit
-                    
-                    confidence_bucket = self._assign_to_confidence_bucket(confidence)
-                    logit_bucket = self._assign_to_logit_bucket(max_logit)
-                    
-                    # Update global interval stats
-                    self.interval_stats['confidence_intervals'][confidence_bucket] += 1
-                    self.interval_stats['logit_intervals'][logit_bucket] += 1
-                    
-                    # Update per-class interval stats (by predicted class)
-                    self.interval_stats['per_class_confidence'][predicted_class][confidence_bucket] += 1
-                    self.interval_stats['per_class_logits'][predicted_class][logit_bucket] += 1
-                    
-                    # Check if image passes filters
-                    passes_confidence = True
-                    passes_logits = True
-                    
-                    # Check confidence criteria (for confidence_only or combined modes)
-                    if self.filter_mode in ['confidence_only', 'combined']:
-                        if self.selection_mode == 'threshold':
-                            # Apply confidence threshold
-                            passes_confidence = (confidence >= self.selection_value)
-                        elif self.selection_mode == 'interval':
-                            # Apply confidence interval
-                            passes_confidence = (self.confidence_min <= confidence <= self.confidence_max)
-                        else:  # top_n
-                            # For top_n mode, don't apply threshold during analysis
+                    # Process each image in the batch
+                    for i in range(len(images)):
+                        pred_class_idx = predicted[i].item()
+                        confidence = confidences[i].item()
+                        predicted_class = self.classes[pred_class_idx]
+                        
+                        # Get the original image path
+                        sample_idx = folder_indices[batch_idx * self.batch_size_pred + i]
+                        original_path = self.ds.ds_pred.dataset.samples[sample_idx][0]
+                        
+                        # Calculate logit statistics
+                        current_logits = raw_logits[i]
+                        max_logit = current_logits.max()
+                        min_logit = current_logits.min()
+                        logit_range = max_logit - min_logit
+
+                        confidence_bucket = self._assign_to_confidence_bucket(confidence)
+                        logit_bucket = self._assign_to_logit_bucket(max_logit)
+                        
+                        # Update global interval stats
+                        self.interval_stats['confidence_intervals'][confidence_bucket] += 1
+                        self.interval_stats['logit_intervals'][logit_bucket] += 1
+                        
+                        # Update per-class interval stats
+                        self.interval_stats['per_class_confidence'][class_name][confidence_bucket] += 1
+                        self.interval_stats['per_class_logits'][class_name][logit_bucket] += 1
+                        
+                        # Check if image passes filters
+                        passes_confidence = True
+                        passes_logits = True
+                        
+                        # Check confidence criteria (for confidence_only or combined modes)
+                        if self.filter_mode in ['confidence_only', 'combined']:
+                            if self.selection_mode == 'threshold':
+                                # Apply confidence threshold
+                                passes_confidence = (confidence >= self.selection_value)
+                            elif self.selection_mode == 'interval':
+                                # Apply confidence interval
+                                passes_confidence = (self.confidence_min <= confidence <= self.confidence_max)
+                            else:  # top_n
+                                # For top_n mode, don't apply threshold during analysis
+                                passes_confidence = True
+                            
+                            if passes_confidence:
+                                self.stats['passed_confidence'] += 1
+                        else:
+                            # For logits_only mode, don't check confidence at all
                             passes_confidence = True
                         
-                        if passes_confidence:
-                            self.stats['passed_confidence'] += 1
-                    else:
-                        # For logits_only mode, don't check confidence at all
-                        passes_confidence = True
-                    
-                    # Check logit threshold (ONLY for logits_only or combined modes)
-                    if self.filter_mode in ['logits_only', 'combined']:
-                        passes_logits = (max_logit >= self.logit_threshold)
-                        if passes_logits:
-                            self.stats['passed_logits'] += 1
-                    else:
-                        # For confidence_only mode, don't check logits at all
-                        passes_logits = True
-                    
-                    # Check combined
-                    if self.filter_mode == 'combined':
-                        passes_both = passes_confidence and passes_logits
-                        if passes_both:
-                            self.stats['passed_both'] += 1
-                    
-                    # Store image data with logit information
-                    image_data = {
-                        'original_path': Path(original_path),
-                        'confidence': confidence,
-                        'predicted_class': predicted_class,
-                        'true_class': true_class if true_class else "unknown",
-                        'is_correct': is_correct,
-                        'has_ground_truth': true_class is not None,
-                        # Logit information
-                        'max_logit': float(max_logit),
-                        'min_logit': float(min_logit),
-                        'logit_range': float(logit_range),
-                        'passes_confidence': passes_confidence,
-                        'passes_logits': passes_logits,
-                        'passes_both': passes_confidence and passes_logits,
-                        'all_logits': current_logits.tolist(),
-                        'confidence_bucket': confidence_bucket,
-                        'logit_bucket': logit_bucket
-                    }
-                    
-                    # Update statistics
-                    self.stats['total_processed'] += 1
-                    self.stats['per_class'][predicted_class]['total'] += 1
-                    
-                    if image_data['is_correct']:
-                        self.stats['correct_predictions'] += 1
-                        self.stats['per_class'][predicted_class]['correct'] += 1
+                        # Check logit threshold (ONLY for logits_only or combined modes)
+                        if self.filter_mode in ['logits_only', 'combined']:
+                            passes_logits = (max_logit >= self.logit_threshold)
+                            if passes_logits:
+                                self.stats['passed_logits'] += 1
+                        else:
+                            # For confidence_only mode, don't check logits at all
+                            passes_logits = True
                         
-                        # Store image based on filter mode
-                        store_image = False
+                        # Check combined
+                        if self.filter_mode == 'combined':
+                            passes_both = passes_confidence and passes_logits
+                            if passes_both:
+                                self.stats['passed_both'] += 1
                         
-                        if self.filter_mode == 'confidence_only':
-                            # For 'top_n' mode, store all correct images (filter later)
-                            # For 'threshold' or 'interval' mode, only store if passes confidence criteria
-                            if self.selection_mode == 'top_n':
-                                store_image = True
-                            else:  # threshold or interval mode
-                                store_image = passes_confidence
+                        # Store image data with logit information
+                        image_data = {
+                            'original_path': Path(original_path),
+                            'confidence': confidence,
+                            'predicted_class': predicted_class,
+                            'true_class': class_name,
+                            'is_correct': predicted_class == class_name,
+                            # Logit information
+                            'max_logit': float(max_logit),
+                            'min_logit': float(min_logit),
+                            'logit_range': float(logit_range),
+                            'passes_confidence': passes_confidence,
+                            'passes_logits': passes_logits,
+                            'passes_both': passes_confidence and passes_logits,
+                            'all_logits': current_logits.tolist(),
+                            'confidence_bucket': confidence_bucket,
+                            'logit_bucket': logit_bucket
+                        }
                         
-                        elif self.filter_mode == 'logits_only':
-                            # For 'top_n' mode, store all correct images (filter later by sorting)
-                            # For 'threshold' or 'interval' mode, only store if passes logit threshold
-                            if self.selection_mode == 'top_n':
-                                store_image = True
-                            else:  # threshold or interval mode
-                                store_image = passes_logits
+                        # Update statistics
+                        self.stats['total_processed'] += 1
+                        self.stats['per_class'][class_name]['total'] += 1
                         
-                        elif self.filter_mode == 'combined':
-                            # Store if passes both confidence criteria AND logit threshold
-                            # For top_n mode, store all correct (filter later)
-                            if self.selection_mode == 'top_n':
-                                store_image = True
-                            else:  # threshold or interval mode
-                                store_image = passes_confidence and passes_logits
-                        
-                        if store_image:
-                            class_image_data[predicted_class].append(image_data)
-        
-        # Print summary of found images per class
-        print("\n📊 Images per predicted class:")
-        for cls in self.classes:
-            count = len(class_image_data[cls])
-            if count > 0:
-                print(f"  {cls}: {count} images selected for consideration")
-            else:
-                print(f"  {cls}: 0 images")
+                        if image_data['is_correct']:
+                            self.stats['correct_predictions'] += 1
+                            self.stats['per_class'][class_name]['correct'] += 1
+                            
+                            # Store image based on filter mode
+                            store_image = False
+                            
+                            if self.filter_mode == 'confidence_only':
+                                # For 'top_n' mode, store all correct images (filter later)
+                                # For 'threshold' or 'interval' mode, only store if passes confidence criteria
+                                if self.selection_mode == 'top_n':
+                                    store_image = True
+                                else:  # threshold or interval mode
+                                    store_image = passes_confidence
+                            
+                            elif self.filter_mode == 'logits_only':
+                                # For 'top_n' mode, store all correct images (filter later by sorting)
+                                # For 'threshold' or 'interval' mode, only store if passes logit threshold
+                                if self.selection_mode == 'top_n':
+                                    store_image = True
+                                else:  # threshold or interval mode
+                                    store_image = passes_logits
+                            
+                            elif self.filter_mode == 'combined':
+                                # Store if passes both confidence criteria AND logit threshold
+                                # For top_n mode, store all correct (filter later)
+                                if self.selection_mode == 'top_n':
+                                    store_image = True
+                                else:  # threshold or interval mode
+                                    store_image = passes_confidence and passes_logits
+                            
+                            if store_image:
+                                class_image_data[class_name].append(image_data)
         
         return class_image_data
     
-    # Select images based on the chosen selection mode
+    # Select images based on the chosen selection mode.
     def select_images(self, class_image_data: Dict[str, List[Dict]]) -> Dict[str, List[Dict]]:
 
         selected_images = {}
@@ -928,12 +710,11 @@ class ClassSorter:
         
         return selected_images
     
-    # Copy selected images to output directory
+    # Copy selected images to output directory and rename with appropriate metrics
     def copy_and_rename_images(self, selected_images: Dict[str, List[Dict]]):
         print(f"\n{'='*60}")
         print(f"Copying and renaming selected images")
         print(f"Output directory: {self.output_dir}")
-        print(f"Output class folders: {', '.join(self.classes)}")
         print(f"{'='*60}")
         
         total_copied = 0
@@ -942,7 +723,7 @@ class ClassSorter:
             if not images:
                 continue
             
-            # Create class directory (named after the class from settings)
+            # Create class directory
             class_dir = self.output_dir / class_name
             class_dir.mkdir(parents=True, exist_ok=True)
             
@@ -1002,6 +783,24 @@ class ClassSorter:
         
         stats_path = self.output_dir / "statistics.txt"
         
+        """
+        print("\n" + "="*50)
+        print("DEBUG: Logit intervals dictionary keys:")
+        for key in self.interval_stats['logit_intervals'].keys():
+            print(f"  '{key}' (length: {len(key)})")
+        print("="*50 + "\n")
+        """
+        
+        # Clean the dictionaries
+        if '' in self.interval_stats['logit_intervals']:
+            print(f"Warning: Found empty string key in logit_intervals, removing it")
+            del self.interval_stats['logit_intervals']['']
+        
+        for class_name in self.classes:
+            if '' in self.interval_stats['per_class_logits'][class_name]:
+                print(f"Warning: Found empty string key in per_class_logits for {class_name}, removing it")
+                del self.interval_stats['per_class_logits'][class_name]['']
+        
         with open(stats_path, 'w', encoding='utf-8') as f:
             f.write("=" * 70 + "\n")
             f.write("CLASS SORTER - UNIVERSAL IMAGE STATISTICS\n")
@@ -1011,20 +810,6 @@ class ClassSorter:
             f.write(f"Model Checkpoint: {self.loaded_checkpoint_name}\n")
             f.write(f"Total Images Processed: {self.stats['total_processed']}\n")
             f.write(f"Overall Accuracy: {self.stats['correct_predictions']/self.stats['total_processed']:.2%}\n\n")
-            
-            # Ground truth availability info
-            f.write("-" * 70 + "\n")
-            f.write("GROUND TRUTH AVAILABILITY\n")
-            f.write("-" * 70 + "\n")
-            if self.has_ground_truth:
-                f.write(f"Ground truth available for: {len([v for v in self.true_class_mapping.values() if v is not None])} images\n")
-                f.write(f"  (Images in known class folders)\n")
-                f.write(f"No ground truth for: {sum(1 for v in self.true_class_mapping.values() if v is None)} images\n")
-                f.write(f"  (Images in root or unknown folders)\n")
-            else:
-                f.write("No ground truth available for any images.\n")
-                f.write("All predictions were treated as 'correct' for selection.\n")
-            f.write("\n")
             
             # Confidence Intervals
             f.write("-" * 70 + "\n")
@@ -1093,14 +878,29 @@ class ClassSorter:
             total = self.stats['total_processed']
             cumulative = 0
 
-            # Get all logit keys
-            logit_keys = [k for k in self.interval_stats['logit_intervals'].keys() if k and k != '']
+            # Get all logit keys and print them for debugging
+            logit_keys_raw = list(self.interval_stats['logit_intervals'].keys())
+            # print(f"DEBUG: Raw logit keys before filtering: {logit_keys_raw}")
+
+            # Filter out empty strings and None
+            logit_keys = []
+            for key in logit_keys_raw:
+                if key is None:
+                    # print(f"DEBUG: Found None key, skipping")
+                    continue
+                if key == '':
+                    # print(f"DEBUG: Found empty string key, skipping")
+                    continue
+                logit_keys.append(key)
+            
+            # print(f"DEBUG: Filtered logit keys: {logit_keys}")
             
             # Sort logit buckets
             logit_bucket_order = sorted(logit_keys,
                                     key=lambda x: (
                                         -float('inf') if x.startswith('<') else 
                                         (float('inf') if x.startswith('>=') else 
+                                            # Handle negative numbers correctly
                                             float(x.split('-')[0] if x[0] != '-' else '-' + x.split('-')[1]))
                                     ))
             
@@ -1248,9 +1048,7 @@ class ClassSorter:
             'overall_accuracy': self.stats['correct_predictions'] / self.stats['total_processed'] if self.stats['total_processed'] > 0 else 0,
             'rename_images': self.rename_images,
             'sort_intervals': self.sort_intervals,
-            'logit_intervals': self.logit_intervals,
-            'has_ground_truth': self.has_ground_truth,
-            'unknown_folders': list(self.unknown_folders) if self.unknown_folders else []
+            'logit_intervals': self.logit_intervals
         }
         
         config_json_path = self.output_dir / "selection_config.json"
@@ -1373,22 +1171,6 @@ class ClassSorter:
             f.write(f"Classes: {', '.join(self.classes)}\n")
             f.write(f"Loaded Checkpoint: {self.loaded_checkpoint_name}\n\n")
             
-            # Ground truth information
-            f.write("GROUND TRUTH INFORMATION:\n")
-            f.write("-" * 40 + "\n")
-            if self.has_ground_truth:
-                f.write("Ground truth is available for images in known class folders.\n")
-                f.write(f"Known class folders detected: {', '.join(sorted(self.known_folders))}\n")
-                if self.unknown_folders:
-                    f.write(f"Unknown folders (treated as unlabeled): {', '.join(sorted(self.unknown_folders))}\n")
-                f.write("\n")
-                f.write("  • Images in known class folders: Only correctly predicted images are selected\n")
-                f.write("  • Images in unknown folders or root: All predictions are accepted\n")
-            else:
-                f.write("No ground truth available for any images.\n")
-                f.write("All predictions are treated as 'correct' for selection purposes.\n")
-            f.write("\n")
-            
             f.write(f"Total Images Processed: {self.stats['total_processed']}\n")
             f.write(f"Correct Predictions: {self.stats['correct_predictions']}\n")
             f.write(f"Overall Accuracy: {self.stats['correct_predictions']/self.stats['total_processed']:.2%}\n")
@@ -1495,7 +1277,6 @@ class ClassSorter:
 
         print(f"\n{'='*60}")
         print("CLASS SORTER - High-Confidence Image Selection")
-        print(f"Flexible Input Mode - ANY folder structure supported")
         print(f"{'='*60}")
         
         try:
@@ -1520,11 +1301,7 @@ class ClassSorter:
             print("SELECTION COMPLETE!")
             print(f"{'='*60}")
             print(f"Total images processed: {self.stats['total_processed']}")
-            
-            if self.has_ground_truth:
-                print(f"Correct predictions: {self.stats['correct_predictions']} ({self.stats['correct_predictions']/self.stats['total_processed']:.2%})")
-            else:
-                print(f"All predictions accepted (no ground truth available)")
+            print(f"Correct predictions: {self.stats['correct_predictions']} ({self.stats['correct_predictions']/self.stats['total_processed']:.2%})")
             
             if self.filter_mode == 'confidence_only':
                 print(f"Images passing confidence criteria: {self.stats.get('passed_confidence', 0)}")
