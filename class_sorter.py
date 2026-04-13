@@ -4,8 +4,8 @@ ClassSorter - High-Confidence Image Selection for LoRA Training
 
 Purpose:
 --------
-This script analyzes images using a trained CNN model to select the highest-confidence
-examples for each class. It creates a filtered dataset ideal for training conditional LoRAs.
+This script analyzes images using a trained CNN model to select (the highest-confidence)
+examples for each class.
 
 Key Features:
 -------------
@@ -53,7 +53,7 @@ Example 3 - Root Directory (No Ground Truth):
     prediction/cell.png → True class = None (no parent folder)
     → All predictions accepted regardless of "correctness"
 
-This design gives you maximum flexibility:
+This design gives maximum flexibility:
 - Use known class folders for validation/accuracy tracking
 - Use any other folder structure for unlabeled data
 - Mix both types freely in the same input directory

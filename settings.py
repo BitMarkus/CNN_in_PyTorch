@@ -131,7 +131,7 @@ setting = {
     # Shuffle dataset
     "ds_shuffle": True,
     # Shuffle seed
-    "ds_shuffle_seed": 111,
+    "ds_shuffle_seed": 123,
     # How many subprocesses are used to load data in parallel
     "ds_num_workers": 3, # Intel Core i7-10700 CPU: 3
     # Validation split settings
@@ -146,9 +146,9 @@ setting = {
     "ko_lines": ["KO_1096-01", "KO_1618-01", "KO_BR2986", "KO_BR3075"],
     # Define classes
     # 2 classes (WT and KO):
-    # "classes": ["KO", "WT"],
+    "classes": ["KO", "WT"],
     # 9 classes (one for each cell line):
-    "classes": ["KO_1096-01", "KO_1618-01", "KO_BR2986", "KO_BR3075", "WT_1618-02", "WT_JG", "WT_JT", "WT_KM", "WT_MS"],
+    # "classes": ["KO_1096-01", "KO_1618-01", "KO_BR2986", "KO_BR3075", "WT_1618-02", "WT_JG", "WT_JT", "WT_KM", "WT_MS"],
 
     #########
     # MODEL #

@@ -72,6 +72,9 @@ class Train():
         self.ds_train = dataset.ds_train
         self.ds_val = dataset.ds_val
 
+        # Will be set by AutoCrossValidation
+        self.dataset_idx = None  
+
         # Number of training and validation images in each dataset
         self.num_train_img = dataset.num_train_img
         self.num_val_img = dataset.num_val_img
@@ -779,16 +782,49 @@ class Train():
             accuracy_for_checkpoint = weighted_val_accuracy if self.use_weighted_loss else standard_val_accuracy
             accuracy_type = "weighted" if self.use_weighted_loss else "standard"
 
-            # Store the old best accuracy to check if it improved
             old_best_accuracy = best_accuracy
-
-            # Call save_weights - it will handle the threshold check internally
-            best_accuracy = self.cnn_wrapper.save_weights(
+            best_accuracy, checkpoint_saved = self.cnn_wrapper.save_weights(
                 accuracy_for_checkpoint, 
                 best_accuracy, 
                 epoch, 
-                chckpt_pth
+                chckpt_pth,
+                return_save_flag=True
             )
+
+            # If checkpoint was saved, also save its confusion matrix to disk
+            if checkpoint_saved:
+                # Get the checkpoint filename (without extension)
+                checkpoint_name = f"ckpt_pretr_densenet121_e{epoch+1:02d}_vacc{int(accuracy_for_checkpoint*100)}"
+                
+                # Add dataset suffix for cross-validation
+                dataset_idx = getattr(self, 'dataset_idx', None)
+                if dataset_idx is not None:
+                    file_suffix = f"_ds{dataset_idx}"
+                else:
+                    file_suffix = ""
+                
+                # Full filename for confusion matrix
+                cm_filename = f"{checkpoint_name}{file_suffix}"
+                
+                # Save confusion matrix plot
+                fn.plot_confusion_matrix(
+                    {"y": all_labels, "y_hat": all_preds}, 
+                    self.classes, 
+                    plot_pth,
+                    chckpt_name=cm_filename, 
+                    show_plot=False, 
+                    save_plot=True
+                )
+                
+                # Save confusion matrix results as JSON
+                fn.save_confusion_matrix_results(
+                    {"y": all_labels, "y_hat": all_preds}, 
+                    self.classes, 
+                    plot_pth,
+                    chckpt_name=cm_filename
+                )
+                
+                print(f"Saved confusion matrix: {cm_filename}.png/.json")
 
             # Only print message if a checkpoint was actually saved
             if best_accuracy > old_best_accuracy:

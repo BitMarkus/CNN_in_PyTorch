@@ -282,24 +282,29 @@ class CNN_Model():
         print(', '.join(self.class_list))
 
     # Saves a checkpoint/weights
-    def save_weights(self, val_acc, best_acc, epoch, chckpt_pth):
-        # Save checkpoint if the accuracy has improved AND
-        # if it is higher than a predefined percentage (min_acc_for_saving) AND
-        # if models should be saved at all
-        if(val_acc > best_acc and 
-            val_acc > self.chckpt_min_acc and
-            self.chckpt_save):
-            # Add epoch, pretrained prefix and validation accuracy to the filename and save model
-            if(self.is_pretrained):
-                pretr = "_pretr"
+    def save_weights(self, current_accuracy, best_accuracy, epoch, checkpoint_dir, return_save_flag=False):
+        # Get min accuracy from settings
+        min_accuracy = setting.get("chckpt_min_acc", 0.0)
+        
+        # Only save if current accuracy beats best AND meets minimum threshold
+        if current_accuracy > best_accuracy and current_accuracy >= min_accuracy:
+            best_accuracy = current_accuracy
+            checkpoint_path = checkpoint_dir / f"ckpt_pretr_densenet121_e{epoch+1:02d}_vacc{int(current_accuracy*100)}.model"
+            torch.save({
+                'epoch': epoch + 1,
+                'model_state_dict': self.model.state_dict(),
+                'accuracy': current_accuracy,
+            }, checkpoint_path)
+            
+            if return_save_flag:
+                return best_accuracy, True
             else:
-                pretr = ""
-            filename = chckpt_pth / f'ckpt{pretr}_{self.cnn_type}_e{epoch+1}_vacc{val_acc*100:.0f}.model'
-            torch.save(self.model.state_dict(), filename)
-            # Update best accuracy
-            best_acc = val_acc 
-
-        return best_acc
+                return best_accuracy
+        
+        if return_save_flag:
+            return best_accuracy, False
+        else:
+            return best_accuracy
     
     def get_checkpoints_list(self, pth_checkpoint):
         # List of all model files in the checkpoint directory with the .model extension

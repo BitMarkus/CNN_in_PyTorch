@@ -137,8 +137,8 @@ def save_confusion_matrix_results(cm, class_list, file_path, chckpt_name=None):
         "confusion_matrix": cm_array.tolist(),
         "class_accuracy": dict(zip(class_list, class_acc.tolist())),
         "overall_accuracy": overall_acc,
-        "true_labels": cm["y"],
-        "predicted_labels": cm["y_hat"]
+        "true_labels": cm["y"].tolist(),           
+        "predicted_labels": cm["y_hat"].tolist()  
     }
 
     # Name of the result file will be the checkpoint file it is based on
