@@ -119,35 +119,45 @@ def plot_confusion_matrix(cm, class_list, plot_path, chckpt_name=None, show_plot
 #    file_path (str): Path to save the file (without extension)
 #    chckpt_name (str): Name of the checkpoint file the confusion matrix is based on
 def save_confusion_matrix_results(cm, class_list, file_path, chckpt_name=None):
-
-    # Calculate confusion matrix
-    cm_array = confusion_matrix(cm["y"], cm["y_hat"])
+    # Handle different input types
+    if isinstance(cm, dict):
+        # Format with 'y' and 'y_hat' keys
+        y_true = cm["y"]
+        y_pred = cm["y_hat"]
+        cm_array = confusion_matrix(y_true, y_pred)
+    elif isinstance(cm, (list, np.ndarray)):
+        # Direct confusion matrix array
+        cm_array = np.array(cm)
+        y_true = None
+        y_pred = None
+    else:
+        raise TypeError(f"Expected dict or array, got {type(cm)}")
     
-    # Calculate class-wise accuracy (normalized by true labels)
+    # Calculate metrics
     with np.errstate(divide='ignore', invalid='ignore'):
         class_acc = cm_array.diagonal() / cm_array.sum(axis=1)
-    class_acc = np.nan_to_num(class_acc)  # Replace NaN with 0
-    
-    # Calculate overall accuracy
+    class_acc = np.nan_to_num(class_acc)
     overall_acc = np.sum(cm_array.diagonal()) / np.sum(cm_array)
     
-    # Prepare data structure
+    # Prepare results
     results = {
         "classes": class_list,
         "confusion_matrix": cm_array.tolist(),
         "class_accuracy": dict(zip(class_list, class_acc.tolist())),
         "overall_accuracy": overall_acc,
-        "true_labels": cm["y"].tolist(),           
-        "predicted_labels": cm["y_hat"].tolist()  
     }
-
-    # Name of the result file will be the checkpoint file it is based on
-    if(chckpt_name is None):
+    
+    # Add labels if available
+    if y_true is not None:
+        results["true_labels"] = y_true.tolist() if hasattr(y_true, 'tolist') else y_true
+        results["predicted_labels"] = y_pred.tolist() if hasattr(y_pred, 'tolist') else y_pred
+    
+    # Save file
+    if chckpt_name is None:
         file_name = "cm_results"
     else:
         file_name = Path(chckpt_name).stem + "_cm"
-
-    # Save file - use pathlib for path joining
+    
     with open(file_path / f"{file_name}.json", 'w') as f:
         json.dump(results, f, indent=4)
 

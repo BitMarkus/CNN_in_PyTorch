@@ -446,7 +446,7 @@ class Train():
         # Make predictions
         with torch.no_grad():
             images = images.to(self.device)
-            outputs = self.model(images)
+            outputs = self.cnn(images)  # FIXED: self.cnn instead of self.model
             probabilities = torch.softmax(outputs, dim=1)
             predictions = torch.argmax(outputs, dim=1)
             
@@ -485,6 +485,11 @@ class Train():
 
         # Track best accuracy for checkpoint saving
         best_accuracy = 0.0
+        
+        # Build dynamic base name from settings
+        pretrained_str = "pretr" if setting["cnn_is_pretrained"] else "scratch"
+        model_name = setting["cnn_type"]
+        dataset_suffix = f"_ds{self.dataset_idx}" if self.dataset_idx is not None else ""
 
         # Iterate over epochs
         for epoch in range(self.num_epochs):
@@ -730,7 +735,7 @@ class Train():
             # Log both weighted and standard accuracy
             self.writer.add_scalar('Accuracy/val_standard', standard_val_accuracy, epoch)
             if self.use_weighted_loss:
-                self.writer.add_scalar('Accuracy/train_standard', standard_train_accuracy, epoch)
+                self.writer.add_scalar('Accuracy/train_standard', final_standard_train_accuracy, epoch)
 
             self.writer.add_scalar('Metrics/LR', current_lr, epoch)
             self.writer.add_scalars('Metrics/F1', {'Macro': f1_macro, 'Weighted': f1_weighted}, epoch)
@@ -764,8 +769,51 @@ class Train():
                 print(f"> Val Loss: {val_loss:.5f} | Val Acc: {standard_val_accuracy:.2f} | Per-class: ({class_acc_str})")
                 print(f"> F1 (Macro): {f1_macro:.4f} | AUC: {roc_auc_weighted:.4f} | AP: {ap_weighted:.4f}")
 
-            # Store validation metrics
+            # Calculate current validation accuracy for checkpoint comparison
             current_val_accuracy = weighted_val_accuracy if self.use_weighted_loss else standard_val_accuracy
+            
+            # Check if this is the best model so far
+            if current_val_accuracy > best_accuracy and current_val_accuracy >= setting["chckpt_min_acc"]:
+                best_accuracy = current_val_accuracy
+                
+                # Create checkpoint filename with dynamic naming
+                checkpoint_name = f"ckpt_{pretrained_str}_{model_name}_e{epoch+1:02d}_vacc{int(current_val_accuracy*100)}{dataset_suffix}"
+                checkpoint_path = chckpt_pth / f"{checkpoint_name}.pt"
+                
+                # Save checkpoint
+                torch.save({
+                    'epoch': epoch,
+                    'model_state_dict': self.cnn.state_dict(),
+                    'optimizer_state_dict': self.optimizer.state_dict(),
+                    'accuracy': current_val_accuracy,
+                    'loss': val_loss,
+                }, checkpoint_path)
+                
+                # Create validation confusion matrix filename with "val_" inserted after model name
+                val_cm_filename = f"ckpt_{pretrained_str}_{model_name}_val_e{epoch+1:02d}_vacc{int(current_val_accuracy*100)}{dataset_suffix}"
+                
+                # Save validation confusion matrix plot
+                fn.plot_confusion_matrix(
+                    {"y": all_labels, "y_hat": all_preds}, 
+                    self.classes, 
+                    plot_pth,
+                    chckpt_name=val_cm_filename, 
+                    show_plot=False, 
+                    save_plot=True
+                )
+                
+                # Save validation confusion matrix results as JSON
+                fn.save_confusion_matrix_results(
+                    {"y": all_labels, "y_hat": all_preds}, 
+                    self.classes, 
+                    plot_pth,
+                    chckpt_name=val_cm_filename
+                )
+                
+                print(f"✓ Model saved! Validation accuracy: {best_accuracy:.2f}")
+                print(f"✓ Validation confusion matrix saved: {val_cm_filename}.png/.json")
+            
+            # Store validation metrics in history
             history["val_acc"].append(current_val_accuracy)
             history["val_loss"].append(val_loss)
             history["f1_macro"].append(f1_macro)
@@ -778,60 +826,10 @@ class Train():
             history["average_precision"].append(average_precision)
             history["confusion_matrices"].append(cm)
 
-            # Save best mode
-            accuracy_for_checkpoint = weighted_val_accuracy if self.use_weighted_loss else standard_val_accuracy
-            accuracy_type = "weighted" if self.use_weighted_loss else "standard"
-
-            old_best_accuracy = best_accuracy
-            best_accuracy, checkpoint_saved = self.cnn_wrapper.save_weights(
-                accuracy_for_checkpoint, 
-                best_accuracy, 
-                epoch, 
-                chckpt_pth,
-                return_save_flag=True
-            )
-
-            # If checkpoint was saved, also save its confusion matrix to disk
-            if checkpoint_saved:
-                # Get the checkpoint filename (without extension)
-                checkpoint_name = f"ckpt_pretr_densenet121_e{epoch+1:02d}_vacc{int(accuracy_for_checkpoint*100)}"
-                
-                # Add dataset suffix for cross-validation
-                dataset_idx = getattr(self, 'dataset_idx', None)
-                if dataset_idx is not None:
-                    file_suffix = f"_ds{dataset_idx}"
-                else:
-                    file_suffix = ""
-                
-                # Full filename for confusion matrix
-                cm_filename = f"{checkpoint_name}{file_suffix}"
-                
-                # Save confusion matrix plot
-                fn.plot_confusion_matrix(
-                    {"y": all_labels, "y_hat": all_preds}, 
-                    self.classes, 
-                    plot_pth,
-                    chckpt_name=cm_filename, 
-                    show_plot=False, 
-                    save_plot=True
-                )
-                
-                # Save confusion matrix results as JSON
-                fn.save_confusion_matrix_results(
-                    {"y": all_labels, "y_hat": all_preds}, 
-                    self.classes, 
-                    plot_pth,
-                    chckpt_name=cm_filename
-                )
-                
-                print(f"Saved confusion matrix: {cm_filename}.png/.json")
-
-            # Only print message if a checkpoint was actually saved
-            if best_accuracy > old_best_accuracy:
-                print(f"Model with {accuracy_type} validation accuracy {best_accuracy:.2f} saved!")
-
         # Final cleanup and plotting
         self.writer.close()
         self._plot_metrics(history, plot_pth, show_plot=False, save_plot=True)
+        
+        print(f"\n>> Training completed! Best validation accuracy: {best_accuracy:.2f}")
         
         return history

@@ -502,78 +502,109 @@ class AutoCrossValidation:
             # Testing Loop # 
             ################
 
-            # Always load fresh test dataset for final evaluation
-            print(f"\n> Load test images for final evaluation...")
-
-            # Load split info if it exists
-            split_file = Path(self.acv_results_dir) / f"dataset_{config['dataset_idx']}" / "split_info.json"
-            real_test_images = None
-
-            # Load split info if it exists
-            split_file = Path(self.acv_results_dir) / f"dataset_{config['dataset_idx']}" / "split_info.json"
-            real_test_images = None
-
-            if split_file.exists():
-                with open(split_file, 'r') as f:
-                    split_info = json.load(f)
+            # Check if we have a separate test set
+            if self.val_from_test_split is not False and self.val_from_test_split != 1.0:
+                # Load split info to get test images
+                split_file = Path(self.acv_results_dir) / f"dataset_{config['dataset_idx']}" / "split_info.json"
                 
-                # ALWAYS use split_info when we have validation split from test
-                # (unless val_from_test_split = 1.0, which means all test images are validation)
-                if self.val_from_test_split is not False and self.val_from_test_split != 1.0:
-                    # We have a separate test set (not all test images used for validation)
+                if split_file.exists():
+                    with open(split_file, 'r') as f:
+                        split_info = json.load(f)
+                    
+                    # Get test images from split_info
                     real_test_images = set(split_info['test']['WT'] + split_info['test']['KO'])
-                    print(f"Found {len(real_test_images)} test images from split_info.json (70% of real images)")
-                else:
-                    # Either val_from_test_split = 1.0 (no separate test) or not using test for validation
-                    if self.val_from_test_split == 1.0:
-                        print("Using all test images for validation (ds_val_from_test_split = 1.0)")
+                    
+                    if len(real_test_images) > 0:
+                        print(f"\n>>> Evaluating ALL checkpoints on TEST set ({len(real_test_images)} images)...")
+                        
+                        # Load test dataset once
+                        success = self.ds.load_real_test_dataset_only(real_test_images)
+                        if success:
+                            test_dataset = self.ds.ds_test_real_only
+                            
+                            # Get all checkpoint files
+                            checkpoint_dir = Path(self.acv_results_dir) / f"dataset_{config['dataset_idx']}" / "checkpoints"
+                            checkpoint_files = sorted(checkpoint_dir.glob("*.pt"))
+                            
+                            print(f"Found {len(checkpoint_files)} checkpoints to evaluate on test set")
+                            
+                            # Import settings for dynamic naming
+                            from settings import setting
+                            pretrained_str = "pretr" if setting["cnn_is_pretrained"] else "scratch"
+                            model_name = setting["cnn_type"]
+                            
+                            # Evaluate each checkpoint
+                            for checkpoint_path in checkpoint_files:
+                                # Load checkpoint weights
+                                checkpoint = torch.load(checkpoint_path, map_location=self.device)
+                                self.cnn_wrapper.model.load_state_dict(checkpoint['model_state_dict'])
+                                self.cnn_wrapper.model.to(self.device)
+                                self.cnn_wrapper.model.eval()
+                                
+                                # Extract epoch and accuracy from checkpoint filename
+                                # Filename pattern: ckpt_pretr_densenet121_e06_vacc70_ds1.pt
+                                import re
+                                match = re.search(r'e(\d+)_vacc(\d+)', checkpoint_path.stem)
+                                if match:
+                                    epoch = match.group(1)
+                                    acc = match.group(2)
+                                else:
+                                    epoch = "unknown"
+                                    acc = "unknown"
+                                
+                                print(f"\n  > Testing checkpoint epoch {epoch} (val_acc={acc}%)...")
+                                
+                                # Run prediction on test set
+                                _, cm = self.cnn_wrapper.predict(test_dataset)
+                                
+                                # Create test filename with dynamic naming
+                                # Format: ckpt_pretr_densenet121_test_e06_vacc70_ds1
+                                chckpt_name = f"ckpt_{pretrained_str}_{model_name}_test_e{epoch}_vacc{acc}_ds{config['dataset_idx']}"
+                                
+                                # Save test confusion matrix
+                                fn.plot_confusion_matrix(
+                                    {"y": cm.get('y', []), "y_hat": cm.get('y_hat', [])} if isinstance(cm, dict) else cm,
+                                    self.class_list, 
+                                    checkpoint_dir.parent / "plots",
+                                    chckpt_name=chckpt_name, 
+                                    show_plot=False, 
+                                    save_plot=True
+                                )
+                                fn.save_confusion_matrix_results(
+                                    cm, 
+                                    self.class_list, 
+                                    checkpoint_dir.parent / "plots",
+                                    chckpt_name=chckpt_name
+                                )
+                                
+                                # Load and display results
+                                loaded_results = fn.load_confusion_matrix_results(
+                                    checkpoint_dir.parent / "plots", 
+                                    file_name=chckpt_name
+                                )
+                                if loaded_results:
+                                    print(f"    Test accuracy: {(loaded_results['overall_accuracy']*100):.2f}%")
+                                    print(f"    Test WT: {(loaded_results['class_accuracy']['WT']*100):.2f}%")
+                                    print(f"    Test KO: {(loaded_results['class_accuracy']['KO']*100):.2f}%")
+                                
+                                # Clear GPU memory
+                                del checkpoint
+                                torch.cuda.empty_cache()
+                    
+                            print(f"\n✅ Finished testing all checkpoints for dataset {config['dataset_idx']}")
+                        else:
+                            print(f"Warning: Could not load test dataset for dataset {config['dataset_idx']}")
                     else:
-                        print("Not using test set for validation, loading all test images")
-                    real_test_images = None
-
-            # Load appropriate dataset
-            if real_test_images is not None:
-                # Load only real images (synthetic data case)
-                success = self.ds.load_real_test_dataset_only(real_test_images)
+                        print(f"No test images found in split_info for dataset {config['dataset_idx']}")
+                else:
+                    print(f"split_info.json not found for dataset {config['dataset_idx']}")
             else:
-                # Load all images (pure real data case)
-                success = self.ds.load_real_test_dataset_only()  # No filter
-                
-            if success:
-                test_dataset_to_use = self.ds.ds_test_real_only
-                data_type = "real-only" if real_test_images is not None else "all (pure real)"
-            else:
-                print("Failed to load filtered dataset, using standard loading")
-                self.ds.load_test_dataset()
-                test_dataset_to_use = self.ds.ds_test
-                data_type = "all (fallback)"
-                self.ds.num_pred_real = self.ds.num_pred_img  # Estimate
+                if self.val_from_test_split == 1.0:
+                    print(f"\n⚠️  ds_val_from_test_split = 1.0 - No separate test set. Skipping test evaluation.")
+                else:
+                    print(f"\n⚠️  No test set configured (val_from_test_split = {self.val_from_test_split}). Skipping test evaluation.")
 
-            # Clear output
-            print(f"Test images for dataset {config['dataset_idx']} successfully loaded.")
-            print(f"Evaluating on {self.ds.num_pred_real} test images ({data_type})")
-            print(f"Batch size: 1")
-
-            print('\n> Starting prediction on REAL test images using FINAL trained weights...')
-
-            # Use the CURRENT model weights (already trained) - NO checkpoint loading needed!
-            _, cm = self.cnn_wrapper.predict(test_dataset_to_use)
-
-            # Plot confusion matrix and results
-            chckpt_name = f"final_trained_model_fold_{config['dataset_idx']}"
-            fn.plot_confusion_matrix(cm, self.class_list, plot_dir, chckpt_name=chckpt_name, show_plot=False, save_plot=True)
-            fn.save_confusion_matrix_results(cm, self.class_list, plot_dir, chckpt_name=chckpt_name)
-
-            # Load confusion matrix results
-            loaded_results = fn.load_confusion_matrix_results(plot_dir, file_name=chckpt_name)
-            print(f"=== REAL IMAGE TEST RESULTS ===")
-            print(f"Overall accuracy: {(loaded_results['overall_accuracy']*100):.2f}%")
-            print(f"WT accuracy: {(loaded_results['class_accuracy']['WT']*100):.2f}%")
-            print(f"KO accuracy: {(loaded_results['class_accuracy']['KO']*100):.2f}%")
-
-            print(f'Prediction successfully finished. Confusion matrix and results saved to {plot_dir}.')
-
-            print(f"Completed dataset {config['dataset_idx']}. Moving to next fold...")    
+            print(f"Completed dataset {config['dataset_idx']}. Moving to next fold...")
 
         # Final cleanup (once at the end)
         print("\nCleaning up all temporary data...")
