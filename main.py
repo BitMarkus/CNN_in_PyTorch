@@ -10,7 +10,7 @@ from class_analyzer import ClassAnalyzer
 from captum_analyzer import CaptumAnalyzer
 from gradcam_analyzer import GradCAMAnalyzer
 from class_sorter import ClassSorter
-# from dim_red import DimRed
+from dim_red import DimRed
 from fid_calculator import FIDCalculator
 from settings import setting
 
@@ -234,8 +234,8 @@ def main():
         elif(menu1 == 13):  
             print("\n:DIMENSION REDUCTION:") 
             # DimRed simple version
-            # dimred = DimRed(device)
-            # dimred()
+            dimred = DimRed(device)
+            dimred()
 
         ##################
         # FID calculator #  

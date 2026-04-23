@@ -1,30 +1,16 @@
-"""
-Dimensionality Reduction Script with CSV Export
-=================================================
-This script performs dimensionality reduction (UMAP, t-SNE, TriMAP, PaCMAP) on
-image features extracted from a CNN. For each method, it exports:
-- A publication-ready matplotlib plot
-- A CSV file with the raw embedding coordinates for custom plotting
-- A JSON file with the reduction parameters
-
-The CSV files can be opened directly in Excel, Prism, Origin, or any plotting software.
-"""
-
 import torch
 import numpy as np
 import os
 from pathlib import Path
 from tqdm import tqdm
 import matplotlib.pyplot as plt
-import time
+from time import time
 from sklearn.manifold import TSNE
 import umap
 import trimap
 from pacmap import PaCMAP
 from sklearn.preprocessing import StandardScaler
 import gc
-import pandas as pd
-import json
 # Own modules
 from settings import setting
 from dataset import Dataset
@@ -48,11 +34,8 @@ class DimRed:
         self.group_mode = setting['dimred_group_mode'] # 'auto' or 'manual'
         self.group_mapping = setting['dimred_group_mapping'] 
 
-        # Color palette setting
+        # NEW: Color palette setting
         self.color_palette = setting['dimred_color_palette']  # 'default' or any matplotlib colormap name, like 'rainbow', 'jet', etc.
-        
-        # Export format setting
-        self.export_format = setting.get('dimred_export_format', 'csv')  # 'csv' or 'json'
 
         # Set up group mapping based on mode
         if self.mode == "groups":
@@ -114,9 +97,6 @@ class DimRed:
         self.cnn_wrapper = CNN_Model()
         self.cnn = self.cnn_wrapper.load_model(self.device).to(self.device)
         torch.backends.cudnn.benchmark = True
-        
-        # Store sample identifiers for export
-        self.sample_ids = []
 
     #############################################################################################################
     # METHODS:
@@ -194,7 +174,6 @@ class DimRed:
     def extract_features(self):
 
         features, labels = [], []
-        self.sample_ids = []  # Reset sample IDs
         
         if self.mode in ["train", "test", "groups"]:
 
@@ -222,14 +201,6 @@ class DimRed:
                     flattened = pooled.view(images.size(0), -1)
                     features.append(flattened.cpu().numpy())
                     
-                    # Collect sample identifiers (image filenames) for groups mode
-                    if self.mode == "groups" and hasattr(dataloader.dataset, 'samples'):
-                        for idx_in_batch in range(len(batch_labels)):
-                            sample_idx = batch_idx * dataloader.batch_size + idx_in_batch
-                            if sample_idx < len(dataloader.dataset.samples):
-                                img_path = dataloader.dataset.samples[sample_idx][0]
-                                self.sample_ids.append(Path(img_path).name)
-                    
                     # For groups mode, we need to REMAP the labels to match our group_mapping
                     if self.mode == "groups":
                         # The dataloader gives us ImageFolder's automatic labels
@@ -252,16 +223,12 @@ class DimRed:
                         labels.append(np.array(numeric_labels))
                     else:
                         labels.append(batch_labels.numpy())
-                        
+                    
         else:
             raise ValueError(f"Unknown mode: {self.mode}. Use 'train', 'test', or 'groups'")
                 
         all_features = np.concatenate(features)
         all_labels = np.concatenate(labels)
-
-        # If we didn't collect sample IDs (e.g., train/test mode), create dummy IDs
-        if len(self.sample_ids) != len(all_labels):
-            self.sample_ids = [f"sample_{i}" for i in range(len(all_labels))]
 
         return all_features, all_labels
 
@@ -303,100 +270,14 @@ class DimRed:
             print("All fallbacks failed. Using basic rainbow.")
             return plt.cm.rainbow
 
-    def _export_embedding_data(self, method, embedding, labels, output_dir):
-        """
-        Export embedding data to CSV or JSON format.
-        
-        Args:
-            method: Name of the reduction method (UMAP, t-SNE, etc.)
-            embedding: numpy array of shape (n_samples, 2)
-            labels: numpy array of shape (n_samples,)
-            output_dir: Path to output directory
-        """
-        
-        # Get label names based on mode
-        if self.mode in ["train", "test"]:
-            # 2-class mode: use self.classes
-            label_names_dict = {idx: name for idx, name in enumerate(self.classes)}
-        else:
-            # Groups mode: create reverse mapping from numeric label to display name
-            label_names_dict = {}
-            for folder_name, (display_name, label_val) in self.group_mapping.items():
-                label_names_dict[label_val] = display_name
-        
-        # Build data rows
-        export_rows = []
-        for i in range(len(embedding)):
-            label_val = int(labels[i])
-            
-            # Get label name
-            label_name = label_names_dict.get(label_val, f"class_{label_val}")
-            
-            row = {
-                'sample_id': self.sample_ids[i] if i < len(self.sample_ids) else f"sample_{i}",
-                f'{method.lower()}_dim1': float(embedding[i, 0]),
-                f'{method.lower()}_dim2': float(embedding[i, 1]),
-                'label_numeric': label_val,
-                'label_name': label_name,
-                'dataset': self.mode
-            }
-            export_rows.append(row)
-        
-        # Export based on format
-        if self.export_format == 'csv':
-            df = pd.DataFrame(export_rows)
-            csv_path = output_dir / f"{method.lower()}_{self.mode}_{self.checkpoint_name}_embedding.csv"
-            df.to_csv(csv_path, index=False)
-            print(f"  ✓ Saved embedding CSV to {csv_path}")
-            
-        elif self.export_format == 'json':
-            export_data = {
-                'metadata': {
-                    'method': method,
-                    'mode': self.mode,
-                    'checkpoint': self.checkpoint_name,
-                    'n_samples': len(embedding),
-                    'color_palette': self.color_palette,
-                    'export_timestamp': time.strftime('%Y-%m-%d %H:%M:%S')
-                },
-                'embeddings': export_rows
-            }
-            json_path = output_dir / f"{method.lower()}_{self.mode}_{self.checkpoint_name}_embedding.json"
-            with open(json_path, 'w') as f:
-                json.dump(export_data, f, indent=2)
-            print(f"  ✓ Saved embedding JSON to {json_path}")
-        
-        # Also always export parameters as JSON (useful for reproducibility)
-        params_data = {
-            'method': method,
-            'parameters': getattr(self, f'{method.lower()}_params', {}),
-            'n_samples': len(embedding),
-            'n_features_original': None,  # Will be filled in run_reduction
-            'checkpoint': self.checkpoint_name,
-            'mode': self.mode,
-            'export_timestamp': time.strftime('%Y-%m-%d %H:%M:%S')
-        }
-        params_path = output_dir / f"{method.lower()}_{self.mode}_{self.checkpoint_name}_params.json"
-        with open(params_path, 'w') as f:
-            json.dump(params_data, f, indent=2)
-        print(f"  ✓ Saved parameters to {params_path}")
-
     def run_reduction(self, method, reducer, features, labels):
         print(f"\nRunning {method}...")
         
-        start_time = time.time()
+        start_time = time()
         scaled_features = self.scaler.fit_transform(features)
         embedding = reducer.fit_transform(scaled_features)
-        print(f"{method} completed in {time.time()-start_time:.2f} seconds")
+        print(f"{method} completed in {time()-start_time:.2f} seconds")
         
-        # Create output directory
-        output_dir = self.pth_prediction / "dim_red"
-        output_dir.mkdir(exist_ok=True, parents=True)
-        
-        # Export raw embedding data
-        self._export_embedding_data(method, embedding, labels, output_dir)
-        
-        # Create plot
         plt.figure(figsize=(12, 8))
         
         if self.mode in ["train", "test"]:
@@ -410,7 +291,7 @@ class DimRed:
                     label=class_name, alpha=0.7, s=40
                 )
         else:
-            # Plot by sample count (largest first = background, smallest last = foreground)
+            # FIXED: Plot by sample count (largest first = background, smallest last = foreground)
             unique_labels, counts = np.unique(labels, return_counts=True)
             
             # Create list of (label, count) pairs and sort by count (descending)
@@ -489,7 +370,10 @@ class DimRed:
         plt.gca().set_facecolor('#f5f5f5')
         plt.tight_layout()
         
-        # Save plot
+        output_dir = self.pth_prediction / "dim_red"
+        output_dir.mkdir(exist_ok=True, parents=True)
+        
+        # Update filename based on mode and palette
         if self.mode == "groups":
             output_path = output_dir / f"{method.lower()}_{len(self.group_mapping)}_groups_{self.checkpoint_name}_{self.color_palette}.png"
         else:
@@ -497,7 +381,7 @@ class DimRed:
             
         plt.savefig(output_path, dpi=300, bbox_inches='tight')
         plt.close()
-        print(f"  ✓ Saved {method} plot to {output_path}")
+        print(f"Saved {method} plot to {output_path}")
 
     #############################################################################################################
     # CALL
@@ -508,13 +392,8 @@ class DimRed:
             print("Warning: No dimensionality reduction methods enabled!")
             return
 
-        print(f"\n{'='*60}")
-        print(f"STARTING DIMENSIONALITY REDUCTION")
-        print(f"{'='*60}")
-        print(f"Mode: {self.mode}")
-        print(f"Color palette: {self.color_palette}")
-        print(f"Export format: {self.export_format.upper()}")
-        
+        print(f"\nStarting dimensionality reduction on {self.mode} set...")
+        print(f"Using color palette: {self.color_palette}")
         if self.pth_checkpoint.exists():
             self.load_checkpoint()
         if not self.checkpoint_loaded:
@@ -523,12 +402,8 @@ class DimRed:
         features, labels = self.extract_features()
         
         # Debug info
-        print(f"\nExtracted features: {features.shape}")
-        unique_labels, counts = np.unique(labels, return_counts=True)
-        print(f"Labels: {dict(zip(unique_labels, counts))}")
-        
-        # Store feature dimensions for parameter export
-        self.n_features = features.shape[1]
+        print(f"Extracted features: {features.shape}")
+        print(f"Labels: {np.unique(labels, return_counts=True)}")
         
         if self.use_umap:
             reducer = umap.UMAP(
@@ -567,7 +442,4 @@ class DimRed:
             gc.collect()
         
         torch.cuda.empty_cache()
-        print(f"\n{'='*60}")
-        print("All reductions completed!")
-        print(f"Output directory: {self.pth_prediction / 'dim_red'}")
-        print(f"{'='*60}\n")
+        print("\nAll reductions completed!")
