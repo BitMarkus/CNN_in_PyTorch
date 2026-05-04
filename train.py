@@ -1,3 +1,9 @@
+# Start tensorboard:
+# Navigate to project folder in explorer, type cmd in the address bar to open terminal
+# Activate virtual environment: conda activate pytorch
+# Open logfile from path: python -m tensorboard.main --logdir "D:\CLN7 AI - Paper\Data\ACV&CA_high_conf_ds\acv_results\logs"
+# Start tensorboard: python -m tensorboard.main --logdir ./logs
+
 ######################
 # Class for training #
 ######################

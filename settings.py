@@ -209,12 +209,12 @@ setting = {
     ################
 
     # Selection mode and value: "top_n", "threshold" or "interval"
-    "sort_selection_mode": "interval", 
+    "sort_selection_mode": "threshold", 
     # Number of images for top_n, or threshold value
     # If sort_selection_mode is "top_n", this selects the top X most confident images per class (e.g. 50)
     # If sort_selection_mode is "threshold", this needs to be a single number (e.g. 0.2) 
     # If sort_selection_mode is "interval", this needs to be a list of min/max values (e.g. [0.2, 0.8])
-    "sort_selection_value": [0.55, 0.95], # [0.55, 0.95], 
+    "sort_selection_value": 0.75, # [0.55, 0.95], 
     # Filter criteria: 'confidence_only', 'logits_only', or 'combined'
     'sort_filter_mode': 'combined',
     # Minimum max_logit value to keep

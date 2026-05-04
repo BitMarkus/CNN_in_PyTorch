@@ -46,7 +46,7 @@ def main():
         print("4) Train Network")
         print("5) Load Weights")
         print("6) Predict Class from Predict Folder")
-        print("7) Dataset Generator")
+        print("7) Dataset Generator (ACV)")
         print("8) Automatic Cross Validation (ACV)")
         print("9) Confidence Analyzer (based on ACV)")
         print("10) Captum (Integrated Gradients) Analyzer")
