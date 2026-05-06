@@ -141,6 +141,7 @@ class DimRed:
         
         print(f"Auto-detected {len(self.group_mapping)} groups in predictions folder: {list(self.group_mapping.keys())}")
 
+    """
     def load_checkpoint(self):
         silent_checkpoints = self.cnn_wrapper.print_checkpoints_table(self.pth_checkpoint, print_table=False)
         if not silent_checkpoints:
@@ -190,7 +191,91 @@ class DimRed:
         except Exception as e:
             print(f"Error loading checkpoint: {e}")
             return False
-    
+    """
+    def load_checkpoint(self):
+        silent_checkpoints = self.cnn_wrapper.print_checkpoints_table(self.pth_checkpoint, print_table=False)
+        if not silent_checkpoints:
+            print("No checkpoints found!")
+            return False
+        
+        if len(silent_checkpoints) == 1:
+            checkpoint_file = silent_checkpoints[0][1]
+            print(f"\nFound single checkpoint: {checkpoint_file}")
+        else:
+            self.cnn_wrapper.print_checkpoints_table(self.pth_checkpoint)
+            checkpoint_file = self.cnn_wrapper.select_checkpoint(silent_checkpoints, "Select checkpoint: ")
+            if not checkpoint_file:
+                return False
+        
+        try:
+            original_params = list(self.cnn.parameters())[0].clone()
+            full_path = self.pth_checkpoint / checkpoint_file
+            
+            # Load checkpoint
+            checkpoint = torch.load(full_path, map_location=self.device)
+            
+            # Extract state dict (handle both direct and wrapped formats)
+            if 'model_state_dict' in checkpoint:
+                checkpoint_weights = checkpoint['model_state_dict']
+                print(f"Loaded from training checkpoint (epoch {checkpoint.get('epoch', '?')}, acc={checkpoint.get('accuracy', 0):.2%})")
+            else:
+                checkpoint_weights = checkpoint
+                print("Loaded direct state dict format")
+            
+            # Clean layer names (remove 'model.' or 'module.' prefixes if present)
+            cleaned_weights = {}
+            for k, v in checkpoint_weights.items():
+                new_k = k
+                if new_k.startswith('model.'):
+                    new_k = new_k[6:]
+                if new_k.startswith('module.'):
+                    new_k = new_k[7:]
+                cleaned_weights[new_k] = v
+            
+            # Get current model state dict
+            model_dict = self.cnn.state_dict()
+            
+            # Load compatible weights (skip classifier if shape mismatch)
+            compatible_weights = {}
+            skipped_layers = []
+            
+            for k, v in cleaned_weights.items():
+                if k in model_dict:
+                    if model_dict[k].shape == v.shape:
+                        compatible_weights[k] = v
+                    else:
+                        skipped_layers.append(f"{k} (shape mismatch)")
+                else:
+                    skipped_layers.append(f"{k} (not in model)")
+            
+            # Count feature layers loaded (excluding classifier)
+            feature_layers_loaded = [k for k in compatible_weights.keys() if 'classifier' not in k]
+            print(f"Loaded {len(feature_layers_loaded)} feature extraction layers")
+            
+            if skipped_layers:
+                classifier_skipped = [s for s in skipped_layers if 'classifier' in s]
+                if classifier_skipped:
+                    print(f"Skipped {len(classifier_skipped)} classifier layers (expected)")
+            
+            # Update and load
+            model_dict.update(compatible_weights)
+            self.cnn.load_state_dict(model_dict)
+            
+            # Verify weights actually changed
+            new_params = list(self.cnn.parameters())[0]
+            if torch.equal(original_params, new_params):
+                print("ERROR: No weights loaded! Checkpoint format may be incompatible.")
+                return False
+            
+            self.checkpoint_loaded = True
+            self.checkpoint_name = full_path.stem
+            print(f"Successfully loaded weights from {checkpoint_file}\n")
+            return True
+            
+        except Exception as e:
+            print(f"Error loading checkpoint: {e}")
+            return False
+
     def extract_features(self):
 
         features, labels = [], []

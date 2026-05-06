@@ -306,10 +306,14 @@ class CNN_Model():
         else:
             return best_accuracy
     
-    def get_checkpoints_list(self, pth_checkpoint):
-        # List of all model files in the checkpoint directory with the .model extension
-        checkpoints_list = [file.name for file in pth_checkpoint.glob('*.model')]
-        # Return list of tuples with (display_id, filename) where display_id starts at 1
+    def get_checkpoints_list(self, pth_checkpoint, extensions=['.model', '.pt']):
+        checkpoints_list = []
+        for ext in extensions:
+            checkpoints_list.extend([file.name for file in pth_checkpoint.glob(f'*{ext}')])
+        
+        # Remove duplicates (in case same file has different extension? unlikely)
+        checkpoints_list = sorted(set(checkpoints_list))
+        
         return [(i+1, name) for i, name in enumerate(checkpoints_list)]
     
     def print_checkpoints_table(self, pth_checkpoint, print_table=True):
