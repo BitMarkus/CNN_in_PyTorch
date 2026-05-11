@@ -55,6 +55,49 @@ setting = {
     # ADAMW: 1e-5 - 1e-6
     "train_lr_eta_min": 1e-5,
 
+    ###########
+    # DATASET #
+    ###########
+
+    # Dataset parameters:
+    # Shuffle dataset
+    "ds_shuffle": True,
+    # Shuffle seed
+    "ds_shuffle_seed": 999,
+    # How many subprocesses are used to load data in parallel
+    "ds_num_workers": 3, # Intel Core i7-10700 CPU: 3
+    # Validation split settings
+    # Validation split from training dataset (False or percentage 0.0-1.0)
+    "ds_val_from_train_split": False, # 0.25
+    # Validation split from test dataset (False or percentage 0.0-1.0)
+    "ds_val_from_test_split": 0.35, # 0.3
+
+    # Classes:
+    # Define cell lines (for dataset generator)
+    # PROJECT 1:
+    "wt_lines": ["WT_1618-02", "WT_JG", "WT_JT", "WT_KM", "WT_MS"],
+    "ko_lines": ["KO_1096-01", "KO_1618-01", "KO_BR2986", "KO_BR3075"],
+    # PROJECT 2:
+    # "wt_lines": ["WT_BJ", "WT_LF", "WT_MW", "WT_NH"],
+    # "ko_lines": ["MMD_155", "MMD_160", "MMD_169", "MMD_177"],
+    # Define classes
+    # 2 classes (WT and KO):
+    "classes": ["KO", "WT"],
+    # 9 classes (one for each cell line):
+    # "classes": ["KO_1096-01", "KO_1618-01", "KO_BR2986", "KO_BR3075", "WT_1618-02", "WT_JG", "WT_JT", "WT_KM", "WT_MS"],
+
+    ###############
+    # CHECKPOINTS #
+    ###############
+
+    # Set to True, if checkpoints shall be saved during training
+    "chckpt_save": True,  
+    # Minimum acceptable per-class accuracy (0.60 = 60%)
+    "chckpt_min_class_acc_threshold": 0.65,
+    # Penalty weight fro checkpoint selection 
+    # Higher = more penalty for class imbalance (range: 1.0 to 4.0)
+    "chckpt_penalty_weight": 2.0,
+
     #########################
     # AUTO CROSS VALIDATION #
     #########################
@@ -123,37 +166,6 @@ setting = {
     # 0.2: 20% smoothing, etc.
     "train_label_smoothing": 0.1, # 0.1
 
-    ###########
-    # DATASET #
-    ###########
-
-    # Dataset parameters:
-    # Shuffle dataset
-    "ds_shuffle": True,
-    # Shuffle seed
-    "ds_shuffle_seed": 222,
-    # How many subprocesses are used to load data in parallel
-    "ds_num_workers": 3, # Intel Core i7-10700 CPU: 3
-    # Validation split settings
-    # Validation split from training dataset (False or percentage 0.0-1.0)
-    "ds_val_from_train_split": 0.25, # 0.25
-    # Validation split from test dataset (False or percentage 0.0-1.0)
-    "ds_val_from_test_split": False, # 0.3
-
-    # Classes:
-    # Define cell lines (for dataset generator)
-    # PROJECT 1:
-    "wt_lines": ["WT_1618-02", "WT_JG", "WT_JT", "WT_KM", "WT_MS"],
-    "ko_lines": ["KO_1096-01", "KO_1618-01", "KO_BR2986", "KO_BR3075"],
-    # PROJECT 2:
-    # "wt_lines": ["WT_BJ", "WT_LF", "WT_MW", "WT_NH"],
-    # "ko_lines": ["MMD_155", "MMD_160", "MMD_169", "MMD_177"],
-    # Define classes
-    # 2 classes (WT and KO):
-    # "classes": ["KO", "WT"],
-    # 9 classes (one for each cell line):
-    "classes": ["KO_1096-01", "KO_1618-01", "KO_BR2986", "KO_BR3075", "WT_1618-02", "WT_JG", "WT_JT", "WT_KM", "WT_MS"],
-
     #########
     # MODEL #
     #########
@@ -194,15 +206,6 @@ setting = {
     "img_width": 512,   
     "img_height": 512,
     "img_channels": 1,          
-
-    ###############
-    # CHECKPOINTS #
-    ###############
-
-    # Set to True, if checkpoints shall be saved during training
-    "chckpt_save": True,  
-    # Mininmun validation accuracy from which on checkpoints are saved
-    "chckpt_min_acc": 0.6,  # 0.8 for 2 classes, 0.6 for 9 classess
 
     ################
     # CLASS SORTER #

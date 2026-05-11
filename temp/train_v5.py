@@ -120,12 +120,6 @@ class Train():
         # Useful for imbalanced datasets
         self.use_weighted_loss = setting["train_use_weighted_loss"]
 
-        # Composite score settings (for checkpoint selection)
-        # Higher = more penalty for class imbalance (range: 1.0 to 4.0)
-        self.min_class_acc_threshold = setting["chckpt_min_class_acc_threshold"]
-        # Minimum acceptable per-class accuracy (0.60 = 60%)
-        self.penalty_weight = setting["chckpt_penalty_weight"]
-
         # Validation split settings
         # Validation split from training dataset in the folder data/train/
         self.val_from_train_split = setting["ds_val_from_train_split"]
@@ -212,41 +206,8 @@ class Train():
         # Add memory monitoring
         self.total_gpu_memory = torch.cuda.get_device_properties(device).total_memory if torch.cuda.is_available() else 0
 
-        # Track best composite score for checkpoint saving
-        self.best_composite_score = -float('inf')
-        self.best_epoch = -1
-
     #############################################################################################################
     # METHODS:
-
-    def _calculate_composite_score(self, class_accuracies, overall_accuracy, penalty_weight=2.0):
-        """
-        Calculate a composite score that balances overall accuracy with class performance parity.
-        
-        Formula: Composite = (Overall_Accuracy) - penalty_weight * (Standard_Deviation_of_Class_Accuracies)
-        
-        Args:
-            class_accuracies: dict of per-class accuracies
-            overall_accuracy: mean accuracy across all classes
-            penalty_weight: how heavily to penalize class imbalance (higher = stricter)
-        
-        Returns:
-            composite_score: higher is better
-            class_std: standard deviation of class accuracies (for logging)
-            min_class_acc: minimum class accuracy (for logging)
-        """
-        acc_values = list(class_accuracies.values())
-        class_std = np.std(acc_values)
-        min_class_acc = min(acc_values)
-        
-        # Composite score: overall accuracy minus weighted penalty for imbalance
-        composite_score = overall_accuracy - (penalty_weight * class_std)
-        
-        # Alternative: geometric mean of class accuracies (more strict)
-        # geometric_mean = np.exp(np.mean(np.log(acc_values)))
-        # composite_score = geometric_mean
-        
-        return composite_score, class_std, min_class_acc
 
     # Plot ROC curve and save to TensorBoard
     def _plot_roc_curve_to_tensorboard(self, fpr, tpr, roc_auc, epoch, title="ROC Curves"):
@@ -662,9 +623,8 @@ class Train():
             "confusion_matrices": []
         }
 
-        # Track best composite score for checkpoint saving
-        best_composite_score = -float('inf')
-        best_epoch = -1
+        # Track best accuracy for checkpoint saving
+        best_accuracy = 0.0
         
         # Build dynamic base name from settings
         pretrained_str = "pretr" if setting["cnn_is_pretrained"] else "scratch"
@@ -861,18 +821,6 @@ class Train():
             # Format per-class accuracies for display
             class_acc_str = " | ".join([f"{acc:.2f} {cls}" for cls, acc in class_accuracies.items()])
             
-            # ================================================================
-            # NEW: Calculate composite score for balanced checkpoint selection
-            # ================================================================
-            composite_score, class_std, min_class_acc = self._calculate_composite_score(
-                class_accuracies, standard_val_accuracy, penalty_weight=self.penalty_weight
-            )
-            
-            # Log composite score to TensorBoard
-            self.writer.add_scalar('Metrics/Composite_Score', composite_score, epoch)
-            self.writer.add_scalar('Metrics/Class_Accuracy_StdDev', class_std, epoch)
-            self.writer.add_scalar('Metrics/Min_Class_Accuracy', min_class_acc, epoch)
-            
             # Create and log confusion matrix
             cm = confusion_matrix(all_labels, all_preds)
             cm_fig = self._plot_confusion_matrix(cm, class_names=self.classes, epoch=epoch)
@@ -949,7 +897,7 @@ class Train():
 
             # Log per-class metrics
             for i, class_name in enumerate(self.classes):
-                if i in roc_auc:
+                if i in roc_auc:  # Only if class exists in this batch
                     self.writer.add_scalar(f'Metrics/AUC/{class_name}', roc_auc[i], epoch)
                 if i in average_precision:
                     self.writer.add_scalar(f'Metrics/AP/{class_name}', average_precision[i], epoch)
@@ -973,84 +921,67 @@ class Train():
             else:
                 print(f"> Val Loss: {val_loss:.5f} | Val Acc: {standard_val_accuracy:.2f} | Per-class: ({class_acc_str})")
                 print(f"> F1 (Macro): {f1_macro:.4f} | AUC: {roc_auc_weighted:.4f} | AP: {ap_weighted:.4f}")
-            
-            # ================================================================
-            # NEW: Print composite score information
-            # ================================================================
-            print(f"> Composite Score: {composite_score:.4f} | Class STD: {class_std:.4f} | Min Class Acc: {min_class_acc:.2%}")
 
-            # ================================================================
-            # MODIFIED: Checkpoint saving based on composite score
-            # ================================================================
-            # Also enforce a minimum per-class accuracy threshold
-            if min_class_acc >= self.min_class_acc_threshold:
-                # Check if this is the best composite score so far
-                if composite_score > best_composite_score:
-                    best_composite_score = composite_score
-                    best_epoch = epoch
-                    
-                    # Create checkpoint filename with dynamic naming (include composite score)
-                    checkpoint_name = f"ckpt_{pretrained_str}_{model_name}_e{epoch+1:02d}_comp{composite_score:.3f}_vacc{int(standard_val_accuracy*100)}{dataset_suffix}"
-                    checkpoint_path = chckpt_pth / f"{checkpoint_name}.pt"
-                    
-                    # Save checkpoint
-                    torch.save({
-                        'epoch': epoch,
-                        'model_state_dict': self.cnn.state_dict(),
-                        'optimizer_state_dict': self.optimizer.state_dict(),
-                        'accuracy': standard_val_accuracy,
-                        'composite_score': composite_score,
-                        'per_class_accuracy': class_accuracies,
-                        'loss': val_loss,
-                    }, checkpoint_path)
-                    
-                    # Create validation confusion matrix filename
-                    val_cm_filename = f"ckpt_{pretrained_str}_{model_name}_val_e{epoch+1:02d}_comp{composite_score:.3f}_vacc{int(standard_val_accuracy*100)}{dataset_suffix}"
-                    
-                    # Save validation confusion matrix plot
-                    fn.plot_confusion_matrix(
-                        {"y": all_labels, "y_hat": all_preds}, 
-                        self.classes, 
-                        plot_pth,
-                        chckpt_name=val_cm_filename, 
-                        show_plot=False, 
-                        save_plot=True
-                    )
-                    
-                    # Save validation confusion matrix results as JSON
-                    fn.save_confusion_matrix_results(
-                        {"y": all_labels, "y_hat": all_preds}, 
-                        self.classes, 
-                        plot_pth,
-                        chckpt_name=val_cm_filename
-                    )
-                    
-                    # Save ROC and PR data for the best checkpoint
-                    roc_pr_data = {
-                        'epoch': epoch,
-                        'classes': self.classes,
-                        'composite_score': composite_score,
-                        'class_std': float(class_std),
-                        'min_class_acc': float(min_class_acc),
-                        'roc_auc': {self.classes[i]: float(roc_auc[i]) for i in roc_auc},
-                        'average_precision': {self.classes[i]: float(average_precision[i]) for i in average_precision},
-                        'per_class_accuracy': {cls: float(acc) for cls, acc in class_accuracies.items()},
-                    }
-                    
-                    with open(plot_pth / f"{val_cm_filename}_roc_pr.json", 'w') as f:
-                        json.dump(roc_pr_data, f, indent=2)
-                    
-                    print(f"✓ Model saved! Epoch {epoch+1}")
-                    print(f"  - Composite Score: {composite_score:.4f}")
-                    print(f"  - Standard Accuracy: {standard_val_accuracy:.2%}")
-                    print(f"  - Min Class Accuracy: {min_class_acc:.2%}")
-                    print(f"  - Class STD: {class_std:.4f}")
-                    print(f"✓ Validation confusion matrix saved: {val_cm_filename}.png/.json")
-            else:
-                print(f"⚠ Model NOT saved - Min class accuracy ({min_class_acc:.2%}) below threshold ({self.min_class_acc_threshold:.0%})")
+            # Calculate current validation accuracy for checkpoint comparison
+            current_val_accuracy = weighted_val_accuracy if self.use_weighted_loss else standard_val_accuracy
+            
+            # Check if this is the best model so far
+            if current_val_accuracy > best_accuracy and current_val_accuracy >= setting["chckpt_min_acc"]:
+                best_accuracy = current_val_accuracy
+                
+                # Create checkpoint filename with dynamic naming
+                checkpoint_name = f"ckpt_{pretrained_str}_{model_name}_e{epoch+1:02d}_vacc{int(current_val_accuracy*100)}{dataset_suffix}"
+                checkpoint_path = chckpt_pth / f"{checkpoint_name}.pt"
+                
+                # Save checkpoint
+                torch.save({
+                    'epoch': epoch,
+                    'model_state_dict': self.cnn.state_dict(),
+                    'optimizer_state_dict': self.optimizer.state_dict(),
+                    'accuracy': current_val_accuracy,
+                    'loss': val_loss,
+                }, checkpoint_path)
+                
+                # Create validation confusion matrix filename with "val_" inserted after model name
+                val_cm_filename = f"ckpt_{pretrained_str}_{model_name}_val_e{epoch+1:02d}_vacc{int(current_val_accuracy*100)}{dataset_suffix}"
+                
+                # Save validation confusion matrix plot
+                fn.plot_confusion_matrix(
+                    {"y": all_labels, "y_hat": all_preds}, 
+                    self.classes, 
+                    plot_pth,
+                    chckpt_name=val_cm_filename, 
+                    show_plot=False, 
+                    save_plot=True
+                )
+                
+                # Save validation confusion matrix results as JSON
+                fn.save_confusion_matrix_results(
+                    {"y": all_labels, "y_hat": all_preds}, 
+                    self.classes, 
+                    plot_pth,
+                    chckpt_name=val_cm_filename
+                )
+                
+                # NEW: Also save ROC and PR data for the best checkpoint
+                roc_pr_data = {
+                    'epoch': epoch,
+                    'classes': self.classes,
+                    'roc_auc': {self.classes[i]: roc_auc[i] for i in roc_auc},
+                    'average_precision': {self.classes[i]: average_precision[i] for i in average_precision},
+                    'fpr_macro': None,  # Would need micro-average calculation
+                    'tpr_macro': None,
+                }
+                
+                with open(plot_pth / f"{val_cm_filename}_roc_pr.json", 'w') as f:
+                    json.dump(roc_pr_data, f, indent=2)
+                
+                print(f"✓ Model saved! Validation accuracy: {best_accuracy:.2f}")
+                print(f"✓ Validation confusion matrix saved: {val_cm_filename}.png/.json")
+                print(f"✓ ROC/PR data saved for epoch {epoch+1}")
             
             # Store validation metrics in history
-            history["val_acc"].append(standard_val_accuracy)
+            history["val_acc"].append(current_val_accuracy)
             history["val_loss"].append(val_loss)
             history["f1_macro"].append(f1_macro)
             history["f1_weighted"].append(f1_weighted)
@@ -1066,7 +997,6 @@ class Train():
         self.writer.close()
         self._plot_metrics(history, plot_pth, show_plot=False, save_plot=True)
         
-        print(f"\n>> Training completed!")
-        print(f"   Best composite score: {best_composite_score:.4f} at epoch {best_epoch+1}")
+        print(f"\n>> Training completed! Best validation accuracy: {best_accuracy:.2f}")
         
         return history

@@ -52,8 +52,6 @@ class CNN_Model():
         self.is_pretrained = setting["cnn_is_pretrained"] 
         # Initialization type for non-pretrained cnns
         self.initialization = setting["cnn_initialization"] 
-        # Checkpoint saving options
-        self.chckpt_min_acc = setting["chckpt_min_acc"] 
         self.chckpt_save = setting["chckpt_save"]
         self.chckpt_pth = setting["pth_checkpoint"]
         # Class list
@@ -282,6 +280,7 @@ class CNN_Model():
         print(', '.join(self.class_list))
 
     # Saves a checkpoint/weights
+    """
     def save_weights(self, current_accuracy, best_accuracy, epoch, checkpoint_dir, return_save_flag=False):
         # Get min accuracy from settings
         min_accuracy = setting.get("chckpt_min_acc", 0.0)
@@ -305,6 +304,7 @@ class CNN_Model():
             return best_accuracy, False
         else:
             return best_accuracy
+    """
     
     def get_checkpoints_list(self, pth_checkpoint, extensions=['.model', '.pt']):
         checkpoints_list = []
