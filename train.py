@@ -1046,8 +1046,11 @@ class Train():
                     print(f"  - Min Class Accuracy: {min_class_acc:.2%}")
                     print(f"  - Class STD: {class_std:.4f}")
                     print(f"✓ Validation confusion matrix saved: {val_cm_filename}.png/.json")
+                else:
+                    # ← ADD THE NEW PRINT STATEMENT HERE
+                    print(f"⚠ Model NOT saved: Composite score {composite_score:.4f} ≤ best {best_composite_score:.4f}")
             else:
-                print(f"⚠ Model NOT saved - Min class accuracy ({min_class_acc:.2%}) below threshold ({self.min_class_acc_threshold:.0%})")
+                print(f"⚠ Model NOT saved: Min class accuracy ({min_class_acc:.2%}) below threshold ({self.min_class_acc_threshold:.0%})")
             
             # Store validation metrics in history
             history["val_acc"].append(standard_val_accuracy)
