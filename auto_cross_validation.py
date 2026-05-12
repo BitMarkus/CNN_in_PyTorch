@@ -541,16 +541,14 @@ class AutoCrossValidation:
                                 self.cnn_wrapper.model.to(self.device)
                                 self.cnn_wrapper.model.eval()
                                 
-                                # Extract epoch and accuracy from checkpoint filename
-                                # Filename pattern: ckpt_pretr_densenet121_e06_vacc70_ds1.pt
-                                import re
-                                match = re.search(r'e(\d+)_vacc(\d+)', checkpoint_path.stem)
-                                if match:
-                                    epoch = match.group(1)
-                                    acc = match.group(2)
-                                else:
-                                    epoch = "unknown"
-                                    acc = "unknown"
+                                # Extract epoch and accuracy directly from checkpoint dictionary
+                                epoch = checkpoint.get('epoch', 'unknown')
+                                if epoch != 'unknown':
+                                    epoch = f"{epoch+1:02d}"  # Convert from 0-based to 1-based and format as 2-digit
+                                    
+                                acc = checkpoint.get('accuracy', 'unknown')
+                                if acc != 'unknown':
+                                    acc = int(acc * 100)  # Convert from decimal (0.85) to percentage (85)
                                 
                                 print(f"\n  > Testing checkpoint epoch {epoch} (val_acc={acc}%)...")
                                 

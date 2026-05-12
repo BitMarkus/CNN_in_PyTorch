@@ -70,7 +70,7 @@ setting = {
     # Validation split from training dataset (False or percentage 0.0-1.0)
     "ds_val_from_train_split": False, # 0.25
     # Validation split from test dataset (False or percentage 0.0-1.0)
-    "ds_val_from_test_split": 0.35, # 0.3
+    "ds_val_from_test_split": 1.0, # 0.3
 
     # Classes:
     # Define cell lines (for dataset generator)
