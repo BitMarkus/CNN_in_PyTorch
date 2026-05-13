@@ -919,13 +919,13 @@ class Train():
             ap_weighted = np.mean(list(average_precision.values())) if average_precision else 0
 
             # ================================================================
-            # NEW: Log ROC and PR curves as images to TensorBoard
+            # Log ROC and PR curves as images to TensorBoard
             # ================================================================
             self._plot_roc_curve_to_tensorboard(fpr, tpr, roc_auc, epoch)
             self._plot_pr_curve_to_tensorboard(precision, recall, average_precision, epoch)
             
             # ================================================================
-            # NEW: Save probability data for retrospective analysis
+            # Save probability data for retrospective analysis
             # ================================================================
             # Save every 5 epochs or for the last epoch
             if epoch % 5 == 0 or epoch == self.num_epochs - 1:
@@ -975,12 +975,12 @@ class Train():
                 print(f"> F1 (Macro): {f1_macro:.4f} | AUC: {roc_auc_weighted:.4f} | AP: {ap_weighted:.4f}")
             
             # ================================================================
-            # NEW: Print composite score information
+            # Print composite score information
             # ================================================================
             print(f"> Composite Score: {composite_score:.4f} | Class STD: {class_std:.4f} | Min Class Acc: {min_class_acc:.2%}")
 
             # ================================================================
-            # MODIFIED: Checkpoint saving based on composite score
+            # Checkpoint saving based on composite score
             # ================================================================
             # Also enforce a minimum per-class accuracy threshold
             if min_class_acc >= self.min_class_acc_threshold:
