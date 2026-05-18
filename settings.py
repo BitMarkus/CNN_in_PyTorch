@@ -245,7 +245,7 @@ setting = {
     #######################
 
     # Min confidence for image sorting
-    "ca_min_conf": 0.8,     # 80%
+    "ca_min_conf": 0.7,     # 80%
     # Max confidence for image sorting
     'ca_max_conf': 1.0,
     # Filter type for image sorting
@@ -259,6 +259,14 @@ setting = {
     # Method for best checkpoint selection
     # Options: balanced_sum, f1_score, min_difference, balanced_accuracy
     "ca_ckpt_select_method": 'balanced_accuracy',
+    # Which confusion matrix JSON file to use for checkpoint selection
+    # When you have BOTH validation AND test evaluations during training, this decides which metrics to use for selecting the "best" checkpoint
+    # Options: "validation", "test"
+    "ca_use_test_cm": "validation",
+    # Which set of images to run predictions on for confidence analysis
+    # Decides which actual images to feed through the model for prediction
+    # Options: "validation", "test", "all"  
+    "ca_split_to_use": "validation", 
 
     ##########
     # CAPTUM #
