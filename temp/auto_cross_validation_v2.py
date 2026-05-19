@@ -492,8 +492,8 @@ class AutoCrossValidation:
             # Train on dataset #
             #################### 
 
-            # Create Train object with dataset_idx parameter
-            self.train = Train(self.cnn_wrapper, self.ds, self.device, dataset_idx=config['dataset_idx'])
+            self.train = Train(self.cnn_wrapper, self.ds, self.device)
+            self.train.dataset_idx = config['dataset_idx']
             print(f"\n> Start training on dataset {config['dataset_idx']}...")
             self.train.train(checkpoint_dir, plot_dir)
             print(f"\nTraining on dataset {config['dataset_idx']} successfully finished.")

@@ -104,13 +104,13 @@ def plot_confusion_matrix(cm, class_list, plot_path, chckpt_name=None, show_plot
         if(chckpt_name is None):
             cm_file_name = "confusion_matrix"
         else:
-            # Remove extension from checkpoint name if necessary
-            cm_file_name = Path(chckpt_name).stem + "_cm" 
+            # FIXED: Convert to string and use as-is (no .stem to remove decimals)
+            cm_file_name = str(chckpt_name) + "_cm"
         # Save plot - use pathlib for path joining
         plt.savefig(plot_path / cm_file_name, bbox_inches='tight')
     # Show and save plot
     if(show_plot):
-        plt.show()   
+        plt.show()
 
 # Save confusion matrix results with accuracies to a json file.
 # Args:
@@ -156,7 +156,8 @@ def save_confusion_matrix_results(cm, class_list, file_path, chckpt_name=None):
     if chckpt_name is None:
         file_name = "cm_results"
     else:
-        file_name = Path(chckpt_name).stem + "_cm"
+        # FIXED: Convert to string and use as-is (no .stem to remove decimals)
+        file_name = str(chckpt_name) + "_cm"
     
     with open(file_path / f"{file_name}.json", 'w') as f:
         json.dump(results, f, indent=4)

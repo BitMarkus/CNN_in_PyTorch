@@ -63,7 +63,7 @@ setting = {
     # Shuffle dataset
     "ds_shuffle": True,
     # Shuffle seed
-    "ds_shuffle_seed": 999,
+    "ds_shuffle_seed": 42,
     # How many subprocesses are used to load data in parallel
     "ds_num_workers": 3, # Intel Core i7-10700 CPU: 3
     # Validation split settings

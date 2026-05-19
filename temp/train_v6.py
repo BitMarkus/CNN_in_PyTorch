@@ -31,7 +31,7 @@ class Train():
     #############################################################################################################
     # CONSTRUCTOR:
     
-    def __init__(self, cnn_wrapper, dataset, device, dataset_idx=None):
+    def __init__(self, cnn_wrapper, dataset, device):
         # Input validation
         assert len(dataset.ds_train) > 0, "Training dataset is empty"
         assert len(dataset.ds_val) > 0, "Validation dataset is empty"
@@ -40,23 +40,11 @@ class Train():
         self.cnn_wrapper = cnn_wrapper
         self.cnn = cnn_wrapper.model
 
-        # Store dataset_idx for use in train() method
-        self.dataset_idx = dataset_idx
-
-        # Generate logs subfolder name for this run
-        # If dataset_idx is set (during cross-validation), take this as folder name
-        if self.dataset_idx is not None:
-            self.timestamp = f"ds{self.dataset_idx:02d}"
-        else:
-            self.timestamp = datetime.now().strftime('%Y%m%d-%H%M%S')
-        
-        # Initialize TensorBoard writer - creates a subfolder with timestamp
-        self.log_dir = Path("logs") / self.timestamp
-        self.writer = SummaryWriter(str(self.log_dir))
+        # Initialize TensorBoard writer
+        self.writer = SummaryWriter(f"logs/{datetime.now().strftime('%Y%m%d-%H%M%S')}")
         
         # Create directory for saving per-epoch probability data
-        # Put probabilities inside the same timestamped subfolder as TensorBoard logs
-        self.prob_dir = self.log_dir / "probabilities"
+        self.prob_dir = Path("logs/probabilities")
         self.prob_dir.mkdir(parents=True, exist_ok=True)
         
         # Class names
@@ -101,6 +89,9 @@ class Train():
         # Datasets
         self.ds_train = dataset.ds_train
         self.ds_val = dataset.ds_val
+
+        # Will be set by AutoCrossValidation
+        self.dataset_idx = None  
 
         # Number of training and validation images in each dataset
         self.num_train_img = dataset.num_train_img
@@ -933,6 +924,13 @@ class Train():
             self._plot_roc_curve_to_tensorboard(fpr, tpr, roc_auc, epoch)
             self._plot_pr_curve_to_tensorboard(precision, recall, average_precision, epoch)
             
+            # ================================================================
+            # Save probability data for retrospective analysis
+            # ================================================================
+            # Save every 5 epochs or for the last epoch
+            if epoch % 5 == 0 or epoch == self.num_epochs - 1:
+                self._save_probability_data(all_probs, all_labels, all_preds, epoch)
+
             # Log to TensorBoard - ALL METRICS (regardless of weighted setting)
             self.writer.add_scalar('Loss/train', train_loss, epoch)
             self.writer.add_scalar('Accuracy/train', final_weighted_train_accuracy if self.use_weighted_loss else final_standard_train_accuracy, epoch)
@@ -1006,11 +1004,6 @@ class Train():
                         'loss': val_loss,
                     }, checkpoint_path)
                     
-                    # ================================================================
-                    # Save probability data ONLY for saved checkpoints
-                    # ================================================================
-                    self._save_probability_data(all_probs, all_labels, all_preds, epoch)
-                    
                     # Create validation confusion matrix filename
                     val_cm_filename = f"ckpt_{pretrained_str}_{model_name}_val_e{epoch+1:02d}_comp{composite_score:.3f}_vacc{int(standard_val_accuracy*100)}{dataset_suffix}"
                     
@@ -1053,8 +1046,8 @@ class Train():
                     print(f"  - Min Class Accuracy: {min_class_acc:.2%}")
                     print(f"  - Class STD: {class_std:.4f}")
                     print(f"✓ Validation confusion matrix saved: {val_cm_filename}.png/.json")
-                    print(f"✓ Probability data saved for this checkpoint")
                 else:
+                    # ← ADD THE NEW PRINT STATEMENT HERE
                     print(f"⚠ Model NOT saved: Composite score {composite_score:.4f} ≤ best {best_composite_score:.4f}")
             else:
                 print(f"⚠ Model NOT saved: Min class accuracy ({min_class_acc:.2%}) below threshold ({self.min_class_acc_threshold:.0%})")
