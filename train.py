@@ -249,6 +249,10 @@ class Train():
         min_class_acc = min(acc_values)
         
         # Composite score: overall accuracy minus weighted penalty for imbalance
+        # composite_score = overall_accuracy - (penalty_weight × class_std)
+        # overall_accuracy = standard validation accuracy (unweighted mean accuracy across all classes)
+        # penalty_weight = from settings: setting["chckpt_penalty_weight"] (default: 2.0)
+        # class_std = standard deviation of per-class accuracies
         composite_score = overall_accuracy - (penalty_weight * class_std)
         
         # Alternative: geometric mean of class accuracies (more strict)
@@ -616,45 +620,6 @@ class Train():
 
         return fig
     
-    def debug_real_validation(self, val_loader):
-        """Debug what's happening during real image validation"""
-        print("\n=== DEBUG REAL IMAGE VALIDATION ===")
-        
-        # Get one batch
-        images, labels = next(iter(val_loader))
-        
-        print(f"Batch size: {images.shape[0]}")
-        print(f"Image shape: {images.shape}")
-        
-        # Check label distribution
-        unique, counts = torch.unique(labels, return_counts=True)
-        print(f"Labels in batch: KO={counts[0].item() if 0 in unique else 0}, "
-            f"WT={counts[1].item() if 1 in unique else 0}")
-        
-        # Make predictions
-        with torch.no_grad():
-            images = images.to(self.device)
-            outputs = self.cnn(images)  # FIXED: self.cnn instead of self.model
-            probabilities = torch.softmax(outputs, dim=1)
-            predictions = torch.argmax(outputs, dim=1)
-            
-            print(f"\nFirst 5 predictions:")
-            for i in range(min(5, len(predictions))):
-                true_label = "KO" if labels[i] == 0 else "WT"
-                pred_label = "KO" if predictions[i] == 0 else "WT"
-                ko_prob = probabilities[i][0].item()
-                wt_prob = probabilities[i][1].item()
-                print(f"  Image {i}: True={true_label}, Pred={pred_label}, "
-                    f"P(KO)={ko_prob:.3f}, P(WT)={wt_prob:.3f}")
-        
-        # Check if model outputs are extremely confident
-        print(f"\nPrediction confidence analysis:")
-        print(f"  Mean WT probability: {probabilities[:, 1].mean().item():.3f}")
-        print(f"  Mean KO probability: {probabilities[:, 0].mean().item():.3f}")
-        print(f"  % predicting WT: {(predictions == 1).float().mean().item():.1%}")
-        
-        return predictions, labels
-
     ##################
     # TRAIN FUNCTION #
     ##################
@@ -870,9 +835,7 @@ class Train():
             # Format per-class accuracies for display
             class_acc_str = " | ".join([f"{acc:.2f} {cls}" for cls, acc in class_accuracies.items()])
             
-            # ================================================================
-            # NEW: Calculate composite score for balanced checkpoint selection
-            # ================================================================
+            # Calculate composite score for balanced checkpoint selection
             composite_score, class_std, min_class_acc = self._calculate_composite_score(
                 class_accuracies, standard_val_accuracy, penalty_weight=self.penalty_weight
             )
@@ -927,9 +890,7 @@ class Train():
                 )
             ap_weighted = np.mean(list(average_precision.values())) if average_precision else 0
 
-            # ================================================================
             # Log ROC and PR curves as images to TensorBoard
-            # ================================================================
             self._plot_roc_curve_to_tensorboard(fpr, tpr, roc_auc, epoch)
             self._plot_pr_curve_to_tensorboard(precision, recall, average_precision, epoch)
             
@@ -976,14 +937,10 @@ class Train():
                 print(f"> Val Loss: {val_loss:.5f} | Val Acc: {standard_val_accuracy:.2f} | Per-class: ({class_acc_str})")
                 print(f"> F1 (Macro): {f1_macro:.4f} | AUC: {roc_auc_weighted:.4f} | AP: {ap_weighted:.4f}")
             
-            # ================================================================
             # Print composite score information
-            # ================================================================
             print(f"> Composite Score: {composite_score:.4f} | Class STD: {class_std:.4f} | Min Class Acc: {min_class_acc:.2%}")
 
-            # ================================================================
             # Checkpoint saving based on composite score
-            # ================================================================
             # Also enforce a minimum per-class accuracy threshold
             if min_class_acc >= self.min_class_acc_threshold:
                 # Check if this is the best composite score so far
@@ -1006,9 +963,7 @@ class Train():
                         'loss': val_loss,
                     }, checkpoint_path)
                     
-                    # ================================================================
                     # Save probability data ONLY for saved checkpoints
-                    # ================================================================
                     self._save_probability_data(all_probs, all_labels, all_preds, epoch)
                     
                     # Create validation confusion matrix filename
