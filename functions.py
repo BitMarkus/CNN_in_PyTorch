@@ -83,17 +83,14 @@ def create_prg_folders():
     return True
 
 # Function to plot a confusion matrix
+# Function to plot a confusion matrix
 def plot_confusion_matrix(cm, class_list, plot_path, chckpt_name=None, show_plot=False, save_plot=True):
     # # Print confusion matrix 
-    # https://scikit-learn.org/stable/modules/model_evaluation.html#confusion-matrix
-    # https://scikit-learn.org/stable/auto_examples/model_selection/plot_confusion_matrix.html#sphx-glr-auto-examples-model-selection-plot-confusion-matrix-py
-    # https://scikit-learn.org/stable/modules/generated/sklearn.metrics.ConfusionMatrixDisplay.html#sklearn.metrics.ConfusionMatrixDisplay.from_predictions
     ConfusionMatrixDisplay.from_predictions(
         cm["y"], 
         cm["y_hat"], 
         display_labels=class_list, 
         cmap='Blues', 
-        # normalize='pred', # the confusion matrix is normalized over the predicted conditions (e.g. columns)
         normalize='true', # the confusion matrix is normalized over the true conditions (e.g. rows)
     )
     plt.tight_layout()
@@ -102,10 +99,10 @@ def plot_confusion_matrix(cm, class_list, plot_path, chckpt_name=None, show_plot
         # Name of the cm file will be the checkpoint file it is based on
         # If no name was passed, it will be just called "confusion_matrix"
         if(chckpt_name is None):
-            cm_file_name = "confusion_matrix"
+            cm_file_name = "confusion_matrix.png"
         else:
             # FIXED: Convert to string and use as-is (no .stem to remove decimals)
-            cm_file_name = str(chckpt_name) + "_cm"
+            cm_file_name = str(chckpt_name) + "_cm.png"
         # Save plot - use pathlib for path joining
         plt.savefig(plot_path / cm_file_name, bbox_inches='tight')
     # Show and save plot

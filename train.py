@@ -377,7 +377,7 @@ class Train():
         with open(self.prob_dir / f'probabilities_epoch_{epoch:03d}_summary.json', 'w') as f:
             json.dump(summary, f, indent=2)
         
-        print(f"    ✓ Saved probability data for epoch {epoch+1}")
+        # print(f"    ✓ Saved probability data for epoch {epoch+1}")
 
     # Get class weights for metrics calculation
     def _get_class_weights_for_metrics(self, dataset):
