@@ -15,7 +15,6 @@ import json
 from sklearn.metrics import balanced_accuracy_score
 from pathlib import Path
 from torch.amp import autocast 
-import numpy as np
 # Own modules
 from dataset import Dataset
 from model import CNN_Model
@@ -59,10 +58,6 @@ class ConfidenceAnalyzer:
         # Selection method for selecting the "best" checkpoints
         self.ckpt_select_method = setting['ca_ckpt_select_method']
         
-        # Composite score settings (for composite_score selection method)
-        self.penalty_weight = setting.get('chckpt_penalty_weight', 2.0)
-        self.min_class_acc_threshold = setting.get('chckpt_min_class_acc_threshold', 0.60)
-        
         # Which confusion matrices to use for checkpoint selection
         # Options: "validation", "test"
         cm_setting = setting.get('ca_use_test_cm', 'validation')
@@ -100,10 +95,6 @@ class ConfidenceAnalyzer:
         print(f"  Training data source: {self.training_data_source}")
         print(f"  Using {self.cm_source.upper()} confusion matrices (file pattern: '{self.cm_file_pattern}')")
         print(f"  Using '{self.split_to_use.upper()}' split for analysis")
-        if self.ckpt_select_method == 'composite_score':
-            print(f"  Checkpoint selection method: COMPOSITE SCORE (penalty_weight={self.penalty_weight}, min_class_acc_threshold={self.min_class_acc_threshold:.0%})")
-        else:
-            print(f"  Checkpoint selection method: {self.ckpt_select_method}")
         print(f"  Mixed folder: {self.pth_ds_gen_input}")
         if self.pth_ds_gen_input_synthetic:
             print(f"  Synthetic folder: {self.pth_ds_gen_input_synthetic}")
@@ -142,32 +133,6 @@ class ConfidenceAnalyzer:
             return int(match.group(1))
         
         return None
-
-    # Calculate composite score (matches train.py implementation)
-    def _calculate_composite_score(self, class_accuracies, overall_accuracy, penalty_weight=2.0):
-        """
-        Calculate a composite score that balances overall accuracy with class performance parity.
-        
-        Formula: Composite = (Overall_Accuracy) - penalty_weight * (Standard_Deviation_of_Class_Accuracies)
-        
-        Args:
-            class_accuracies: dict of per-class accuracies (e.g., {'WT': 0.85, 'KO': 0.75})
-            overall_accuracy: mean accuracy across all classes
-            penalty_weight: how heavily to penalize class imbalance (higher = stricter)
-        
-        Returns:
-            composite_score: higher is better
-            class_std: standard deviation of class accuracies (for logging)
-            min_class_acc: minimum class accuracy (for logging)
-        """
-        acc_values = list(class_accuracies.values())
-        class_std = np.std(acc_values)
-        min_class_acc = min(acc_values)
-        
-        # Composite score: overall accuracy minus weighted penalty for imbalance
-        composite_score = overall_accuracy - (penalty_weight * class_std)
-        
-        return composite_score, class_std, min_class_acc
 
     # Get only dataset folders that exist in acv_results
     def _get_available_datasets(self):
@@ -284,17 +249,6 @@ class ConfidenceAnalyzer:
                         score = balanced_accuracy_score(y_true, y_pred)
                     else:
                         score = (wt_acc + ko_acc) / 2
-                elif method == 'composite_score':
-                    # Calculate composite score using per-class accuracies
-                    class_accuracies = {
-                        self.classes[0]: wt_acc,
-                        self.classes[1]: ko_acc
-                    }
-                    score, class_std, min_class_acc = self._calculate_composite_score(
-                        class_accuracies, overall_acc, penalty_weight=self.penalty_weight
-                    )
-                    # Also store additional info for logging
-                    tqdm.write(f"    Composite score for epoch {epoch_num}: {score:.4f} (std={class_std:.4f}, min_acc={min_class_acc:.2%})")
                 else:
                     raise ValueError(f"Unknown selection method: {method}")
                 
@@ -309,10 +263,7 @@ class ConfidenceAnalyzer:
         
         tqdm.write(f"\nSelected top {len(selected)} checkpoints by '{method}':")
         for i, (ckpt, score, wt_acc, ko_acc, overall_acc) in enumerate(scores[:top_n]):
-            if method == 'composite_score':
-                tqdm.write(f"  {i+1}. {ckpt}: composite={score:.4f} (WT={wt_acc:.2%}, KO={ko_acc:.2%}, overall={overall_acc:.2%})")
-            else:
-                tqdm.write(f"  {i+1}. {ckpt}: score={score:.4f} (WT={wt_acc:.2%}, KO={ko_acc:.2%}, overall={overall_acc:.2%})")
+            tqdm.write(f"  {i+1}. {ckpt}: score={score:.4f} (WT={wt_acc:.2%}, KO={ko_acc:.2%}, overall={overall_acc:.2%})")
         
         return selected
 
@@ -376,16 +327,7 @@ class ConfidenceAnalyzer:
                             wt_acc = cm_data['class_accuracy'].get(self.classes[0], 0)
                             ko_acc = cm_data['class_accuracy'].get(self.classes[1], 0)
                             overall_acc = cm_data.get('overall_accuracy', 0)
-                            
-                            if self.ckpt_select_method == 'composite_score':
-                                # Calculate composite score for display
-                                class_accuracies = {self.classes[0]: wt_acc, self.classes[1]: ko_acc}
-                                comp_score, comp_std, min_acc = self._calculate_composite_score(
-                                    class_accuracies, overall_acc, penalty_weight=self.penalty_weight
-                                )
-                                tqdm.write(f"  {checkpoint_file}: WT={wt_acc:.2%}, KO={ko_acc:.2%}, overall={overall_acc:.2%}, composite={comp_score:.4f}")
-                            else:
-                                tqdm.write(f"  {checkpoint_file}: WT={wt_acc:.2%}, KO={ko_acc:.2%}, overall={overall_acc:.2%}")
+                            tqdm.write(f"  {checkpoint_file}: WT={wt_acc:.2%}, KO={ko_acc:.2%}, overall={overall_acc:.2%}")
                         except:
                             tqdm.write(f"  {checkpoint_file}")
         
@@ -692,16 +634,6 @@ class ConfidenceAnalyzer:
                 ko_acc = cm_data['class_accuracy'].get(self.classes[1], 0)
                 overall_acc = cm_data.get('overall_accuracy', 0)
                 
-                # Calculate composite score if method is composite_score
-                composite_score = None
-                composite_std = None
-                min_class_acc = None
-                if self.ckpt_select_method == 'composite_score':
-                    class_accuracies = {self.classes[0]: wt_acc, self.classes[1]: ko_acc}
-                    composite_score, composite_std, min_class_acc = self._calculate_composite_score(
-                        class_accuracies, overall_acc, penalty_weight=self.penalty_weight
-                    )
-                
                 rows.append({
                     'dataset': dataset_num,
                     'test_wt': config['test_wt'],
@@ -710,16 +642,12 @@ class ConfidenceAnalyzer:
                     'wt_accuracy': wt_acc,
                     'ko_accuracy': ko_acc,
                     'overall_accuracy': overall_acc,
-                    'composite_score': composite_score,  # Only populated for composite_score method
-                    'composite_std': composite_std,      # Only populated for composite_score method
-                    'min_class_acc': min_class_acc,      # Only populated for composite_score method
                     'selection_method': self.ckpt_select_method if was_filtered else 'none',
                     'max_checkpoints': self.max_ckpts if was_filtered else len(checkpoint_files),
                     'was_filtered': was_filtered,
                     'cm_source': self.cm_source,
                     'cm_file_pattern': self.cm_file_pattern,
-                    'split_used': self.split_to_use,
-                    'penalty_weight': self.penalty_weight if self.ckpt_select_method == 'composite_score' else None
+                    'split_used': self.split_to_use
                 })
         
         if rows:
@@ -765,10 +693,6 @@ class ConfidenceAnalyzer:
         tqdm.write(f"Training data source: {self.training_data_source}")
         tqdm.write(f"Using {self.cm_source.upper()} confusion matrices for checkpoint selection")
         tqdm.write(f"Using '{self.split_to_use.upper()}' split for analysis")
-        tqdm.write(f"Checkpoint selection method: {self.ckpt_select_method}")
-        if self.ckpt_select_method == 'composite_score':
-            tqdm.write(f"  Composite score penalty weight: {self.penalty_weight}")
-            tqdm.write(f"  Min class accuracy threshold: {self.min_class_acc_threshold:.0%}")
         tqdm.write(f"Results will be saved to: {output_csv}")
         
         with tqdm(available_datasets.items(), desc="Processing datasets", position=0, leave=True) as main_pbar:

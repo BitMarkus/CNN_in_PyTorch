@@ -63,14 +63,14 @@ setting = {
     # Shuffle dataset
     "ds_shuffle": True,
     # Shuffle seed
-    "ds_shuffle_seed": 42,
+    "ds_shuffle_seed": 43,
     # How many subprocesses are used to load data in parallel
     "ds_num_workers": 3, # Intel Core i7-10700 CPU: 3
     # Validation split settings
     # Validation split from training dataset (False or percentage 0.0-1.0)
-    "ds_val_from_train_split": False, # 0.25
+    "ds_val_from_train_split": 0.25, # 0.25
     # Validation split from test dataset (False or percentage 0.0-1.0)
-    "ds_val_from_test_split": 1.0, # 0.3
+    "ds_val_from_test_split": False, # 0.3
 
     # Classes:
     # Define cell lines (for dataset generator)
@@ -82,21 +82,31 @@ setting = {
     # "ko_lines": ["MMD_155", "MMD_160", "MMD_169", "MMD_177"],
     # Define classes
     # 2 classes (WT and KO):
-    "classes": ["KO", "WT"],
+    # "classes": ["KO", "WT"],
     # 9 classes (one for each cell line):
-    # "classes": ["KO_1096-01", "KO_1618-01", "KO_BR2986", "KO_BR3075", "WT_1618-02", "WT_JG", "WT_JT", "WT_KM", "WT_MS"],
+    "classes": ["KO_1096-01", "KO_1618-01", "KO_BR2986", "KO_BR3075", "WT_1618-02", "WT_JG", "WT_JT", "WT_KM", "WT_MS"],
 
     ###############
     # CHECKPOINTS #
     ###############
 
     # Set to True, if checkpoints shall be saved during training
-    "chckpt_save": True,  
+    "chckpt_save": True, 
+    # Checkpoint selection method for saving checkpoints during training:
+    # Options: 'composite_score' or 'balanced_accuracy'
+    # Determines which metric is used to decide when to save checkpoints during training
+    "train_chckpt_sel_method": "balanced_accuracy",  # or "composite_score"
+
+    # Composite score settings:
     # Minimum acceptable per-class accuracy (0.60 = 60%)
-    "chckpt_min_class_acc_threshold": 0.65,
+    "chckpt_min_class_acc_threshold": 0.4, # 0.65 for cross validation
     # Penalty weight fro checkpoint selection 
     # Higher = more penalty for class imbalance (range: 1.0 to 4.0)
     "chckpt_penalty_weight": 2.0,
+
+    # Balanced accuracy settings 
+    # Minimum acceptable balanced accuracy
+    "chckpt_min_balanced_acc_threshold": 0.60,       
 
     #########################
     # AUTO CROSS VALIDATION #
@@ -245,7 +255,7 @@ setting = {
     #######################
 
     # Min confidence for image sorting
-    "ca_min_conf": 0.7,     # 80%
+    "ca_min_conf": 0.8,     # 80%
     # Max confidence for image sorting
     'ca_max_conf': 1.0,
     # Filter type for image sorting
@@ -257,7 +267,7 @@ setting = {
     # Maximum number of checkpoints which are analyzed for a dataset
     "ca_max_ckpts": 1,
     # Method for best checkpoint selection
-    # Options: balanced_sum, f1_score, min_difference, balanced_accuracy
+    # Options: balanced_sum, f1_score, min_difference, balanced_accuracy and composite score
     "ca_ckpt_select_method": 'balanced_accuracy',
     # Which confusion matrix JSON file to use for checkpoint selection
     # When you have BOTH validation AND test evaluations during training, this decides which metrics to use for selecting the "best" checkpoint
