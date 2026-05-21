@@ -143,6 +143,7 @@ class Train():
         
         # Balanced accuracy settings (for checkpoint selection when using balanced_accuracy)
         self.min_balanced_acc_threshold = setting.get("chckpt_min_balanced_acc_threshold", 0.60)
+        self.min_per_class_acc_balanced = setting.get("chckpt_min_per_class_acc_balanced", 0.0)
 
         # Validation split settings
         # Validation split from training dataset in the folder data/train/
@@ -238,7 +239,10 @@ class Train():
         elif self.chckpt_sel_method == "balanced_accuracy":
             self.best_score = -float('inf')
             self.best_epoch = -1
-            print(f"\n> Checkpoint selection method: BALANCED ACCURACY (min_balanced_acc_threshold={self.min_balanced_acc_threshold:.0%})")
+            if self.min_per_class_acc_balanced > 0:
+                print(f"\n> Checkpoint selection method: BALANCED ACCURACY (min_balanced_acc_threshold={self.min_balanced_acc_threshold:.0%}, min_per_class_acc={self.min_per_class_acc_balanced:.0%})")
+            else:
+                print(f"\n> Checkpoint selection method: BALANCED ACCURACY (min_balanced_acc_threshold={self.min_balanced_acc_threshold:.0%})")
         else:
             raise ValueError(f"Unknown checkpoint selection method: {self.chckpt_sel_method}. Use 'composite_score' or 'balanced_accuracy'.")
 
@@ -969,15 +973,28 @@ class Train():
                 
                 # Check minimum balanced accuracy threshold
                 if balanced_accuracy >= self.min_balanced_acc_threshold:
-                    if balanced_accuracy > best_score:
-                        save_checkpoint = True
-                        best_score = balanced_accuracy
-                        best_epoch = epoch
-                        print(f"> Balanced accuracy improved to {balanced_accuracy:.4f}!")
+                    
+                    # NEW: Check per-class minimum if enabled
+                    per_class_ok = True
+                    if self.min_per_class_acc_balanced > 0:
+                        # Find the worst-performing class
+                        min_class = min(class_accuracies.values())
+                        if min_class < self.min_per_class_acc_balanced:
+                            per_class_ok = False
+                            print(f"> Min class accuracy ({min_class:.2%}) below per-class threshold ({self.min_per_class_acc_balanced:.0%})")
+                    
+                    if per_class_ok:
+                        if balanced_accuracy > best_score:
+                            save_checkpoint = True
+                            best_score = balanced_accuracy
+                            best_epoch = epoch
+                            print(f"> Balanced accuracy improved to {balanced_accuracy:.4f}!")
+                        else:
+                            print(f"> Balanced accuracy {balanced_accuracy:.4f} did not improve over best {best_score:.4f}")
                     else:
-                        print(f"> Balanced accuracy {balanced_accuracy:.4f} did not improve over best {best_score:.4f}")
+                        print(f"> Balanced accuracy ({balanced_accuracy:.4f}) meets threshold but per-class condition failed")
                 else:
-                    print(f"> Balanced accuracy ({balanced_accuracy:.4f}) below threshold ({self.min_balanced_acc_threshold:.4f})")
+                    print(f"> Balanced accuracy ({balanced_accuracy:.4f}) below threshold ({self.min_balanced_acc_threshold:.0%})")
             
             # Save checkpoint if conditions are met
             if save_checkpoint:

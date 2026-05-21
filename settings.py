@@ -99,14 +99,18 @@ setting = {
 
     # Composite score settings:
     # Minimum acceptable per-class accuracy (0.60 = 60%)
-    "chckpt_min_class_acc_threshold": 0.4, # 0.65 for cross validation
+    "chckpt_min_class_acc_threshold": 0.4, # 0.65 for 2cl training, 0.4 for 9cl training
     # Penalty weight fro checkpoint selection 
     # Higher = more penalty for class imbalance (range: 1.0 to 4.0)
     "chckpt_penalty_weight": 2.0,
 
     # Balanced accuracy settings 
-    # Minimum acceptable balanced accuracy
-    "chckpt_min_balanced_acc_threshold": 0.60,       
+    # Minimum acceptable overall balanced accuracy
+    "chckpt_min_balanced_acc_threshold": 0.60, # 0.5 for 9cl training, ? for 2cl training 
+    # Minimum per-class accuracy for balanced accuracy selection 
+    # Set to 0.0 to disable (use only balanced accuracy threshold) 
+    "chckpt_min_per_class_acc_balanced": 0.40,      
+                                                    
 
     #########################
     # AUTO CROSS VALIDATION #
