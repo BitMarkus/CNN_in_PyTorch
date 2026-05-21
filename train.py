@@ -132,10 +132,6 @@ class Train():
         # Use weighted loss function and training metrics
         # Useful for imbalanced datasets
         self.use_weighted_loss = setting["train_use_weighted_loss"]
-
-        # Checkpoint selection method for saving checkpoints during training
-        # Options: 'composite_score' or 'balanced_accuracy'
-        self.chckpt_sel_method = setting.get("train_chckpt_sel_method", "composite_score")
         
         # Composite score settings (for checkpoint selection when using composite_score)
         self.min_class_acc_threshold = setting["chckpt_min_class_acc_threshold"]
@@ -231,20 +227,10 @@ class Train():
         # Add memory monitoring
         self.total_gpu_memory = torch.cuda.get_device_properties(device).total_memory if torch.cuda.is_available() else 0
 
-        # Track best score for checkpoint saving (depends on selection method)
-        if self.chckpt_sel_method == "composite_score":
-            self.best_score = -float('inf')
-            self.best_epoch = -1
-            print(f"\n> Checkpoint selection method: COMPOSITE SCORE (penalty_weight={self.penalty_weight}, min_class_acc_threshold={self.min_class_acc_threshold:.0%})")
-        elif self.chckpt_sel_method == "balanced_accuracy":
-            self.best_score = -float('inf')
-            self.best_epoch = -1
-            if self.min_per_class_acc_balanced > 0:
-                print(f"\n> Checkpoint selection method: BALANCED ACCURACY (min_balanced_acc_threshold={self.min_balanced_acc_threshold:.0%}, min_per_class_acc={self.min_per_class_acc_balanced:.0%})")
-            else:
-                print(f"\n> Checkpoint selection method: BALANCED ACCURACY (min_balanced_acc_threshold={self.min_balanced_acc_threshold:.0%})")
-        else:
-            raise ValueError(f"Unknown checkpoint selection method: {self.chckpt_sel_method}. Use 'composite_score' or 'balanced_accuracy'.")
+        # Track best scores for both metrics, balanced accuracy and composite score (initialized in train() method)
+        print(f"\n> Checkpoint saving: BOTH METHODS ACTIVE")
+        print(f"  - Balanced Accuracy: min={self.min_balanced_acc_threshold:.0%}, per-class={self.min_per_class_acc_balanced:.0%}")
+        print(f"  - Composite Score: min_class={self.min_class_acc_threshold:.0%}, penalty={self.penalty_weight}")
 
     #############################################################################################################
     # METHODS:
@@ -636,9 +622,11 @@ class Train():
             "confusion_matrices": []
         }
 
-        # Track best score for checkpoint saving (depends on selection method)
-        best_score = -float('inf')
-        best_epoch = -1
+        # Track best scores for BOTH metrics independently
+        best_balanced_acc = -float('inf')
+        best_composite_score = -float('inf')
+        best_epoch_bal = -1
+        best_epoch_comp = -1
         
         # Build dynamic base name from settings
         pretrained_str = "pretr" if setting["cnn_is_pretrained"] else "scratch"
@@ -656,13 +644,12 @@ class Train():
             #################
 
             self.cnn.train()
-            weighted_train_accuracy = 0.0  # Separate accumulator for weighted
-            standard_train_accuracy = 0.0  # Separate accumulator for standard  
+            weighted_train_accuracy = 0.0
+            standard_train_accuracy = 0.0
             train_loss = 0.0
             total_train_weight = 0.0
-            actual_train_samples = 0  # Track actual samples for standard accuracy
+            actual_train_samples = 0
 
-            # Ensure class weights are on the correct device before training loop
             if self.use_weighted_loss and self.class_weights.device != self.device:
                 self.class_weights = self.class_weights.to(self.device)
 
@@ -677,83 +664,62 @@ class Train():
                         outputs = self.cnn(images)
                         loss = self.loss_function(outputs, labels)
                     
-                    # Scale loss and backpropagate
                     self.scaler.scale(loss).backward()
-                    
-                    # Gradient clipping
                     self.scaler.unscale_(self.optimizer)
                     torch.nn.utils.clip_grad_norm_(self.cnn.parameters(), max_norm=1.0)
-                    
-                    # Update weights
                     self.scaler.step(self.optimizer)
                     self.scaler.update()
                     
-                    # Check for NaN/inf values
                     if torch.isnan(loss).any():
                         raise ValueError("NaN loss detected during training")
                     
-                    # Calculate train loss and accuracy
                     train_loss += loss.item() * images.size(0)
                     _, preds = torch.max(outputs, 1)
                     
-                    # Calculate BOTH weighted and standard accuracy
                     if self.use_weighted_loss:
-                        # Weighted accuracy calculation
                         batch_weighted_accuracy, batch_weight = self._calculate_weighted_accuracy(preds, labels)
                         weighted_train_accuracy += batch_weighted_accuracy
                         total_train_weight += batch_weight
-                        
-                        # Also calculate standard accuracy for this batch
                         batch_standard_accuracy = (preds == labels).sum().item()
                         standard_train_accuracy += batch_standard_accuracy
                     else:
-                        # Standard accuracy calculation
                         batch_standard_accuracy, _ = self._calculate_weighted_accuracy(preds, labels)
                         standard_train_accuracy += batch_standard_accuracy
-                        weighted_train_accuracy = standard_train_accuracy  # Same for non-weighted
+                        weighted_train_accuracy = standard_train_accuracy
                     
-                    # Track actual samples for standard accuracy calculation
                     actual_train_samples += labels.size(0)
 
-                    # Clear memory every 10 batches
                     if batch_idx % 10 == 0:
                         torch.cuda.empty_cache()
 
-            # Update learning rate and store training metrics
             self.scheduler.step()
 
-            # Calculate final training accuracies with PROPER sample counting
             if self.use_weighted_loss:
-                # Weighted accuracy uses total_weight
                 if total_train_weight > 0:
                     final_weighted_train_accuracy = weighted_train_accuracy / total_train_weight
                 else:
                     final_weighted_train_accuracy = 0.0
                 
-                # Standard accuracy uses actual sample count
                 if actual_train_samples > 0:
                     final_standard_train_accuracy = standard_train_accuracy / actual_train_samples
                 else:
                     final_standard_train_accuracy = 0.0
             else:
-                # For standard loss, use actual samples processed
                 if actual_train_samples > 0:
                     final_standard_train_accuracy = standard_train_accuracy / actual_train_samples
-                    final_weighted_train_accuracy = final_standard_train_accuracy  # Same for non-weighted
+                    final_weighted_train_accuracy = final_standard_train_accuracy
                 else:
                     final_standard_train_accuracy = 0.0
                     final_weighted_train_accuracy = 0.0
 
-            train_loss = train_loss / len(self.ds_train.dataset)  # Loss calculation is fine as-is
+            train_loss = train_loss / len(self.ds_train.dataset)
             current_lr = self.scheduler.get_last_lr()[0]
 
-            # Console output: Print training summary - CONDITIONAL DISPLAY
             if self.use_weighted_loss:
                 print(f"> Train Loss: {train_loss:.5f} | Weighted Train Acc: {final_weighted_train_accuracy:.2f} | Standard Train Acc: {final_standard_train_accuracy:.2f} | Learning Rate: {current_lr:.6f}")
             else:
                 print(f"> Train Loss: {train_loss:.5f} | Train Acc: {final_standard_train_accuracy:.2f} | Learning Rate: {current_lr:.6f}")
 
-            # Add training metrics to history
             history["train_acc"].append(final_weighted_train_accuracy if self.use_weighted_loss else final_standard_train_accuracy)
             history["train_loss"].append(train_loss)
             history["lr"].append(current_lr)
@@ -770,11 +736,9 @@ class Train():
             all_labels = []
             all_probs = []
 
-            # Ensure class weights are on the correct device before validation loop
             if self.use_weighted_loss and self.class_weights.device != self.device:
                 self.class_weights = self.class_weights.to(self.device)
 
-            # Initialize per-class counters
             class_correct = {i: 0 for i in range(len(self.classes))}
             class_total = {i: 0 for i in range(len(self.classes))}
 
@@ -793,7 +757,6 @@ class Train():
                         val_loss += loss.item() * images.size(0)
                         _, preds = torch.max(outputs, 1)
                         
-                        # Use weighted or standard accuracy calculation
                         batch_accuracy, batch_weight = self._calculate_weighted_accuracy(preds, labels)
                         val_accuracy += batch_accuracy
                         total_val_weight += batch_weight
@@ -802,15 +765,12 @@ class Train():
                         all_preds.extend(preds.cpu().numpy())
                         all_labels.extend(labels.cpu().numpy())
 
-                        # Calculate per-class accuracy
                         for i in range(len(self.classes)):
                             class_mask = (labels.cpu() == i)
                             class_correct[i] += (preds[class_mask] == labels[class_mask]).sum().item()
                             class_total[i] += class_mask.sum().item()
 
-            # Calculate final validation metrics with safety check
             if self.use_weighted_loss:
-                # Avoid division by zero
                 if total_val_weight > 0:
                     weighted_val_accuracy = val_accuracy / total_val_weight
                 else:
@@ -820,48 +780,36 @@ class Train():
                 
             val_loss = val_loss / len(self.ds_val.dataset)
 
-            # Calculate per-class accuracies
             class_accuracies = {}
             for i in range(len(self.classes)):
                 if class_total[i] > 0:
-                    # Calculate ACTUAL per-class accuracy (not weighted)
                     class_accuracies[self.classes[i]] = class_correct[i] / class_total[i]
                 else:
                     class_accuracies[self.classes[i]] = 0.0
 
-            # Calculate standard (unweighted) accuracy directly from predictions
             standard_val_accuracy = (np.array(all_preds) == np.array(all_labels)).mean()
-            
-            # Calculate balanced accuracy
             balanced_accuracy = balanced_accuracy_score(all_labels, all_preds)
 
-            # Format per-class accuracies for display
             class_acc_str = " | ".join([f"{acc:.2f} {cls}" for cls, acc in class_accuracies.items()])
             
-            # Calculate composite score (for logging and potential use)
             composite_score, class_std, min_class_acc = self._calculate_composite_score(
                 class_accuracies, standard_val_accuracy, penalty_weight=self.penalty_weight
             )
             
-            # Convert to numpy arrays for sklearn metrics
             with torch.no_grad():
                 all_probs = torch.cat(all_probs).numpy()
             all_labels_np = np.array(all_labels)
             all_preds_np = np.array(all_preds)
 
-            # Convert to class indices if one-hot encoded
             if all_labels_np.ndim > 1 and all_labels_np.shape[1] > 1:
                 all_labels_np = np.argmax(all_labels_np, axis=1)        
 
-            # Calculate classification metrics
             f1_macro = f1_score(all_labels_np, all_preds_np, average='macro')
             f1_weighted = f1_score(all_labels_np, all_preds_np, average='weighted')
 
-            # Initialize metric dictionaries
             fpr, tpr, roc_auc = {}, {}, {}
             precision, recall, average_precision = {}, {}, {}
 
-            # Calculate per-class metrics with checks
             for i in range(len(self.classes)):
                 class_mask = (all_labels_np == i)
                 if np.sum(class_mask) > 0:
@@ -870,7 +818,6 @@ class Train():
                     precision[i], recall[i], _ = precision_recall_curve(class_mask, all_probs[:, i])
                     average_precision[i] = average_precision_score(class_mask, all_probs[:, i])
 
-            # Calculate weighted metrics
             if len(self.classes) == 2:
                 roc_auc_weighted = roc_auc_score(all_labels_np, all_probs[:, 1])
             else:
@@ -882,19 +829,15 @@ class Train():
                 )
             ap_weighted = np.mean(list(average_precision.values())) if average_precision else 0
 
-            # Create confusion matrix
             cm = confusion_matrix(all_labels_np, all_preds_np)
 
-            # Log ROC and PR curves as images to TensorBoard
             self._plot_roc_curve_to_tensorboard(fpr, tpr, roc_auc, epoch)
             self._plot_pr_curve_to_tensorboard(precision, recall, average_precision, epoch)
             
-            # Create and log confusion matrix figure
             cm_fig = self._plot_confusion_matrix(cm, class_names=self.classes, epoch=epoch)
             self.writer.add_figure('Confusion Matrix', cm_fig, epoch, close=True)
             plt.close(cm_fig)
             
-            # Log metrics to TensorBoard
             self.writer.add_scalar('Loss/train', train_loss, epoch)
             self.writer.add_scalar('Accuracy/train', final_weighted_train_accuracy if self.use_weighted_loss else final_standard_train_accuracy, epoch)
             self.writer.add_scalar('Loss/val', val_loss, epoch)
@@ -913,7 +856,6 @@ class Train():
             self.writer.add_scalar('Metrics/AUC', roc_auc_weighted, epoch)
             self.writer.add_scalar('Metrics/AP', ap_weighted, epoch)
 
-            # Log per-class metrics
             for i, class_name in enumerate(self.classes):
                 if i in roc_auc:
                     self.writer.add_scalar(f'Metrics/AUC/{class_name}', roc_auc[i], epoch)
@@ -922,17 +864,14 @@ class Train():
                 if class_name in class_accuracies:
                     self.writer.add_scalar(f'Accuracy/class/{class_name}', class_accuracies[class_name], epoch)
 
-            # Log class distribution (useful for understanding weighted metrics)
             for i, class_name in enumerate(self.classes):
                 if i in class_total:
                     self.writer.add_scalar(f'Data/class_count/{class_name}', class_total[i], epoch)
 
-            # Log GPU memory usage
             if torch.cuda.is_available():
                 mem_usage = torch.cuda.memory_reserved() / self.total_gpu_memory
                 self.writer.add_scalar('System/GPU_Memory', mem_usage, epoch)
 
-            # Print validation summary - CONDITIONAL DISPLAY
             if self.use_weighted_loss:
                 print(f"> Val Loss: {val_loss:.5f} | Weighted Val Acc: {weighted_val_accuracy:.2f} | Standard Val Acc: {standard_val_accuracy:.2f} | Per-class: ({class_acc_str})")
                 print(f"> Balanced Accuracy: {balanced_accuracy:.4f} | Composite Score: {composite_score:.4f}")
@@ -945,68 +884,57 @@ class Train():
             print(f"> Class STD: {class_std:.4f} | Min Class Acc: {min_class_acc:.2%}")
 
             # =================================================================
-            # CHECKPOINT SAVING based on selected method
+            # CHECKPOINT SAVING - BOTH METHODS ACTIVE SIMULTANEOUSLY
             # =================================================================
             
             save_checkpoint = False
-            current_score = None
+            trigger_reason = []
             
-            if self.chckpt_sel_method == "composite_score":
-                # Use composite score for checkpoint selection
-                current_score = composite_score
-                
-                # Check minimum class accuracy threshold
-                if min_class_acc >= self.min_class_acc_threshold:
-                    if composite_score > best_score:
-                        save_checkpoint = True
-                        best_score = composite_score
-                        best_epoch = epoch
-                        print(f"> Composite score improved to {composite_score:.4f}!")
-                    else:
-                        print(f"> Composite score {composite_score:.4f} did not improve over best {best_score:.4f}")
+            # METHOD 1: Balanced Accuracy Checkpoint Saving
+            bal_threshold_met = balanced_accuracy >= self.min_balanced_acc_threshold
+            per_class_ok = True
+            if self.min_per_class_acc_balanced > 0:
+                if min_class_acc < self.min_per_class_acc_balanced:
+                    per_class_ok = False
+            
+            if bal_threshold_met and per_class_ok:
+                if balanced_accuracy > best_balanced_acc:
+                    save_checkpoint = True
+                    best_balanced_acc = balanced_accuracy
+                    best_epoch_bal = epoch
+                    trigger_reason.append(f"BalancedAcc improved to {balanced_accuracy:.4f}")
+                    print(f"> Balanced accuracy improved to {balanced_accuracy:.4f}!")
                 else:
-                    print(f"> Min class accuracy ({min_class_acc:.2%}) below threshold ({self.min_class_acc_threshold:.0%})")
-                    
-            elif self.chckpt_sel_method == "balanced_accuracy":
-                # Use balanced accuracy for checkpoint selection
-                current_score = balanced_accuracy
-                
-                # Check minimum balanced accuracy threshold
-                if balanced_accuracy >= self.min_balanced_acc_threshold:
-                    
-                    # NEW: Check per-class minimum if enabled
-                    per_class_ok = True
-                    if self.min_per_class_acc_balanced > 0:
-                        # Find the worst-performing class
-                        min_class = min(class_accuracies.values())
-                        if min_class < self.min_per_class_acc_balanced:
-                            per_class_ok = False
-                            print(f"> Min class accuracy ({min_class:.2%}) below per-class threshold ({self.min_per_class_acc_balanced:.0%})")
-                    
-                    if per_class_ok:
-                        if balanced_accuracy > best_score:
-                            save_checkpoint = True
-                            best_score = balanced_accuracy
-                            best_epoch = epoch
-                            print(f"> Balanced accuracy improved to {balanced_accuracy:.4f}!")
-                        else:
-                            print(f"> Balanced accuracy {balanced_accuracy:.4f} did not improve over best {best_score:.4f}")
-                    else:
-                        print(f"> Balanced accuracy ({balanced_accuracy:.4f}) meets threshold but per-class condition failed")
-                else:
+                    print(f"> Balanced accuracy {balanced_accuracy:.4f} did not improve over best {best_balanced_acc:.4f}")
+            else:
+                if not bal_threshold_met:
                     print(f"> Balanced accuracy ({balanced_accuracy:.4f}) below threshold ({self.min_balanced_acc_threshold:.0%})")
+                elif not per_class_ok:
+                    print(f"> Min class accuracy ({min_class_acc:.2%}) below per-class threshold ({self.min_per_class_acc_balanced:.0%})")
             
-            # Save checkpoint if conditions are met
+            # METHOD 2: Composite Score Checkpoint Saving
+            comp_threshold_met = min_class_acc >= self.min_class_acc_threshold
+            
+            if comp_threshold_met:
+                if composite_score > best_composite_score:
+                    save_checkpoint = True
+                    best_composite_score = composite_score
+                    best_epoch_comp = epoch
+                    trigger_reason.append(f"CompositeScore improved to {composite_score:.4f}")
+                    print(f"> Composite score improved to {composite_score:.4f}!")
+                else:
+                    print(f"> Composite score {composite_score:.4f} did not improve over best {best_composite_score:.4f}")
+            else:
+                print(f"> Min class accuracy ({min_class_acc:.2%}) below composite threshold ({self.min_class_acc_threshold:.0%})")
+            
+            # Save checkpoint if either method triggered
             if save_checkpoint:
-                # Create checkpoint filename with dynamic naming
-                if self.chckpt_sel_method == "composite_score":
-                    checkpoint_name = f"ckpt_{pretrained_str}_{model_name}_e{epoch+1:02d}_comp{current_score:.3f}_vacc{int(standard_val_accuracy*100)}{dataset_suffix}"
-                else:  # balanced_accuracy
-                    checkpoint_name = f"ckpt_{pretrained_str}_{model_name}_e{epoch+1:02d}_balacc{current_score:.3f}_vacc{int(standard_val_accuracy*100)}{dataset_suffix}"
+                # Create checkpoint filename with trigger info
+                trigger_str = "_".join([t.split()[0] for t in trigger_reason])[:40]
+                checkpoint_name = f"ckpt_{pretrained_str}_{model_name}_e{epoch+1:02d}_bal{balanced_accuracy:.3f}_comp{composite_score:.3f}_{trigger_str}{dataset_suffix}"
                 
                 checkpoint_path = chckpt_pth / f"{checkpoint_name}.pt"
                 
-                # Save checkpoint
                 torch.save({
                     'epoch': epoch,
                     'model_state_dict': self.cnn.state_dict(),
@@ -1018,13 +946,8 @@ class Train():
                     'loss': val_loss,
                 }, checkpoint_path)
                 
-                # Create validation confusion matrix filename
-                if self.chckpt_sel_method == "composite_score":
-                    val_cm_filename = f"ckpt_{pretrained_str}_{model_name}_val_e{epoch+1:02d}_comp{current_score:.3f}_vacc{int(standard_val_accuracy*100)}{dataset_suffix}"
-                else:
-                    val_cm_filename = f"ckpt_{pretrained_str}_{model_name}_val_e{epoch+1:02d}_balacc{current_score:.3f}_vacc{int(standard_val_accuracy*100)}{dataset_suffix}"
-                
-                # Save validation confusion matrix plot
+                # Save validation confusion matrix
+                val_cm_filename = checkpoint_name.replace('.pt', '') + "_val"
                 fn.plot_confusion_matrix(
                     {"y": all_labels_np, "y_hat": all_preds_np}, 
                     self.classes, 
@@ -1034,7 +957,6 @@ class Train():
                     save_plot=True
                 )
                 
-                # Save validation confusion matrix results as JSON
                 fn.save_confusion_matrix_results(
                     {"y": all_labels_np, "y_hat": all_preds_np}, 
                     self.classes, 
@@ -1042,7 +964,6 @@ class Train():
                     chckpt_name=val_cm_filename
                 )
                 
-                # Save ROC and PR data for the best checkpoint
                 roc_pr_data = {
                     'epoch': epoch,
                     'classes': self.classes,
@@ -1059,16 +980,15 @@ class Train():
                     json.dump(roc_pr_data, f, indent=2)
                 
                 print(f"✓ Model saved! Epoch {epoch+1}")
-                if self.chckpt_sel_method == "composite_score":
-                    print(f"  - Composite Score: {composite_score:.4f}")
-                else:
-                    print(f"  - Balanced Accuracy: {balanced_accuracy:.4f}")
+                print(f"  - Triggers: {', '.join(trigger_reason)}")
+                print(f"  - Balanced Accuracy: {balanced_accuracy:.4f}")
+                print(f"  - Composite Score: {composite_score:.4f}")
                 print(f"  - Standard Accuracy: {standard_val_accuracy:.2%}")
                 print(f"  - Min Class Accuracy: {min_class_acc:.2%}")
                 print(f"  - Class STD: {class_std:.4f}")
                 print(f"✓ Validation confusion matrix saved: {val_cm_filename}.png/.json")
             
-            # ALWAYS save probability data for EVERY epoch (moved outside the if block)
+            # ALWAYS save probability data for EVERY epoch
             self._save_probability_data(all_probs, all_labels_np, all_preds_np, epoch)
             print(f"✓ Probability data saved for epoch {epoch+1}")
             
@@ -1085,11 +1005,13 @@ class Train():
             history["average_precision"].append(average_precision)
             history["confusion_matrices"].append(cm)
 
+        # Final summary
+        print(f"\n>> Training completed!")
+        print(f"   Best Balanced Accuracy: {best_balanced_acc:.4f} at epoch {best_epoch_bal+1}")
+        print(f"   Best Composite Score: {best_composite_score:.4f} at epoch {best_epoch_comp+1}")
+
         # Final cleanup and plotting
         self.writer.close()
         self._plot_metrics(history, plot_pth, show_plot=False, save_plot=True)
-        
-        print(f"\n>> Training completed!")
-        print(f"   Best {self.chckpt_sel_method}: {best_score:.4f} at epoch {best_epoch+1}")
         
         return history

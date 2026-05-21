@@ -63,7 +63,7 @@ setting = {
     # Shuffle dataset
     "ds_shuffle": True,
     # Shuffle seed
-    "ds_shuffle_seed": 43,
+    "ds_shuffle_seed": 42,
     # How many subprocesses are used to load data in parallel
     "ds_num_workers": 3, # Intel Core i7-10700 CPU: 3
     # Validation split settings
@@ -91,11 +91,9 @@ setting = {
     ###############
 
     # Set to True, if checkpoints shall be saved during training
+    # Checkpoint saving occurs when either balanced accuracy OR composite score improves 
+    # compared to the previous best checkpoint, and when minimum thresholds are met (if enabled).
     "chckpt_save": True, 
-    # Checkpoint selection method for saving checkpoints during training:
-    # Options: 'composite_score' or 'balanced_accuracy'
-    # Determines which metric is used to decide when to save checkpoints during training
-    "train_chckpt_sel_method": "balanced_accuracy",  # or "composite_score"
 
     # Composite score settings:
     # Minimum acceptable per-class accuracy (0.60 = 60%)
@@ -104,7 +102,7 @@ setting = {
     # Higher = more penalty for class imbalance (range: 1.0 to 4.0)
     "chckpt_penalty_weight": 2.0,
 
-    # Balanced accuracy settings 
+    # Balanced accuracy settings:
     # Minimum acceptable overall balanced accuracy
     "chckpt_min_balanced_acc_threshold": 0.60, # 0.5 for 9cl training, ? for 2cl training 
     # Minimum per-class accuracy for balanced accuracy selection 
