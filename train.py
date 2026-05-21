@@ -929,9 +929,8 @@ class Train():
             
             # Save checkpoint if either method triggered
             if save_checkpoint:
-                # Create checkpoint filename with trigger info
-                trigger_str = "_".join([t.split()[0] for t in trigger_reason])[:40]
-                checkpoint_name = f"ckpt_{pretrained_str}_{model_name}_e{epoch+1:02d}_bal{balanced_accuracy:.3f}_comp{composite_score:.3f}_{trigger_str}{dataset_suffix}"
+                # Simplified filename without trigger info
+                checkpoint_name = f"ckpt_{pretrained_str}_{model_name}_e{epoch+1:02d}_bal{balanced_accuracy:.3f}_comp{composite_score:.3f}{dataset_suffix}"
                 
                 checkpoint_path = chckpt_pth / f"{checkpoint_name}.pt"
                 
