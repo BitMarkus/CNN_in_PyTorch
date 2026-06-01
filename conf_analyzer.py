@@ -126,17 +126,21 @@ class ConfidenceAnalyzer:
     def _extract_epoch_from_filename(self, filename):
         """Extract epoch number from checkpoint filename"""
         
-        # Pattern from your naming: ckpt_..._e20_... (e followed by number, followed by underscore or dot)
+        # Your format: ckpt_pretr_densenet121_e02_bal0.669_comp0.415_ds1.pt
+        # This captures the number after _e and before _
+        match = re.search(r'_e(\d+)_', filename)
+        if match:
+            return int(match.group(1))
+        
+        # Original patterns for backward compatibility
         match = re.search(r'_e(\d+)[_\.]', filename)
         if match:
             return int(match.group(1))
         
-        # Try pattern: epoch_XX.pt or epoch_XX.model
         match = re.search(r'epoch[_\-](\d+)', filename)
         if match:
             return int(match.group(1))
         
-        # Try pattern: just numbers at start (e.g., 03.pt)
         match = re.search(r'^(\d+)\.', filename)
         if match:
             return int(match.group(1))
@@ -232,31 +236,25 @@ class ConfidenceAnalyzer:
             if epoch_num is None:
                 continue
             
-            # Find JSON file using self.cm_file_pattern (not self.cm_source)
+            # Find JSON file using your actual naming pattern
             json_path = None
-            # Pattern 1: with epoch (no leading zero) and comp*
-            candidates = list(plots_path.glob(f"*{self.cm_file_pattern}_e{epoch_num}_comp*_cm.json"))
-            if candidates:
-                json_path = candidates[0]
-            # Pattern 2: with zero-padded epoch
-            if not json_path:
-                candidates = list(plots_path.glob(f"*{self.cm_file_pattern}_e{epoch_num:02d}_comp*_cm.json"))
-                if candidates:
-                    json_path = candidates[0]
-            # Pattern 3: without comp part
-            if not json_path:
-                candidates = list(plots_path.glob(f"*{self.cm_file_pattern}_e{epoch_num}_cm.json"))
-                if candidates:
-                    json_path = candidates[0]
-            # Pattern 4: with zero-padded epoch without comp
-            if not json_path:
-                candidates = list(plots_path.glob(f"*{self.cm_file_pattern}_e{epoch_num:02d}_cm.json"))
-                if candidates:
-                    json_path = candidates[0]
             
-            if json_path is None:
-                tqdm.write(f"Could not find {self.cm_file_pattern} JSON for {checkpoint_file} (epoch {epoch_num})")
+            # Pattern 1: With leading zero (e02)
+            candidates = list(plots_path.glob(f"*_e{epoch_num:02d}_*_val_cm.json"))
+            if not candidates:
+                # Pattern 2: Without leading zero (e2) - fallback
+                candidates = list(plots_path.glob(f"*_e{epoch_num}_*_val_cm.json"))
+            if not candidates:
+                # Pattern 3: More flexible (anywhere in filename)
+                candidates = list(plots_path.glob(f"*e{epoch_num:02d}*val_cm.json"))
+            if not candidates:
+                candidates = list(plots_path.glob(f"*e{epoch_num}*val_cm.json"))
+            
+            if not candidates:
+                tqdm.write(f"Could not find val JSON for {checkpoint_file} (epoch {epoch_num})")
                 continue
+            
+            json_path = candidates[0]
             
             try:
                 with open(json_path, 'r') as f:
@@ -332,15 +330,19 @@ class ConfidenceAnalyzer:
                 epoch_num = self._extract_epoch_from_filename(f.name)
                 
                 if epoch_num is not None:
-                    # Look for JSON file using self.cm_file_pattern
+                    # Find JSON file using your actual naming pattern
                     json_path = None
-                    candidates = list(plots_path.glob(f"*{self.cm_file_pattern}_e{epoch_num}_comp*_cm.json"))
+                    
+                    # Pattern 1: With leading zero (e02) - most common
+                    candidates = list(plots_path.glob(f"*_e{epoch_num:02d}_*_val_cm.json"))
                     if not candidates:
-                        candidates = list(plots_path.glob(f"*{self.cm_file_pattern}_e{epoch_num:02d}_comp*_cm.json"))
+                        # Pattern 2: Without leading zero (e2) - fallback
+                        candidates = list(plots_path.glob(f"*_e{epoch_num}_*_val_cm.json"))
                     if not candidates:
-                        candidates = list(plots_path.glob(f"*{self.cm_file_pattern}_e{epoch_num}_cm.json"))
+                        # Pattern 3: More flexible (anywhere in filename)
+                        candidates = list(plots_path.glob(f"*e{epoch_num:02d}*val_cm.json"))
                     if not candidates:
-                        candidates = list(plots_path.glob(f"*{self.cm_file_pattern}_e{epoch_num:02d}_cm.json"))
+                        candidates = list(plots_path.glob(f"*e{epoch_num}*val_cm.json"))
                     
                     if candidates:
                         json_path = candidates[0]
@@ -366,9 +368,15 @@ class ConfidenceAnalyzer:
             for checkpoint_file in checkpoint_files:
                 epoch_num = self._extract_epoch_from_filename(checkpoint_file)
                 if epoch_num is not None:
-                    candidates = list(plots_path.glob(f"*{self.cm_file_pattern}_e{epoch_num}_comp*_cm.json"))
+                    # Find the corresponding JSON file for this checkpoint
+                    candidates = list(plots_path.glob(f"*_e{epoch_num:02d}_*_val_cm.json"))
                     if not candidates:
-                        candidates = list(plots_path.glob(f"*{self.cm_file_pattern}_e{epoch_num:02d}_comp*_cm.json"))
+                        candidates = list(plots_path.glob(f"*_e{epoch_num}_*_val_cm.json"))
+                    if not candidates:
+                        candidates = list(plots_path.glob(f"*e{epoch_num:02d}*val_cm.json"))
+                    if not candidates:
+                        candidates = list(plots_path.glob(f"*e{epoch_num}*val_cm.json"))
+                    
                     if candidates:
                         try:
                             with open(candidates[0], 'r') as f:
