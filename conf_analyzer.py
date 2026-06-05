@@ -673,10 +673,24 @@ class ConfidenceAnalyzer:
         return False
     
     def _export_used_checkpoints(self, results):
+        """Export information about which checkpoints were used for analysis"""
+        
+        print("\n>> Exporting used checkpoints information...")
+        
+        if not results:
+            print("  WARNING: No results to export!")
+            return False
+        
         rows = []
+        available_datasets = self._get_available_datasets()
         
         for dataset_num, checkpoints in results.items():
-            config = self._get_available_datasets()[int(dataset_num)]
+            dataset_num_int = int(dataset_num)
+            if dataset_num_int not in available_datasets:
+                print(f"  WARNING: Dataset {dataset_num_int} not found in available_datasets")
+                continue
+                
+            config = available_datasets[dataset_num_int]
             checkpoint_files = list(checkpoints.keys())
             was_filtered = self.max_ckpts is not None and len(checkpoint_files) > self.max_ckpts
             
@@ -686,58 +700,76 @@ class ConfidenceAnalyzer:
                     continue
                     
                 plots_path = self.pth_acv_results / f"dataset_{dataset_num}" / 'plots'
-                json_candidates = list(plots_path.glob(f"*{self.cm_file_pattern}_e{epoch_num}_comp*_cm.json"))
+                
+                # FIXED: Match your actual file naming pattern
+                # Your files: *_e10_*_val_cm.json (val comes AFTER the metrics)
+                json_candidates = list(plots_path.glob(f"*_e{epoch_num:02d}_*_val_cm.json"))
                 if not json_candidates:
-                    json_candidates = list(plots_path.glob(f"*{self.cm_file_pattern}_e{epoch_num:02d}_comp*_cm.json"))
+                    json_candidates = list(plots_path.glob(f"*_e{epoch_num}_*_val_cm.json"))
+                if not json_candidates:
+                    # More flexible fallback
+                    json_candidates = list(plots_path.glob(f"*e{epoch_num:02d}*val_cm.json"))
+                if not json_candidates:
+                    json_candidates = list(plots_path.glob(f"*e{epoch_num}*val_cm.json"))
                 
                 if not json_candidates:
+                    print(f"  WARNING: No JSON found for {ckpt_name} (epoch {epoch_num})")
                     continue
                 
-                with open(json_candidates[0], 'r') as f:
-                    cm_data = json.load(f)
-                
-                wt_acc = cm_data['class_accuracy'].get(self.classes[0], 0)
-                ko_acc = cm_data['class_accuracy'].get(self.classes[1], 0)
-                overall_acc = cm_data.get('overall_accuracy', 0)
-                
-                # Calculate composite score if method is composite_score
-                composite_score = None
-                composite_std = None
-                min_class_acc = None
-                if self.ckpt_select_method == 'composite_score':
-                    class_accuracies = {self.classes[0]: wt_acc, self.classes[1]: ko_acc}
-                    composite_score, composite_std, min_class_acc = self._calculate_composite_score(
-                        class_accuracies, overall_acc, penalty_weight=self.penalty_weight
-                    )
-                
-                rows.append({
-                    'dataset': dataset_num,
-                    'test_wt': config['test_wt'],
-                    'test_ko': config['test_ko'],
-                    'checkpoint': ckpt_name,
-                    'wt_accuracy': wt_acc,
-                    'ko_accuracy': ko_acc,
-                    'overall_accuracy': overall_acc,
-                    'composite_score': composite_score,  # Only populated for composite_score method
-                    'composite_std': composite_std,      # Only populated for composite_score method
-                    'min_class_acc': min_class_acc,      # Only populated for composite_score method
-                    'selection_method': self.ckpt_select_method if was_filtered else 'none',
-                    'max_checkpoints': self.max_ckpts if was_filtered else len(checkpoint_files),
-                    'was_filtered': was_filtered,
-                    'cm_source': self.cm_source,
-                    'cm_file_pattern': self.cm_file_pattern,
-                    'split_used': self.split_to_use,
-                    'penalty_weight': self.penalty_weight if self.ckpt_select_method == 'composite_score' else None
-                })
+                try:
+                    with open(json_candidates[0], 'r') as f:
+                        cm_data = json.load(f)
+                    
+                    wt_acc = cm_data['class_accuracy'].get(self.classes[0], 0)
+                    ko_acc = cm_data['class_accuracy'].get(self.classes[1], 0)
+                    overall_acc = cm_data.get('overall_accuracy', 0)
+                    
+                    # Calculate composite score if method is composite_score
+                    composite_score = None
+                    composite_std = None
+                    min_class_acc = None
+                    if self.ckpt_select_method == 'composite_score':
+                        class_accuracies = {self.classes[0]: wt_acc, self.classes[1]: ko_acc}
+                        composite_score, composite_std, min_class_acc = self._calculate_composite_score(
+                            class_accuracies, overall_acc, penalty_weight=self.penalty_weight
+                        )
+                    
+                    rows.append({
+                        'dataset': dataset_num,
+                        'test_wt': config['test_wt'],
+                        'test_ko': config['test_ko'],
+                        'checkpoint': ckpt_name,
+                        'epoch': epoch_num,
+                        'wt_accuracy': wt_acc,
+                        'ko_accuracy': ko_acc,
+                        'overall_accuracy': overall_acc,
+                        'composite_score': composite_score,
+                        'composite_std': composite_std,
+                        'min_class_acc': min_class_acc,
+                        'selection_method': self.ckpt_select_method if was_filtered else 'none',
+                        'max_checkpoints': self.max_ckpts if was_filtered else len(checkpoint_files),
+                        'was_filtered': was_filtered,
+                        'cm_source': self.cm_source,
+                        'cm_file_pattern': self.cm_file_pattern,
+                        'split_used': self.split_to_use,
+                        'penalty_weight': self.penalty_weight if self.ckpt_select_method == 'composite_score' else None
+                    })
+                    
+                except Exception as e:
+                    print(f"  ERROR processing {ckpt_name}: {str(e)}")
+                    continue
         
         if rows:
             df = pd.DataFrame(rows)
             df = df.sort_values(['dataset', 'overall_accuracy'], ascending=[True, False])
             output_path = self.pth_conf_analizer_results / 'used_checkpoints.csv'
             df.to_csv(output_path, index=False)
-            tqdm.write(f"Saved used checkpoints report to: {output_path}")
+            print(f"  ✓ Saved used checkpoints report to: {output_path}")
+            print(f"  ✓ Exported {len(rows)} checkpoint entries across {len(results)} datasets")
             return True
-        return False
+        else:
+            print("  WARNING: No rows to export! No checkpoint data was collected.")
+            return False
 
     def _create_filter_readme(self, output_dir, filtered_images):
         filter_descriptions = {

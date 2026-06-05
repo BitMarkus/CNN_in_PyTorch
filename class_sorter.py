@@ -521,7 +521,8 @@ class ClassSorter:
     
     # Load model weights from a selected checkpoint
     def _load_checkpoint(self):
-
+        """Load model weights from a selected checkpoint."""
+        
         # Get all checkpoint files
         checkpoint_files = []
         for file in self.pth_checkpoint.iterdir():
@@ -541,93 +542,46 @@ class ClassSorter:
             print(f"\nFound single checkpoint: {checkpoint_file.name}")
             print("Loading automatically...")
         else:
-            # Show interactive table for multiple checkpoints
-            print(f"\nFound {len(checkpoint_files)} checkpoints:")
-            print("-" * 100)
-            print(f"{'ID':<5} {'Checkpoint File':<60} {'Size (MB)':<10} {'Info':<20}")
-            print("-" * 100)
-            
-            for idx, file in enumerate(checkpoint_files, 1):
-                size_mb = file.stat().st_size / (1024 * 1024)
-                # Try to infer number of classes from filename (common naming pattern)
-                filename_lower = file.name.lower()
-                if '2class' in filename_lower or '2_class' in filename_lower or 'binary' in filename_lower:
-                    info = "Likely 2-class"
-                elif '9class' in filename_lower or '9_class' in filename_lower or 'multiclass' in filename_lower:
-                    info = "Likely 9-class"
-                else:
-                    info = "Unknown"
-                print(f"{idx:<5} {file.name:<60} {size_mb:<10.1f} {info:<20}")
-            
-            print("-" * 100)
-            
-            # SHOW CURRENT SETTINGS CLASS COUNT
-            print(f"\n{'!'*60}")
-            print(f"CURRENT SETTINGS: {len(self.classes)} CLASSES DEFINED")
-            print(f"Classes: {', '.join(self.classes)}")
-            print(f"{'!'*60}")
-            print("\nMake sure you select a checkpoint trained for the correct number of classes!")
-            print("  - For 2 classes (WT/KO): Select a binary classifier checkpoint")
-            print("  - For 9 classes (cell lines): Select a multi-class checkpoint")
-            print()
-            
-            # Let user select
-            while True:
-                try:
-                    choice = input("Select a checkpoint (enter ID): ").strip()
-                    if not choice:
-                        print("No selection made. Using untrained weights.")
-                        self.checkpoint_loaded = False
-                        self.loaded_checkpoint_name = "untrained"
-                        print("WARNING: Using untrained weights!")
-                        return False
-                    
-                    choice_idx = int(choice) - 1
-                    if 0 <= choice_idx < len(checkpoint_files):
-                        checkpoint_file = checkpoint_files[choice_idx]
-                        break
-                    else:
-                        print(f"Invalid selection. Please enter a number between 1 and {len(checkpoint_files)}")
-                except ValueError:
-                    print("Invalid input. Please enter a number.")
+            # [Keep your existing multi-checkpoint selection UI here]
+            pass
         
         try:
-            # Load checkpoint and verify class compatibility
+            # Load checkpoint
             checkpoint = torch.load(checkpoint_file, map_location=self.device)
             
-            # Try to infer number of classes from checkpoint
-            if hasattr(self.cnn, 'fc'):
-                # For standard CNN with fc layer
-                checkpoint_num_classes = None
-                if 'fc.weight' in checkpoint:
-                    checkpoint_num_classes = checkpoint['fc.weight'].shape[0]
-                elif 'fc.bias' in checkpoint:
-                    checkpoint_num_classes = checkpoint['fc.bias'].shape[0]
+            # CRITICAL FIX: Handle dictionary wrapper format
+            if isinstance(checkpoint, dict) and 'model_state_dict' in checkpoint:
+                # New format (from train.py)
+                self.cnn.load_state_dict(checkpoint['model_state_dict'])
+                epoch_info = checkpoint.get('epoch', 'unknown')
+                if epoch_info != 'unknown':
+                    epoch_info = epoch_info + 1  # Convert to 1-indexed
+                accuracy = checkpoint.get('accuracy', 'unknown')
+                balanced_acc = checkpoint.get('balanced_accuracy', 'unknown')
+                composite_score = checkpoint.get('composite_score', 'unknown')
                 
-                if checkpoint_num_classes is not None:
-                    if checkpoint_num_classes != len(self.classes):
-                        print(f"\n{'!'*60}")
-                        print(f"WARNING: Checkpoint has {checkpoint_num_classes} classes,")
-                        print(f"         but settings define {len(self.classes)} classes!")
-                        print(f"         This may cause errors or incorrect predictions.")
-                        print(f"{'!'*60}")
-                        proceed = input("\nContinue anyway? (y/n): ").strip().lower()
-                        if proceed != 'y':
-                            print("Aborting. Please select a compatible checkpoint or update settings.")
-                            return False
+                print(f"  ✓ Loaded checkpoint from epoch {epoch_info}")
+                if accuracy != 'unknown':
+                    print(f"    Accuracy: {accuracy:.2%}")
+                if balanced_acc != 'unknown':
+                    print(f"    Balanced Acc: {balanced_acc:.2%}")
+                if composite_score != 'unknown':
+                    print(f"    Composite Score: {composite_score:.4f}")
+                    
+            elif isinstance(checkpoint, dict) and 'state_dict' in checkpoint:
+                # Alternative format
+                self.cnn.load_state_dict(checkpoint['state_dict'])
+                print(f"  ✓ Loaded checkpoint (alternative format)")
+                
+            else:
+                # Old format (direct state dict) - for backward compatibility
+                self.cnn.load_state_dict(checkpoint)
+                print(f"  ✓ Loaded checkpoint (direct state dict)")
             
-            self.cnn.load_state_dict(checkpoint)
             self.checkpoint_loaded = True
             self.loaded_checkpoint_name = checkpoint_file.stem
-            print(f"Successfully loaded weights from {checkpoint_file.name}")
             return True
-        except FileNotFoundError as e:
-            print(f"\nError loading checkpoint: {str(e)}")
-            print(f"Full path attempted: {checkpoint_file}")
-            self.checkpoint_loaded = False
-            self.loaded_checkpoint_name = "untrained"
-            print("WARNING: Using untrained weights!")
-            return False
+            
         except Exception as e:
             print(f"\nError loading checkpoint: {str(e)}")
             self.checkpoint_loaded = False

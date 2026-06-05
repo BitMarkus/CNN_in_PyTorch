@@ -224,12 +224,12 @@ setting = {
     ################
 
     # Selection mode and value: "top_n", "threshold" or "interval"
-    "sort_selection_mode": "threshold", 
+    "sort_selection_mode": "interval", 
     # Number of images for top_n, or threshold value
     # If sort_selection_mode is "top_n", this selects the top X most confident images per class (e.g. 50)
     # If sort_selection_mode is "threshold", this needs to be a single number (e.g. 0.2) 
     # If sort_selection_mode is "interval", this needs to be a list of min/max values (e.g. [0.2, 0.8])
-    "sort_selection_value": 0.75, # [0.55, 0.95], 
+    "sort_selection_value": [0.55, 0.95], # [0.55, 0.95], 
     # Filter criteria: 'confidence_only', 'logits_only', or 'combined'
     'sort_filter_mode': 'combined',
     # Minimum max_logit value to keep
@@ -269,8 +269,8 @@ setting = {
     # Maximum number of checkpoints which are analyzed for a dataset
     "ca_max_ckpts": 1,
     # Method for best checkpoint selection
-    # Options: balanced_sum, f1_score, min_difference, balanced_accuracy and composite score
-    "ca_ckpt_select_method": 'balanced_accuracy',
+    # Options: 'balanced_sum', 'f1_score', 'min_difference', 'balanced_accuracy' and 'composite_score'
+    "ca_ckpt_select_method": 'composite_score',
     # Which confusion matrix JSON file to use for checkpoint selection
     # When you have BOTH validation AND test evaluations during training, this decides which metrics to use for selecting the "best" checkpoint
     # Options: "validation", "test"
