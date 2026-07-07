@@ -68,9 +68,11 @@ setting = {
     "ds_num_workers": 3, # Intel Core i7-10700 CPU: 3
     # Validation split settings
     # Validation split from training dataset (False or percentage 0.0-1.0)
-    "ds_val_from_train_split": False, # 0.25
+    "ds_val_from_train_split": False, # For 9cl single trainings: 0.25, For cross-validation: False
     # Validation split from test dataset (False or percentage 0.0-1.0)
-    "ds_val_from_test_split": 1.0, # 0.3
+    "ds_val_from_test_split": 1.0, # 1.0 for cross validation
+    # Export validation images to a folder
+    "ds_save_val_images": False,
 
     # Classes:
     # Define cell lines (for dataset generator)
@@ -104,10 +106,10 @@ setting = {
 
     # Balanced accuracy settings:
     # Minimum acceptable overall balanced accuracy
-    "chckpt_min_balanced_acc_threshold": 0.65, # 0.5 for 9cl training, ? for 2cl training 
+    "chckpt_min_balanced_acc_threshold": 0.65, # 0.5 for 9cl training, 0.65 for 2cl training 
     # Minimum per-class accuracy for balanced accuracy selection 
     # Set to 0.0 to disable (use only balanced accuracy threshold) 
-    "chckpt_min_per_class_acc_balanced": 0.50,      
+    "chckpt_min_per_class_acc_balanced": 0.60, # ? for 9cl training, 0.60 for 2cl training      
                                                     
 
     #########################
@@ -229,7 +231,7 @@ setting = {
     # If sort_selection_mode is "top_n", this selects the top X most confident images per class (e.g. 50)
     # If sort_selection_mode is "threshold", this needs to be a single number (e.g. 0.2) 
     # If sort_selection_mode is "interval", this needs to be a list of min/max values (e.g. [0.2, 0.8])
-    "sort_selection_value": [0.55, 0.95], # [0.55, 0.95], 
+    "sort_selection_value": [0.55, 0.95], # [0.55, 0.95], [0.5, 1.0]
     # Filter criteria: 'confidence_only', 'logits_only', or 'combined'
     'sort_filter_mode': 'combined',
     # Minimum max_logit value to keep
@@ -239,7 +241,7 @@ setting = {
     # Batch size for prediction   
     "sort_pred_batch_size": 50,  
     # Interval borders for confidence statistics
-    "sort_conf_intervals": [10, 20, 30, 40, 50, 60, 70, 80, 90],
+    "sort_conf_intervals": [10, 20, 30, 40, 50, 60, 70, 80, 90, 95],
     # Interval borders for logit statistics
     "sort_logit_intervals": [-10, -5, -2, 0, 2, 5, 10],
 

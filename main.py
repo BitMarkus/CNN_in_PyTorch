@@ -10,7 +10,7 @@ from class_analyzer import ClassAnalyzer
 from captum_analyzer import CaptumAnalyzer
 from gradcam_analyzer import GradCAMAnalyzer
 from class_sorter import ClassSorter
-# from dim_red import DimRed
+from dim_red import DimRed
 from fid_calculator import FIDCalculator
 from settings import setting
 
@@ -106,6 +106,16 @@ def main():
                 ds.load_test_dataset()
             # Print dataset info
             ds.print_dataset_info()
+
+            # OPTIONAL: Export validation images
+            if(setting['ds_save_val_images']):
+                print("Exporting validation images. Please wait....")
+                val_img_export_pth = setting['pth_ds_gen_output'] / "validation_images"
+                # Check if folder exists, if not create it
+                if not val_img_export_pth.exists():
+                    val_img_export_pth.mkdir(parents=True, exist_ok=True)
+                ds.export_validation_images(val_img_export_pth)
+
             if(ds.ds_loaded):
                 print("Training and validation datasets successfully loaded.")
                 print(f"Number training images/batches: {ds.num_train_img}/{ds.num_train_batches}")
@@ -234,8 +244,8 @@ def main():
         elif(menu1 == 13):  
             print("\n:DIMENSION REDUCTION:") 
             # DimRed simple version
-            # dimred = DimRed(device)
-            # dimred()
+            dimred = DimRed(device)
+            dimred()
 
         ##################
         # FID calculator #  

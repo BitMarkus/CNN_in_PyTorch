@@ -88,6 +88,7 @@ from torch.utils.data.sampler import SubsetRandomSampler
 from torch.utils.data import DataLoader
 import matplotlib.pyplot as plt
 import torchvision.utils as vutils
+import shutil
 # Own modules
 from settings import setting
 
@@ -596,6 +597,77 @@ class Dataset():
         # Show plot
         if show_plot:
             plt.show()
+
+    def export_validation_images(self, output_folder):
+        """
+        Copies all images from the validation dataset to a specified folder.
+        Preserves the class/subfolder structure.
+        
+        Args:
+            output_folder (str): Path to the output folder.
+        """
+        # Check if validation dataset exists
+        if self.ds_val is None:
+            print("ERROR: No validation dataset loaded. Call load_training_dataset() or load_test_dataset() first.")
+            return False
+        
+        # Create output folder
+        output_path = Path(output_folder)
+        output_path.mkdir(parents=True, exist_ok=True)
+        
+        print(f"Exporting validation images to: {output_path}")
+        
+        # Get the dataset from the dataloader
+        val_dataset = self.ds_val.dataset
+        
+        # Get class names
+        if hasattr(val_dataset, 'classes'):
+            class_names = val_dataset.classes
+        else:
+            print("ERROR: Dataset does not have 'classes' attribute.")
+            return False
+        
+        # Create subfolders for each class
+        for class_name in class_names:
+            (output_path / class_name).mkdir(parents=True, exist_ok=True)
+        
+        # Get the sampler indices
+        if hasattr(self.ds_val, 'sampler'):
+            if hasattr(self.ds_val.sampler, 'indices'):
+                indices = self.ds_val.sampler.indices
+            else:
+                print("ERROR: Sampler has no 'indices' attribute.")
+                return False
+        else:
+            print("ERROR: Dataloader has no 'sampler' attribute.")
+            return False
+        
+        # Get samples from the dataset
+        if hasattr(val_dataset, 'samples'):
+            samples = val_dataset.samples
+        elif hasattr(val_dataset, 'imgs'):
+            samples = val_dataset.imgs
+        else:
+            print("ERROR: Dataset has no 'samples' or 'imgs' attribute.")
+            return False
+        
+        # Copy images
+        copied_count = 0
+        for idx in indices:
+            img_path, class_idx = samples[idx]
+            class_name = class_names[class_idx]
+            filename = Path(img_path).name
+            
+            dest_path = output_path / class_name / filename
+            
+            try:
+                shutil.copy2(img_path, dest_path)
+                copied_count += 1
+            except Exception as e:
+                print(f"  Warning: Could not copy {img_path}: {e}")
+        
+        print(f"✓ Exported {copied_count} validation images to: {output_path}")
+        return True
 
     #############################################################################################################################
     # Only for cross validation with synthetic images
