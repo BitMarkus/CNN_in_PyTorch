@@ -63,7 +63,7 @@ setting = {
     # Shuffle dataset
     "ds_shuffle": True,
     # Shuffle seed
-    "ds_shuffle_seed": 42,
+    "ds_shuffle_seed": 43,
     # How many subprocesses are used to load data in parallel
     "ds_num_workers": 3, # Intel Core i7-10700 CPU: 3
     # Validation split settings
@@ -231,9 +231,9 @@ setting = {
     # If sort_selection_mode is "top_n", this selects the top X most confident images per class (e.g. 50)
     # If sort_selection_mode is "threshold", this needs to be a single number (e.g. 0.2) 
     # If sort_selection_mode is "interval", this needs to be a list of min/max values (e.g. [0.2, 0.8])
-    "sort_selection_value": [0.55, 0.95], # [0.55, 0.95], [0.5, 1.0]
+    "sort_selection_value": [0.5, 1.0], # [0.55, 0.95], [0.5, 1.0]
     # Filter criteria: 'confidence_only', 'logits_only', or 'combined'
-    'sort_filter_mode': 'combined',
+    'sort_filter_mode': 'confidence_only',
     # Minimum max_logit value to keep
     "sort_logit_threshold": 0.0,
     # Rename files with either confidence scores, logit values, or both

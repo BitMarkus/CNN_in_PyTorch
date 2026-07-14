@@ -95,9 +95,8 @@ class ClassAnalyzer:
         self.pth_checkpoint = setting['pth_checkpoint'].resolve()
         self.classes = setting['classes']
 
-        # File naming options - UPDATED to match class_sorter.py
+        # File naming options
         self.rename_with_confidence = setting['analyze_rename_with_confidence']
-        # Option to include logits in renamed filenames
         self.include_logits_in_rename = setting.get('analyze_include_logits_in_rename', False)
         
         # Validate setting types
@@ -150,17 +149,52 @@ class ClassAnalyzer:
         
         try:
             full_path = self.pth_checkpoint / checkpoint_file
-            self.cnn.load_state_dict(torch.load(full_path))
+            
+            # ===== FIX: Handle dictionary wrapper format (same as class_sorter.py) =====
+            checkpoint = torch.load(full_path, map_location=self.device)
+            
+            # CRITICAL FIX: Handle dictionary wrapper format
+            if isinstance(checkpoint, dict) and 'model_state_dict' in checkpoint:
+                # New format (from train.py)
+                self.cnn.load_state_dict(checkpoint['model_state_dict'])
+                epoch_info = checkpoint.get('epoch', 'unknown')
+                if epoch_info != 'unknown':
+                    epoch_info = epoch_info + 1  # Convert to 1-indexed
+                accuracy = checkpoint.get('accuracy', 'unknown')
+                balanced_acc = checkpoint.get('balanced_accuracy', 'unknown')
+                composite_score = checkpoint.get('composite_score', 'unknown')
+                
+                print(f"  ✓ Loaded checkpoint from epoch {epoch_info}")
+                if accuracy != 'unknown':
+                    print(f"    Accuracy: {accuracy:.2%}")
+                if balanced_acc != 'unknown':
+                    print(f"    Balanced Acc: {balanced_acc:.2%}")
+                if composite_score != 'unknown':
+                    print(f"    Composite Score: {composite_score:.4f}")
+                    
+            elif isinstance(checkpoint, dict) and 'state_dict' in checkpoint:
+                # Alternative format
+                self.cnn.load_state_dict(checkpoint['state_dict'])
+                print(f"  ✓ Loaded checkpoint (alternative format)")
+                
+            else:
+                # Old format (direct state dict) - for backward compatibility
+                self.cnn.load_state_dict(checkpoint)
+                print(f"  ✓ Loaded checkpoint (direct state dict)")
+            
             self.checkpoint_loaded = True
             self.loaded_checkpoint_name = full_path.stem
             print(f"Successfully loaded weights from {checkpoint_file}")
             return True
+            
         except FileNotFoundError as e:
             print(f"\nError loading checkpoint: {str(e)}")
             print(f"Full path attempted: {full_path}")
             return False
         except Exception as e:
             print(f"\nError loading checkpoint: {str(e)}")
+            print("WARNING: Using untrained weights!")
+            self.loaded_checkpoint_name = "untrained"
             return False
         
     # Return indices of samples belonging to a specific folder
