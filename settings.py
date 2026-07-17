@@ -357,14 +357,6 @@ setting = {
     "dimred_use_trimap": True,
     "dimred_use_pacmap": True,
 
-    # INTERACTIVE PLOT SETTINGS:
-    # Set to True to enable interactive plots
-    'dimred_create_interactive': True,  
-    # Number of points to show in interactive plot
-    'dimred_interactive_sample_size': 2000,  
-    # Thumbnail size in pixels
-    'dimred_interactive_thumbnail_size': 80,  
-
     # Mode can be "train", "test", or "groups"
     # "test": Images are test images in the data/test/ folder
     # "train": Images are training images in the data/training/ folder
