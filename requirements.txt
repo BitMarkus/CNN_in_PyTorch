@@ -27,7 +27,8 @@ narwhals==2.22.0
 networkx==3.6.1
 numpy==2.4.3
 opencv-python==4.13.0.92
-packaging==26.0
+# packaging==26.0	-> Downgraded to 23.2 for Python 3.12 compatibility on Windows
+packaging==23.2
 pandas==3.0.3
 pillow==12.1.1
 prettytable==3.17.0
