@@ -14,7 +14,7 @@ setting = {
     ############
 
     # Number of epochs
-    "train_num_epochs": 10,  # 30
+    "train_num_epochs": 40,  # 30
     # Batch size for training and validation datasets
     "ds_batch_size": 50, 
 
@@ -63,7 +63,7 @@ setting = {
     # Shuffle dataset
     "ds_shuffle": True,
     # Shuffle seed
-    "ds_shuffle_seed": 43,
+    "ds_shuffle_seed": 44,
     # How many subprocesses are used to load data in parallel
     "ds_num_workers": 3, # Intel Core i7-10700 CPU: 3
     # Validation split settings
@@ -80,11 +80,12 @@ setting = {
     "wt_lines": ["WT_1618-02", "WT_JG", "WT_JT", "WT_KM", "WT_MS"],
     "ko_lines": ["KO_1096-01", "KO_1618-01", "KO_BR2986", "KO_BR3075"],
     # PROJECT 2:
-    # "wt_lines": ["WT_BJ", "WT_LF", "WT_MW", "WT_NH"],
+    # "wt_lines": ["WT_BJ", "WT_LF", "WT_MP", "WT_MW", "WT_NH"],
     # "ko_lines": ["MMD_155", "MMD_160", "MMD_169", "MMD_177"],
     # Define classes
     # 2 classes (WT and KO):
     "classes": ["KO", "WT"],
+    # "classes": ["MMD", "WT"],
     # 9 classes (one for each cell line):
     # "classes": ["KO_1096-01", "KO_1618-01", "KO_BR2986", "KO_BR3075", "WT_1618-02", "WT_JG", "WT_JT", "WT_KM", "WT_MS"],
 
@@ -272,7 +273,7 @@ setting = {
     "ca_max_ckpts": 1,
     # Method for best checkpoint selection
     # Options: 'balanced_sum', 'f1_score', 'min_difference', 'balanced_accuracy' and 'composite_score'
-    "ca_ckpt_select_method": 'composite_score',
+    "ca_ckpt_select_method": 'balanced_accuracy',
     # Which confusion matrix JSON file to use for checkpoint selection
     # When you have BOTH validation AND test evaluations during training, this decides which metrics to use for selecting the "best" checkpoint
     # Options: "validation", "test"
@@ -343,8 +344,8 @@ setting = {
     # Gaussian blur strength
     "gradcam_blurr_sigma": 15,
     # Export mode: 
-    # True: Composition of original, gradcam and overlay images
-    # False: Only export of gradcam image in 512x512 px
+    # False: Composition of original, gradcam and overlay images
+    # True: Only export of gradcam image in 512x512 px
    "gradcam_export_only_overlay": True, 
 
     #######################
