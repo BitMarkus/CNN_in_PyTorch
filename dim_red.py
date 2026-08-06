@@ -17,6 +17,7 @@ from pathlib import Path
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 import time
+import sklearn
 from sklearn.manifold import TSNE
 import umap
 import trimap
@@ -84,12 +85,25 @@ class DimRed:
             'random_state': 42
         }
         # t-SNE parameters
-        self.tsne_params = {
-            'perplexity': setting['dimred_tsne_perplexity'],
-            'learning_rate': setting['dimred_tsne_learning_rate'],
-            'random_state': 42,
-            'n_iter': 1000
-        }
+        # Check scikit-learn version
+        sklearn_version = tuple(map(int, sklearn.__version__.split('.')[:2]))
+
+        if sklearn_version >= (1, 2):
+            # New version: use max_iter
+            self.tsne_params = {
+                'perplexity': setting['dimred_tsne_perplexity'],
+                'learning_rate': setting['dimred_tsne_learning_rate'],
+                'random_state': 42,
+                'max_iter': 1000
+            }
+        else:
+            # Old version: use n_iter
+            self.tsne_params = {
+                'perplexity': setting['dimred_tsne_perplexity'],
+                'learning_rate': setting['dimred_tsne_learning_rate'],
+                'random_state': 42,
+                'n_iter': 1000
+            }
         # TriMAP parameters
         self.trimap_params = {
             'n_inliers':  setting['dimred_trimap_n_inliers'],
