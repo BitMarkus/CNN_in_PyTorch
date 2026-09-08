@@ -8,9 +8,7 @@ from dataset import Dataset
 from train import Train
 from class_analyzer import ClassAnalyzer
 from gradcam_analyzer import GradCAMAnalyzer
-from class_sorter import ClassSorter
-from dim_red import DimRed
-from fid_calculator import FIDCalculator
+from utilities import Utilities
 from settings import setting
 
 ###########
@@ -51,10 +49,8 @@ def main() -> None:
         print("8) Automatic Cross Validation (ACV)")
         print("9) Confidence Analyzer (based on ACV)")
         print("10) GradCAM Analyzer")
-        print("11) Class Sorter")
-        print("12) Dimension Reduction")
-        print("13) FID Calculator")
-        print("14) Exit Program")
+        print("11) Utilities")
+        print("12) Exit Program")
         menu1 = int(fn.input_int("Please choose: "))
 
         ######################
@@ -127,6 +123,7 @@ def main() -> None:
 
         elif menu1 == 4:
             print("\n:TRAIN NETWORK:")
+            print("  Results will be saved to output/train/[timestamp]/")
             if not cnn_wrapper.model_loaded:
                 print('No CNN generated yet!')
             elif not ds.ds_loaded:
@@ -152,7 +149,7 @@ def main() -> None:
                 cnn_wrapper.load_checkpoint()
 
         ############################
-        # Predict images in folder #
+        # Predict from Input Folder #
         ############################
 
         elif menu1 == 6:
@@ -222,46 +219,19 @@ def main() -> None:
             gradcam = GradCAMAnalyzer(device)
             gradcam()
 
-        ################
-        # Class Sorter #
-        ################
+        ###############
+        # Utilities   #
+        ###############
 
         elif menu1 == 11:
-            print("\n:CLASS SORTER:")
-            print("  Input: input/ (place images to sort)")
-            print("  Output: output/class_sorter/")
-            # Create and run sorter (all configuration is loaded from settings.py)
-            sorter = ClassSorter(device)
-            output_dir = sorter.run()
-
-        #######################
-        # Dimension Reduction #
-        #######################
-
-        elif menu1 == 12:
-            print("\n:DIMENSION REDUCTION:")
-            print("  Input: input/ (place images in folders or directly)")
-            print("  Output: output/dim_red/")
-            # DimRed simple version
-            dimred = DimRed(device)
-            dimred()
-
-        ##################
-        # FID Calculator #
-        ##################
-
-        elif menu1 == 13:
-            print("\n:FID CALCULATOR:")
-            print("  Input: input/ (place folders with images to compare)")
-            print("  Output: output/fid/")
-            fid_score_calc = FIDCalculator(device)
-            fid_score_calc()
+            utilities = Utilities()
+            utilities.menu()
 
         ################
         # Exit Program #
         ################
 
-        elif menu1 == 14:
+        elif menu1 == 12:
             print("\nExit program...")
             break
 

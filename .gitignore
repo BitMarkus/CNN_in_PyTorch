@@ -1,16 +1,10 @@
 /__pycache__
 /.vscode
-/checkpoints
+/info&tools
 /data/train
 /data/test
-/plots
 /dataset_gen/input_mixed
 /dataset_gen/input_real
 /dataset_gen/input_synthetic
 /dataset_gen/output
-/acv_results
-/ca_results
-/prediction
-/logs
-/sort_output
 /data/info.txt
