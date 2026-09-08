@@ -77,15 +77,14 @@ setting = {
     # Classes:
     # Define cell lines (for dataset generator)
     # PROJECT 1:
-    "wt_lines": ["WT_1618-02", "WT_JG", "WT_JT", "WT_KM", "WT_MS"],
-    "ko_lines": ["KO_1096-01", "KO_1618-01", "KO_BR2986", "KO_BR3075"],
+    # "wt_lines": ["WT_1618-02", "WT_JG", "WT_JT", "WT_KM", "WT_MS"],
+    # "ko_lines": ["KO_1096-01", "KO_1618-01", "KO_BR2986", "KO_BR3075"],
     # PROJECT 2:
-    # "wt_lines": ["WT_BJ", "WT_LF", "WT_MP", "WT_MW", "WT_NH"],
-    # "ko_lines": ["MMD_155", "MMD_160", "MMD_169", "MMD_177"],
+    "wt_lines": ["WT_BJ", "WT_LF", "WT_MP", "WT_MW", "WT_NH"],
+    "ko_lines": ["MMD_155", "MMD_160", "MMD_169", "MMD_177"],
     # Define classes
     # 2 classes (WT and KO):
     "classes": ["KO", "WT"],
-    # "classes": ["MMD", "WT"],
     # 9 classes (one for each cell line):
     # "classes": ["KO_1096-01", "KO_1618-01", "KO_BR2986", "KO_BR3075", "WT_1618-02", "WT_JG", "WT_JT", "WT_KM", "WT_MS"],
 

@@ -7,7 +7,6 @@ from conf_analyzer import ConfidenceAnalyzer
 from dataset import Dataset
 from train import Train
 from class_analyzer import ClassAnalyzer
-from captum_analyzer import CaptumAnalyzer
 from gradcam_analyzer import GradCAMAnalyzer
 from class_sorter import ClassSorter
 from dim_red import DimRed
@@ -49,12 +48,11 @@ def main():
         print("7) Dataset Generator (ACV)")
         print("8) Automatic Cross Validation (ACV)")
         print("9) Confidence Analyzer (based on ACV)")
-        print("10) Captum (Integrated Gradients) Analyzer")
-        print("11) GradCAM Analyzer (for DenseNet-121)")
-        print("12) Class Sorter")
-        print("13) Dimension reduction (for DenseNet-121)")
-        print("14) FID Calculator")
-        print("15) Exit Program")
+        print("10) GradCAM Analyzer (for DenseNet-121)")
+        print("11) Class Sorter")
+        print("12) Dimension reduction (for DenseNet-121)")
+        print("13) FID Calculator")
+        print("14) Exit Program")
         menu1 = int(fn.input_int("Please choose: "))
 
         ######################
@@ -209,20 +207,11 @@ def main():
             confa = ConfidenceAnalyzer(device)
             confa()
 
-        ###################
-        # Captum Analyzer #  
-        ###################
-
-        elif(menu1 == 10):  
-            print("\n:CAPTUM ANALYZER:") 
-            capta = CaptumAnalyzer(device)
-            capta()
-
         ####################
         # GradCAM Analyzer #  
         ####################
 
-        elif(menu1 == 11):  
+        elif(menu1 == 10):  
             print("\n:GradCAM ANALYZER (for DenseNet-121):") 
             gradcam = GradCAMAnalyzer(device)
             gradcam()
@@ -231,7 +220,7 @@ def main():
         # Class Sorter #  
         ################
 
-        elif(menu1 == 12):  
+        elif(menu1 == 11):  
             print("\n:CLASS SORTER:") 
             # Create and run sorter (all configuration is loaded from settings.py)
             sorter = ClassSorter(device)
@@ -241,7 +230,7 @@ def main():
         # Dimension Reduction #  
         #######################
 
-        elif(menu1 == 13):  
+        elif(menu1 == 12):  
             print("\n:DIMENSION REDUCTION:") 
             # DimRed simple version
             dimred = DimRed(device)
@@ -251,7 +240,7 @@ def main():
         # FID calculator #  
         ##################
 
-        elif(menu1 == 14):  
+        elif(menu1 == 13):  
             print("\n:FID CALCULATOR:") 
             fid_score_calc = FIDCalculator(device)
             fid_score_calc()
@@ -260,7 +249,7 @@ def main():
         # Exit Program #
         ################
 
-        elif(menu1 == 15):
+        elif(menu1 == 14):
             print("\nExit program...")
             break
         
