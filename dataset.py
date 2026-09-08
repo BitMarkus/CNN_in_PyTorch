@@ -22,42 +22,53 @@ class Dataset():
     # Initialize the dataset handler with settings from the configuration file.
     # Sets up paths, batch sizes, validation strategies, and augmentation parameters.
     def __init__(self) -> None:
-
+        
         # Paths
         self.pth_train = setting["pth_train"]
         self.pth_test = setting["pth_test"]
-        self.pth_prediction = setting["pth_prediction"]
+        self.pth_input = setting["pth_input"]
 
-        # DataLoader settings
+        # Settings variables
+        # Shuffle training images before validation split
         self.shuffle = setting["ds_shuffle"]
+        # Shuffle seed
         self.shuffle_seed = setting["ds_shuffle_seed"]
+        # Batch size for training and validation datasets (for 512x512 -> 24)
         self.batch_size = setting["ds_batch_size"]
-        self.batch_size_pred = 1  # Always 1 for prediction
+        # Batch size for prediction dataset
+        # Always needs to be 1! Or calculation of confusion matrix parameters are more complicated
+        self.batch_size_pred = 1
+        # How many subprocesses are used to load data in parallel
         self.num_workers = setting["ds_num_workers"]
 
-        # Validation split settings
+        # Validation split settings (False or percentage 0.0-1.0)
+        # Validation split from training dataset
         self.val_from_train_split = setting["ds_val_from_train_split"]
+        # Validation split from test dataset
         self.val_from_test_split = setting["ds_val_from_test_split"]
+        # Add a flag to track where validation data comes from
         self.validation_from_test = (self.val_from_test_split is not False and self.val_from_train_split is False)
-
-        # Dataset state
+        # Variable to save if the dataset was already loaded or not
         self.ds_loaded = False
+        # Number of training and validation images in each dataset
         self.num_train_img = 0
         self.num_val_img = 0
         self.num_pred_img = 0
+        # Number of training and validation batches in each dataset
         self.num_train_batches = 0
         self.num_val_batches = 0
-
         # Datasets
         self.ds_train = None
         self.ds_val = None
         self.ds_test = None
         self.ds_pred = None
 
-        # Image configuration
+        # Number of channels of training images
         self.input_channels = setting["img_channels"]
+        # Image width and height for training
         self.input_height = setting["img_height"]
         self.input_width = setting["img_width"]
+        # List of classes
         self.classes = setting["classes"]
 
         ################
@@ -67,33 +78,51 @@ class Dataset():
         # Use augmentations
         self.train_use_augment = setting["train_use_augment"]
 
-        # FLIP AND ROTATION AUGMENTATIONS
+        # FLIP AND ROTATION AUGMENTATIONS:
+        # Horizontal flip probability
         self.hori_flip_prob = setting["aug_hori_flip_prob"]
+        # Vertical flip probability
         self.vert_flip_prob = setting["aug_vert_flip_prob"]
+        # Probability of 90° angle rotations
         self.aug_90_angle_rot_prob = setting["aug_90_angle_rot_prob"]
+        # Probability of small angle rotations
         self.small_angle_rot_prob = setting["aug_small_angle_rot_prob"]
+        # Small-angle rotation
         self.small_angle_rot = setting["aug_small_angle_rot"]
+        # Fill color for gaps due to small angle rotation
+        # fill=0: black background, fill=255: white background
         self.small_angle_fill_gray = setting["aug_small_angle_fill_gray"]
         self.small_angle_fill_rgb = setting["aug_small_angle_fill_rgb"]
 
-        # INTENSITY AUGMENTATIONS
+        # INTENSITY AUGMENTATIONS:
         self.intense_prob = setting["aug_intense_prob"]
         self.brightness = setting["aug_brightness"]
         self.contrast = setting["aug_contrast"]
-        self.saturation = setting["aug_saturation"]  # only for RGB images
+        self.saturation = setting["aug_saturation"]
+        # Gamma correction
+        # Gamma = 1: No change. The image looks "natural" (linear brightness)
+        # Gamma < 1 (e.g., 0.5): Dark areas get brighter, bright areas stay mostly the same
+        # Gamma > 1 (e.g., 2.0): Bright areas get darker, dark areas stay mostly the same
         self.gamma_prob = setting["aug_gamma_prob"]
         self.gamma_min = setting["aug_gamma_min"]
         self.gamma_max = setting["aug_gamma_max"]
 
-        # OPTICAL AUGMENTATIONS
-        # Gaussian Blur
+        # OPTICAL AUGMENTATIONS:
+        # Gaussian Blur Parameters
+        # Probability
         self.gauss_prob = setting["aug_gauss_prob"]
+        # Kernel size
         self.gauss_kernel_size = setting["aug_gauss_kernel_size"]
+        # Sigma: controls the "spread" of the blur (how intense/smooth it is)
         self.gauss_sigma_min = setting["aug_gauss_sigma_min"]
         self.gauss_sigma_max = setting["aug_gauss_sigma_max"]
         # Poisson noise
+        # Probability
         self.poiss_prob = setting["aug_poiss_prob"]
+        # Controls how much the noise depends on image brightness
+        # Suggested range: 0.01-0.1 (higher = more noise)
         self.poiss_scaling = setting["aug_poiss_scaling"]
+        # Noise Strength: Final noise intensity multiplier
         self.poiss_noise_strength = setting["aug_poiss_noise_strength"]
 
     #############################################################################################################
@@ -398,13 +427,13 @@ class Dataset():
         self.num_pred_img = self.num_test_after_val_img
         return True
 
-    # Load the prediction dataset (uses images from pth_prediction).
+    # Load the prediction dataset (uses images from pth_input).
     # Returns:
     #   bool: True if successful, False otherwise
     def load_pred_dataset(self) -> bool:
         transformer = self.get_transformer_test()
         if transformer:
-            dataset = torchvision.datasets.ImageFolder(self.pth_prediction, transform=transformer)
+            dataset = torchvision.datasets.ImageFolder(self.pth_input, transform=transformer)
             prediction_loader = DataLoader(
                 dataset,
                 batch_size=self.batch_size_pred,
@@ -474,7 +503,7 @@ class Dataset():
         plt.tight_layout()
 
         if save_plot:
-            plt.savefig(str(plot_path / "training_examples"), bbox_inches='tight', dpi=300)
+            plt.savefig(str(plot_path / "training_examples.png"), bbox_inches='tight', dpi=300)
             plt.close()
         if show_plot:
             plt.show()
@@ -536,9 +565,8 @@ class Dataset():
         print(f"✓ Exported {copied_count} validation images to: {output_path}")
         return True
 
-    ############################
-    # SYNTHETIC IMAGE HANDLING #
-    ############################
+    #############################################################################################################
+    # SYNTHETIC IMAGE HANDLING
 
     # Check if an image is synthetic based on filename pattern.
     # Synthetic images start with 's' followed by a number.

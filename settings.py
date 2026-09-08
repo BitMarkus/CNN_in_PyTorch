@@ -384,6 +384,9 @@ setting = {
     "pth_ds_gen_input_mixed": BASE_DIR / "dataset_gen/input_mixed/",
     "pth_ds_gen_output": BASE_DIR / "dataset_gen/output/",
 
+    # ===== Checkpoints (for loading existing models) =====
+    "pth_checkpoint": BASE_DIR / "checkpoints/",
+
     # ===== Input Folder (Analysis Inputs) =====
     "pth_input": BASE_DIR / "input/",
     # All analysis inputs go directly into input/ (no subfolders)

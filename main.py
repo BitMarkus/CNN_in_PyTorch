@@ -8,7 +8,7 @@ from dataset import Dataset
 from train import Train
 from class_analyzer import ClassAnalyzer
 from gradcam_analyzer import GradCAMAnalyzer
-from utilities import Utilities
+from utilities_menu import Utilities
 from settings import setting
 
 ###########

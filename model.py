@@ -1,7 +1,3 @@
-##################################
-# Predefined model architectures #
-##################################
-
 # ===== Standard Library Imports =====
 from pathlib import Path
 # ===== Third-Party Imports =====
@@ -16,7 +12,6 @@ from custom_cnn import CustomCNN
 from settings import setting
 import functions as fn
 
-
 class CNN_Model():
 
     #############################################################################################################
@@ -28,7 +23,7 @@ class CNN_Model():
 
         # Paths
         self.pth_train = setting["pth_train"]
-        self.pth_pred = setting["pth_prediction"]
+        self.pth_input = setting["pth_input"]
         self.pth_checkpoint = setting["pth_checkpoint"]
         self.chckpt_pth = setting["pth_checkpoint"]
 
@@ -343,13 +338,15 @@ class CNN_Model():
     #   chckpt_file (str): Name of the checkpoint file
     # Returns:
     #   str: The loaded checkpoint filename
-    """
     def load_weights(self, chckpt_pth: Path, chckpt_file: str) -> str:
-        self.model.load_state_dict(torch.load(chckpt_pth / chckpt_file))
+        checkpoint = torch.load(chckpt_pth / chckpt_file)
+        if isinstance(checkpoint, dict) and 'model_state_dict' in checkpoint:
+            self.model.load_state_dict(checkpoint['model_state_dict'])
+        else:
+            self.model.load_state_dict(checkpoint)
         print(f'Weights from checkpoint {chckpt_file} successfully loaded.')
         return chckpt_file
-    """
-    
+
     # Load a checkpoint interactively.
     # If only one checkpoint exists, load it automatically.
     # If multiple exist, show a table and prompt for selection.

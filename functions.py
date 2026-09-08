@@ -28,7 +28,7 @@ def show_cuda_and_versions() -> torch.device:
     print("Pytorch:", torch.__version__)
     print("CUDA:", torch.version.cuda)
     print("cuDNN:", torch.backends.cudnn.version())
-    print("Captum:", captum.__version__)
+    # print("Captum:", captum.__version__)
     return device
 
 # Prompt the user for input and validate that it is an integer.
@@ -72,12 +72,13 @@ def check_int_range(var: int, min: int, max: int) -> bool:
 
 # Create all working folders in the root directory of the program if they do not exist.
 # Creates:
-#   - data/train/ with class subfolders
-#   - data/test/ with class subfolders
-#   - dataset_gen/input_synthetic/
-#   - dataset_gen/input_real/
-#   - dataset_gen/input_mixed/
-#   - dataset_gen/output/
+#   - data/train/ with class subfolders (training images)
+#   - data/test/ with class subfolders (test/validation images)
+#   - checkpoints/ (for loading existing models)
+#   - dataset_gen/input_synthetic/ (synthetic images for cross-validation)
+#   - dataset_gen/input_real/ (real images for cross-validation)
+#   - dataset_gen/input_mixed/ (mixed images for cross-validation, backward compatibility)
+#   - dataset_gen/output/ (generated cross-validation datasets)
 #   - input/ (all analysis inputs)
 #   - output/ (all analysis outputs)
 # Returns:
@@ -99,6 +100,9 @@ def create_prg_folders() -> bool:
     setting["pth_ds_gen_input_real"].mkdir(parents=True, exist_ok=True)
     setting["pth_ds_gen_input_mixed"].mkdir(parents=True, exist_ok=True)
     setting["pth_ds_gen_output"].mkdir(parents=True, exist_ok=True)
+
+    # Checkpoints (for loading existing models)
+    setting["pth_checkpoint"].mkdir(parents=True, exist_ok=True)
 
     # Input and Output Folders
     setting["pth_input"].mkdir(parents=True, exist_ok=True)
