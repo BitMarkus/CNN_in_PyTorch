@@ -15,7 +15,7 @@ class ImageOrganizerBySeed:
     # Args:
     #   verbose (bool): Print progress messages. Defaults to True.
     def __init__(self, verbose: bool = True) -> None:
-
+        
         # Paths from settings
         self.input_folder = setting['pth_input']
         self.output_folder = setting['pth_output']
@@ -29,10 +29,6 @@ class ImageOrganizerBySeed:
     # METHODS
 
     # Extract seed from filename.
-    # Args:
-    #   filename (Path or str): The filename to process
-    # Returns:
-    #   Optional[str]: Seed number if found, None otherwise
     def extract_seed(self, filename) -> Optional[str]:
         if isinstance(filename, Path):
             filename_str = filename.stem
@@ -46,8 +42,6 @@ class ImageOrganizerBySeed:
         return None
 
     # Get statistics about available images before organizing.
-    # Returns:
-    #   Dict[str, int]: Seed -> image count
     def get_statistics(self) -> Dict[str, int]:
         image_files = list(self.input_folder.glob("*.png"))
         seed_stats = {}
@@ -60,8 +54,6 @@ class ImageOrganizerBySeed:
         return seed_stats
 
     # Organize all images into folders by seed number.
-    # Returns:
-    #   Dict[str, int]: Seed -> image count
     def organize_images_by_seed(self) -> Dict[str, int]:
         image_files = list(self.input_folder.glob("*.png"))
 
@@ -101,8 +93,5 @@ class ImageOrganizerBySeed:
     #############################################################################################################
     # CALL
 
-    # Run the image organizer by seed.
-    # Returns:
-    #   Dict[str, int]: Seed -> image count
     def __call__(self) -> Dict[str, int]:
         return self.organize_images_by_seed()

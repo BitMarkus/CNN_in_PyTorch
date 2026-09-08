@@ -1,5 +1,6 @@
 # ===== Own Modules =====
 import functions as fn
+from settings import setting
 from utilities import (
     DatasetMerger,
     RandomDSRemover,
@@ -17,8 +18,40 @@ class Utilities:
     #############################################################################################################
     # CONSTRUCTOR
 
+    # Initialize the utilities menu.
+    # Loads all settings from the configuration file.
     def __init__(self) -> None:
-        pass
+
+        # Dataset Merger settings
+        self.merger_recursive_depth = setting.get("util_merger_recursive_depth", None)
+        self.merger_copy_duplicates = setting.get("util_merger_copy_duplicates", False)
+        self.merger_verbose = setting.get("util_merger_verbose", True)
+
+        # Dataset Remover settings
+        self.remover_target_per_folder = setting.get("util_remover_target_per_folder", 500)
+        self.remover_seed = setting.get("util_remover_seed", 42)
+        self.remover_verbose = setting.get("util_remover_verbose", True)
+
+        # Dataset Splitter settings
+        self.splitter_ratios = setting.get("util_splitter_ratios", [0.3])
+        self.splitter_random_seed = setting.get("util_splitter_random_seed", 42)
+
+        # Dataset Subtraction settings
+        self.subtraction_dataset_a = setting.get("util_subtraction_dataset_a", "dataset_a")
+        self.subtraction_dataset_b = setting.get("util_subtraction_dataset_b", "dataset_b")
+        self.subtraction_result = setting.get("util_subtraction_result", "result_dataset")
+        self.subtraction_verbose = setting.get("util_subtraction_verbose", True)
+
+        # Merge Images from Folders settings
+        self.merge_extensions = setting.get("util_merge_extensions", ['.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp', '.tiff', '.tif'])
+        self.merge_verbose = setting.get("util_merge_verbose", True)
+
+        # Sort Images by Frame settings
+        self.sort_frame_format = setting.get("util_sort_frame_format", "flux")
+        self.sort_frame_verbose = setting.get("util_sort_frame_verbose", True)
+
+        # Sort Images by Seed settings
+        self.sort_seed_verbose = setting.get("util_sort_seed_verbose", True)
 
     #############################################################################################################
     # METHODS
@@ -64,7 +97,7 @@ class Utilities:
         print("  Input: input/ (images in nested subfolders)")
         print("  Output: output/ (all images flattened)")
         print("  Note: This copies images, does NOT move them.")
-        print("  Duplicate handling: copies with rename or skips (configurable)")
+        print(f"  Copy duplicates: {'Yes (with rename)' if self.merger_copy_duplicates else 'No (skip)'}")
         print()
 
         confirm = input("Continue? (yes/no): ").strip().lower()
@@ -73,7 +106,11 @@ class Utilities:
             return
 
         try:
-            merger = DatasetMerger()
+            merger = DatasetMerger(
+                recursive_depth=self.merger_recursive_depth,
+                copy_duplicates=self.merger_copy_duplicates,
+                verbose=self.merger_verbose
+            )
             merger.collect_and_copy_images()
         except Exception as e:
             print(f"Error during execution: {e}")
@@ -86,7 +123,8 @@ class Utilities:
         print("  Input: input/ (images organized in folders)")
         print("  Output: output/ (reduced dataset)")
         print("  Note: Randomly selects images from each folder.")
-        print("  Target per folder is configurable in the script.")
+        print(f"  Target per folder: {self.remover_target_per_folder}")
+        print(f"  Random seed: {self.remover_seed}")
         print()
 
         confirm = input("Continue? (yes/no): ").strip().lower()
@@ -95,7 +133,11 @@ class Utilities:
             return
 
         try:
-            remover = RandomDSRemover()
+            remover = RandomDSRemover(
+                target_per_folder=self.remover_target_per_folder,
+                seed=self.remover_seed,
+                verbose=self.remover_verbose
+            )
             remover.process_dataset()
         except Exception as e:
             print(f"Error during execution: {e}")
@@ -107,7 +149,8 @@ class Utilities:
         print("\n:DATASET SPLITTER:")
         print("  Input: input/ (images to split)")
         print("  Output: output/ (split into dataset_X folders)")
-        print("  Note: Splits images by ratios defined in the script.")
+        print(f"  Ratios: {self.splitter_ratios}")
+        print(f"  Random seed: {self.splitter_random_seed}")
         print()
 
         confirm = input("Continue? (yes/no): ").strip().lower()
@@ -116,7 +159,10 @@ class Utilities:
             return
 
         try:
-            splitter = ImageDatasetSplitter()
+            splitter = ImageDatasetSplitter(
+                ratios=self.splitter_ratios,
+                random_seed=self.splitter_random_seed
+            )
             stats = splitter.split_images()
             if stats:
                 splitter.print_split_summary(stats)
@@ -141,7 +187,12 @@ class Utilities:
             return
 
         try:
-            subtractor = DatasetSubtractor()
+            subtractor = DatasetSubtractor(
+                dataset_a_name=self.subtraction_dataset_a,
+                dataset_b_name=self.subtraction_dataset_b,
+                result_name=self.subtraction_result,
+                verbose=self.subtraction_verbose
+            )
             statistics = subtractor.subtract_datasets()
             subtractor.print_statistics(statistics)
             subtractor.verify_dataset_integrity(statistics)
@@ -156,6 +207,7 @@ class Utilities:
         print("  Input: input/ (images in subfolders)")
         print("  Output: output/ (images renamed as folder_original)")
         print("  Note: Adds parent folder name as prefix to each image.")
+        print(f"  Extensions: {self.merge_extensions}")
         print()
 
         confirm = input("Continue? (yes/no): ").strip().lower()
@@ -164,7 +216,10 @@ class Utilities:
             return
 
         try:
-            collector = ImageCollector()
+            collector = ImageCollector(
+                extensions=self.merge_extensions,
+                verbose=self.merge_verbose
+            )
             stats = collector.get_input_statistics()
             print(f"\nFound images by folder:")
             for folder, count in stats.items():
@@ -187,7 +242,7 @@ class Utilities:
         print("  Input: input/ (morphing series images)")
         print("  Output: output/ (organized into frame_X folders)")
         print("  Note: Supports both Flux and StyleGAN naming formats.")
-        print("  Format is configurable in the script (flux/stylegan).")
+        print(f"  Format: {self.sort_frame_format}")
         print()
 
         confirm = input("Continue? (yes/no): ").strip().lower()
@@ -196,7 +251,10 @@ class Utilities:
             return
 
         try:
-            organizer = ImageOrganizerByFrame()
+            organizer = ImageOrganizerByFrame(
+                format=self.sort_frame_format,
+                verbose=self.sort_frame_verbose
+            )
             organizer.print_statistics()
             confirm2 = input("\nOrganize images? (yes/no): ").strip().lower()
             if confirm2 in ['yes', 'y']:
@@ -222,7 +280,9 @@ class Utilities:
             return
 
         try:
-            organizer = ImageOrganizerBySeed()
+            organizer = ImageOrganizerBySeed(
+                verbose=self.sort_seed_verbose
+            )
             stats = organizer.get_statistics()
             print("\nFound images by seed:")
             for seed, count in stats.items():

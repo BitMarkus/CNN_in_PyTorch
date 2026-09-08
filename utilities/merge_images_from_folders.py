@@ -34,8 +34,6 @@ class ImageCollector:
     # METHODS
 
     # Get all image files from input folder with supported extensions.
-    # Returns:
-    #   List[Path]: List of image file paths
     def get_images(self) -> List[Path]:
         image_set = set()
 
@@ -50,8 +48,6 @@ class ImageCollector:
         return list(image_set)
 
     # Get statistics about available images before collecting.
-    # Returns:
-    #   Dict[str, int]: Folder name -> image count
     def get_input_statistics(self) -> Dict[str, int]:
         image_files = self.get_images()
         folder_stats = {}
@@ -63,8 +59,6 @@ class ImageCollector:
         return folder_stats
 
     # Copy all images from all subfolders into one output folder.
-    # Returns:
-    #   dict: Statistics of the collection operation
     def collect_all_images(self) -> Dict:
         image_files = self.get_images()
 
@@ -122,8 +116,5 @@ class ImageCollector:
     #############################################################################################################
     # CALL
 
-    # Run the image collector.
-    # Returns:
-    #   dict: Statistics of the collection operation
     def __call__(self) -> Dict:
         return self.collect_all_images()

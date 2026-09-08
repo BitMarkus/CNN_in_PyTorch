@@ -37,15 +37,10 @@ class DatasetSubtractor:
         # Create result folder if it doesn't exist
         self.result_folder.mkdir(parents=True, exist_ok=True)
 
-
     #############################################################################################################
     # METHODS
 
     # Extract the base identifier from filename (everything before '_conf' if present).
-    # Args:
-    #   filename (Path or str): The filename to process
-    # Returns:
-    #   str: Base identifier string
     def extract_base_identifier(self, filename) -> str:
         if isinstance(filename, Path):
             filename_str = filename.stem
@@ -55,10 +50,6 @@ class DatasetSubtractor:
         return filename_str.split('_conf')[0]
 
     # Create a mapping of base identifiers to their file paths.
-    # Args:
-    #   folder_path (Path): Path to the folder
-    # Returns:
-    #   Dict[str, List[Path]]: Mapping of base identifiers to file paths
     def get_image_mapping(self, folder_path: Path) -> Dict[str, List[Path]]:
         mapping = defaultdict(list)
 
@@ -79,11 +70,6 @@ class DatasetSubtractor:
         return mapping
 
     # Prompt the user to choose the subtraction direction.
-    # Args:
-    #   dataset_a_map (Dict): Mapping for dataset A
-    #   dataset_b_map (Dict): Mapping for dataset B
-    # Returns:
-    #   Tuple: (minuend_map, minuend_name, subtrahend_map, subtrahend_name)
     def choose_subtraction_direction(
         self,
         dataset_a_map: Dict,
@@ -118,8 +104,6 @@ class DatasetSubtractor:
                 exit(0)
 
     # Subtract datasets based on user choice.
-    # Returns:
-    #   dict: Statistics of the subtraction operation
     def subtract_datasets(self) -> Dict:
         print("="*80)
         print("DATASET SUBTRACTION TOOL")
@@ -197,8 +181,6 @@ class DatasetSubtractor:
         return stats
 
     # Print formatted statistics to console.
-    # Args:
-    #   stats (dict): Statistics of the subtraction operation
     def print_statistics(self, stats: Dict) -> None:
         print("\n" + "="*80)
         print("DATASET SUBTRACTION STATISTICS")
@@ -231,10 +213,6 @@ class DatasetSubtractor:
         print("="*80)
 
     # Verify that the result dataset doesn't contain images that should have been subtracted.
-    # Args:
-    #   stats (dict): Statistics of the subtraction operation
-    # Returns:
-    #   Tuple: (integrity_ok, overlap_count)
     def verify_dataset_integrity(self, stats: Dict) -> Tuple[bool, int]:
         print("\n" + "="*80)
         print("DATASET INTEGRITY VERIFICATION")
@@ -274,9 +252,6 @@ class DatasetSubtractor:
     #############################################################################################################
     # CALL
 
-    # Run the dataset subtraction.
-    # Returns:
-    #   dict: Statistics of the subtraction operation
     def __call__(self) -> Dict:
         statistics = self.subtract_datasets()
         self.print_statistics(statistics)

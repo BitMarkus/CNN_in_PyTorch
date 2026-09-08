@@ -56,12 +56,6 @@ class DatasetMerger:
     # METHODS
 
     # Recursively get all image files from folder and all subfolders.
-    # Args:
-    #   folder_path (Path): Path to start scanning from
-    #   current_depth (int): Current recursion depth (for internal use)
-    #   max_depth (int, optional): Maximum depth to scan. None = unlimited.
-    # Returns:
-    #   List[Path]: List of image file paths
     def get_all_image_files_recursive(self, folder_path: Path, current_depth: int = 0, max_depth: Optional[int] = None) -> List[Path]:
         if max_depth is not None and current_depth > max_depth:
             return []
@@ -96,11 +90,6 @@ class DatasetMerger:
         return image_files
 
     # Generate a unique filename to avoid collisions in the flat output folder.
-    # Args:
-    #   original_path (Path): Original file path
-    #   relative_path (Path): Path relative to input folder
-    # Returns:
-    #   str: Unique filename
     def generate_unique_filename(self, original_path: Path, relative_path: Path) -> str:
         original_name = original_path.name
         name_parts = original_name.rsplit('.', 1)
@@ -123,8 +112,6 @@ class DatasetMerger:
         return new_name
 
     # Recursively scan input folder and copy all images to output folder.
-    # Returns:
-    #   dict: Statistics of the operation
     def collect_and_copy_images(self) -> dict:
         print(f"{'='*60}")
         print("DATASET MERGER - FLATTEN NESTED STRUCTURE")
@@ -276,8 +263,5 @@ class DatasetMerger:
     #############################################################################################################
     # CALL
 
-    # Run the dataset merger.
-    # Returns:
-    #   dict: Statistics of the operation
     def __call__(self) -> dict:
         return self.collect_and_copy_images()

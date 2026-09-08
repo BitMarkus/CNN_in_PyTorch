@@ -9,7 +9,6 @@ from datetime import datetime
 from settings import setting
 
 class RandomDSRemover:
-
     #############################################################################################################
     # CONSTRUCTOR
 
@@ -53,10 +52,6 @@ class RandomDSRemover:
     # METHODS
 
     # Get all image files from a folder.
-    # Args:
-    #   folder_path (Path): Path to the folder to scan
-    # Returns:
-    #   List[Path]: List of image file paths
     def get_all_image_files(self, folder_path: Path) -> List[Path]:
         image_extensions = {'.png', '.jpg', '.jpeg', '.bmp', '.tiff', '.tif', '.gif'}
         image_files = []
@@ -70,11 +65,6 @@ class RandomDSRemover:
         return sorted(image_files)
 
     # Reduce images in a single folder to target number.
-    # Args:
-    #   folder_path (Path): Path to the input folder
-    #   folder_name (str): Name of the folder (for output and logging)
-    # Returns:
-    #   dict: Selection results for this folder
     def reduce_folder_images(self, folder_path: Path, folder_name: str) -> Dict:
         all_images = self.get_all_image_files(folder_path)
 
@@ -174,8 +164,6 @@ class RandomDSRemover:
         }
 
     # Process the entire dataset, reducing images in each folder.
-    # Returns:
-    #   dict: Processing statistics
     def process_dataset(self) -> Dict:
         print(f"{'='*60}")
         print("RANDOM DATASET REDUCER")
@@ -284,8 +272,5 @@ class RandomDSRemover:
     #############################################################################################################
     # CALL
 
-    # Run the dataset remover.
-    # Returns:
-    #   dict: Processing statistics
     def __call__(self) -> Dict:
         return self.process_dataset()

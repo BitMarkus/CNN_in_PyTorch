@@ -16,7 +16,7 @@ class ImageDatasetSplitter:
     #   ratios (list): List of ratios for splitting (e.g., [0.5, 0.5] for 50/50 split)
     #   random_seed (int): Random seed for reproducibility. Defaults to 42.
     def __init__(self, ratios: List[float] = None, random_seed: int = 42) -> None:
-
+        
         # Paths from settings
         self.input_folder = setting['pth_input']
         self.output_folder = setting['pth_output']
@@ -45,8 +45,6 @@ class ImageDatasetSplitter:
             raise ValueError(f"Sum of ratios ({total}) cannot exceed 1.0")
 
     # Get all image files from input folder without duplicates.
-    # Returns:
-    #   List[Path]: List of unique image file paths
     def _get_all_images(self) -> List[Path]:
         image_extensions = ['.png', '.jpg', '.jpeg', '.bmp', '.tiff', '.tif']
         all_images = []
@@ -63,10 +61,6 @@ class ImageDatasetSplitter:
         return sorted(all_images, key=lambda x: x.name.lower())
 
     # Calculate number of images for each split based on ratios.
-    # Args:
-    #   total_images (int): Total number of images
-    # Returns:
-    #   List[int]: Number of images per split
     def _calculate_split_counts(self, total_images: int) -> List[int]:
         split_counts = []
         remaining_images = total_images
@@ -90,8 +84,6 @@ class ImageDatasetSplitter:
         return split_counts
 
     # Split images into multiple datasets based on specified ratios.
-    # Returns:
-    #   dict: Split statistics
     def split_images(self) -> Dict:
         all_images = self._get_all_images()
 
@@ -157,8 +149,6 @@ class ImageDatasetSplitter:
         return statistics
 
     # Print a detailed summary of the split operation.
-    # Args:
-    #   statistics (dict): Split statistics
     def print_split_summary(self, statistics: Dict) -> None:
         print("\n" + "="*60)
         print("SPLIT SUMMARY")
@@ -191,8 +181,6 @@ class ImageDatasetSplitter:
                 print(f"  ├── {stats['folder']}/ ({stats['actual_count']} images)")
 
     # Verify that all images were properly split and no duplicates exist.
-    # Args:
-    #   statistics (dict): Split statistics
     def verify_split(self, statistics: Dict) -> None:
         print("\n" + "="*60)
         print("VERIFICATION")
@@ -233,8 +221,5 @@ class ImageDatasetSplitter:
     #############################################################################################################
     # CALL
 
-    # Run the dataset splitter.
-    # Returns:
-    #   dict: Split statistics
     def __call__(self) -> Dict:
         return self.split_images()

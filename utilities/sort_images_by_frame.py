@@ -16,7 +16,7 @@ class ImageOrganizerByFrame:
     #   format (str): Image naming format - "flux" or "stylegan". Defaults to "flux".
     #   verbose (bool): Print progress messages. Defaults to True.
     def __init__(self, format: str = "flux", verbose: bool = True) -> None:
-
+        
         # Paths from settings
         self.input_folder = setting['pth_input']
         self.output_folder = setting['pth_output']
@@ -31,10 +31,6 @@ class ImageOrganizerByFrame:
     # METHODS
 
     # Extract frame number from filename based on selected format.
-    # Args:
-    #   filename (Path or str): The filename to process
-    # Returns:
-    #   Optional[str]: Frame number if found, None otherwise
     def extract_frame_number(self, filename) -> Optional[str]:
         if isinstance(filename, Path):
             filename_str = filename.stem
@@ -61,8 +57,6 @@ class ImageOrganizerByFrame:
         return None
 
     # Get statistics about available images before organizing.
-    # Returns:
-    #   Tuple[Dict[str, int], int]: (frame_stats, skipped_count)
     def get_statistics(self) -> Tuple[Dict[str, int], int]:
         image_files = list(self.input_folder.rglob("*.png"))
         frame_stats = {}
@@ -104,8 +98,6 @@ class ImageOrganizerByFrame:
         print(f"{'='*60}")
 
     # Organize all images into folders by frame number.
-    # Returns:
-    #   Dict[str, int]: Frame -> image count
     def organize_images_by_frame(self) -> Dict[str, int]:
         image_files = list(self.input_folder.rglob("*.png"))
 
@@ -148,8 +140,5 @@ class ImageOrganizerByFrame:
     #############################################################################################################
     # CALL
 
-    # Run the image organizer by frame.
-    # Returns:
-    #   Dict[str, int]: Frame -> image count
     def __call__(self) -> Dict[str, int]:
         return self.organize_images_by_frame()

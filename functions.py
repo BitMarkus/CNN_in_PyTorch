@@ -11,7 +11,6 @@ import torch
 import matplotlib.pyplot as plt
 import numpy as np
 from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
-import captum
 # ===== Own Modules =====
 from settings import setting
 

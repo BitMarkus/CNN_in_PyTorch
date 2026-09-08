@@ -369,6 +369,58 @@ setting = {
     # Random seed for randomly choosing images if balance samples is set to True
     "fid_random_seed": 123,
 
+    ########################
+    # UTILITIES SETTINGS   #
+    ########################
+
+    # Dataset Merger
+    # Maximum depth to scan for images (None = unlimited)
+    "util_merger_recursive_depth": None,
+    # True = copy duplicates with rename, False = skip duplicates
+    "util_merger_copy_duplicates": False,
+    # Print progress messages
+    "util_merger_verbose": True,
+
+    # Dataset Remover
+    # Target number of images per folder after reduction
+    "util_remover_target_per_folder": 500,
+    # Random seed for reproducibility
+    "util_remover_seed": 42,
+    # Print progress messages
+    "util_remover_verbose": True,
+
+    # Dataset Splitter
+    # List of ratios for splitting (e.g., [0.5, 0.5] for 50/50 split)
+    "util_splitter_ratios": [0.3],
+    # Random seed for reproducibility
+    "util_splitter_random_seed": 42,
+
+    # Dataset Subtraction
+    # Name of the first dataset folder (inside input/)
+    "util_subtraction_dataset_a": "dataset_a",
+    # Name of the second dataset folder (inside input/)
+    "util_subtraction_dataset_b": "dataset_b",
+    # Name of the result folder (inside output/)
+    "util_subtraction_result": "result_dataset",
+    # Print progress messages
+    "util_subtraction_verbose": True,
+
+    # Dataset Merger
+    # List of image extensions to collect
+    "util_merge_extensions": ['.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp', '.tiff', '.tif'],
+    # Print progress messages
+    "util_merge_verbose": True,
+
+    # Sort Images by Frame
+    # Image naming format: "flux" or "stylegan"
+    "util_sort_frame_format": "flux",
+    # Print progress messages
+    "util_sort_frame_verbose": True,
+
+    # Sort Images by Seed
+    # Print progress messages
+    "util_sort_seed_verbose": True,
+
     #########
     # PATHS #
     #########
