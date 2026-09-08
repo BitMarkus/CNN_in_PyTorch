@@ -75,7 +75,7 @@ class Train():
             # Copy settings file for reproducibility
             self._copy_settings_file(self.train_output_dir)
 
-            print(f"\n📁 Training results will be saved to: {self.train_output_dir}")
+            print(f"📁 Training results will be saved to: {self.train_output_dir}")
 
         # Initialize TensorBoard writer
         self.writer = SummaryWriter(str(self.log_dir))

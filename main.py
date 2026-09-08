@@ -122,14 +122,14 @@ def main() -> None:
         #################
 
         elif menu1 == 4:
-            print("\n:TRAIN NETWORK:")
-            print("  Results will be saved to output/train/[timestamp]/")
+            print("\n:TRAIN NETWORK:\n")
+
             if not cnn_wrapper.model_loaded:
                 print('No CNN generated yet!')
             elif not ds.ds_loaded:
                 print('No training data loaded yet!')
             else:
-                print("Start training...")
+                print("Start training...\n")
                 # Create a training object
                 train = Train(cnn_wrapper, ds, device)
                 # Train network

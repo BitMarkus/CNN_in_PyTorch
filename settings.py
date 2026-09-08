@@ -14,7 +14,7 @@ setting = {
     ############
 
     # Number of epochs
-    "train_num_epochs": 40,
+    "train_num_epochs": 3, # 40
     # Batch size for training and validation datasets
     "ds_batch_size": 50,
 
