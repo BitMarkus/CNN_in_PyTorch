@@ -1,425 +1,308 @@
-"""
-DATASET LOADING AND AUGMENTATION HANDLER
-
-Purpose:
-Loads and transforms image datasets for training, validation, and testing with
-configurable augmentations and validation strategies.
-
-Key Features:
-1. Dual validation strategies:
-   - Split from training set (ds_val_from_train_split)
-   - Split from test set (ds_val_from_test_split)
-2. Comprehensive image augmentations:
-   - Spatial: Flips, rotations (90° and small angles)
-   - Intensity: Brightness, contrast, saturation, gamma correction
-   - Optical: Gaussian blur, Poisson noise
-3. Synthetic image filtering for validation/testing
-4. Normalization for grayscale ([-1, 1]) or RGB (ImageNet stats)
-
-Validation Strategies:
-1. From Training Set (ds_val_from_train_split = 0.2):
-   - Training: 80% of training cell line images
-   - Validation: 20% of training cell line images  
-   - Testing: 100% of test cell line images
-
-2. From Test Set (ds_val_from_test_split = 1.0):
-   - Training: 100% of training cell line images
-   - Validation: 100% of test cell line images (real only)
-   - Testing: 0% (no separate test - validation = testing)
-
-Augmentation Pipeline:
-Training images go through:
-1. Spatial transforms (flips, rotations)
-2. Convert to tensor
-3. Intensity adjustments (brightness, contrast, gamma)
-4. Optical effects (blur, noise)
-5. Normalization
-
-Validation/Test images:
-- No augmentations
-- Only normalization applied
-
-Synthetic Image Handling:
-- Synthetic images identified by filenames starting with 's' followed by numbers
-- Automatically filtered out during validation/test recording
-- Can load only real images using load_real_test_dataset_only()
-
-Usage:
-# Initialize dataset handler
-ds = Dataset()
-
-# Load training data (with optional validation split from training)
-ds.load_training_dataset()
-
-# Or load test data for validation/testing
-ds.load_test_dataset()
-
-# Load only real images for final evaluation
-real_image_names = {"real1.jpg", "real2.jpg"}  # From split_info.json
-ds.load_real_test_dataset_only(real_image_names)
-
-# Access data loaders:
-train_loader = ds.ds_train      # Training data
-val_loader = ds.ds_val          # Validation data (may be None)
-test_loader = ds.ds_test        # Test data
-
-Important Methods:
-- load_training_dataset(): Loads training data with optional validation split
-- load_test_dataset(): Loads test data, can split for validation
-- load_real_test_dataset_only(): Loads only specified real images
-- validate_validation_settings(): Checks validation configuration
-- get_transformer_train(): Returns augmentation pipeline
-- get_transformer_test(): Returns simple normalization pipeline
-
-Configuration (settings.py):
-- ds_val_from_train_split: % of training set for validation
-- ds_val_from_test_split: % of test set for validation  
-- train_use_augment: Enable/disable training augmentations
-- Various aug_* parameters: Control augmentation probabilities/intensities
-"""
-
-import torch
-from torchvision.transforms import transforms
-import torchvision
-import numpy as np
-import random 
+# ===== Standard Library Imports =====
 from pathlib import Path
-from torch.utils.data.sampler import SubsetRandomSampler
-from torch.utils.data import DataLoader
-import matplotlib.pyplot as plt
-import torchvision.utils as vutils
+import random
 import shutil
-# Own modules
+# ===== Third-Party Imports =====
+import torch
+from torch.utils.data import DataLoader
+from torch.utils.data.sampler import SubsetRandomSampler
+import torchvision
+from torchvision.transforms import transforms
+import torchvision.utils as vutils
+import numpy as np
+import matplotlib.pyplot as plt
+# ===== Own Modules =====
 from settings import setting
 
 class Dataset():
 
     #############################################################################################################
-    # CONSTRUCTOR:
-    
-    def __init__(self):
-        # Path to training images
+    # CONSTRUCTOR
+
+    # Initialize the dataset handler with settings from the configuration file.
+    # Sets up paths, batch sizes, validation strategies, and augmentation parameters.
+    def __init__(self) -> None:
+
+        # Paths
         self.pth_train = setting["pth_train"]
-        # Path to test images
         self.pth_test = setting["pth_test"]
-        # Path to prediction images
         self.pth_prediction = setting["pth_prediction"]
-        # Settings variables
-        # Shuffle training images befor validation split
+
+        # DataLoader settings
         self.shuffle = setting["ds_shuffle"]
-        # Shuffle seed
         self.shuffle_seed = setting["ds_shuffle_seed"]
-        # Batch size for training and validation datasets (for 512x512 -> 24)
         self.batch_size = setting["ds_batch_size"]
-        # Batch size for prediction dataset
-        # Always needs to be 1! Or calculation of confusion matrix parameters are more complicated
-        self.batch_size_pred = 1
-        # How many subprocesses are used to load data in parallel
+        self.batch_size_pred = 1  # Always 1 for prediction
         self.num_workers = setting["ds_num_workers"]
 
-        # Validation split settings (False or percentage 0.0-1.0)
-        # Validation split from training dataset
+        # Validation split settings
         self.val_from_train_split = setting["ds_val_from_train_split"]
-        # Validation split from test dataset
         self.val_from_test_split = setting["ds_val_from_test_split"]
-        # Add a flag to track where validation data comes from
         self.validation_from_test = (self.val_from_test_split is not False and self.val_from_train_split is False)
-        # Variable to save if the dataset was alread loaded or not
-        self.ds_loaded = False   
-        # Number of training and validation images in each dataset
+
+        # Dataset state
+        self.ds_loaded = False
         self.num_train_img = 0
         self.num_val_img = 0
         self.num_pred_img = 0
-        # Number of training and validation batches in each dataset
         self.num_train_batches = 0
         self.num_val_batches = 0
+
         # Datasets
         self.ds_train = None
         self.ds_val = None
         self.ds_test = None
         self.ds_pred = None
 
-        # Number of channels of training images 
+        # Image configuration
         self.input_channels = setting["img_channels"]
-        # Image width and height for training
         self.input_height = setting["img_height"]
         self.input_width = setting["img_width"]
-        # List of classes 
         self.classes = setting["classes"]
 
         ################
-        # Augentations #
+        # Augmentations #
         ################
 
         # Use augmentations
         self.train_use_augment = setting["train_use_augment"]
 
-        # FLIP AND ROTATION AUGMENTATIONS:
-        # Horizontal flip probability
+        # FLIP AND ROTATION AUGMENTATIONS
         self.hori_flip_prob = setting["aug_hori_flip_prob"]
-        # Vertical flip probability
         self.vert_flip_prob = setting["aug_vert_flip_prob"]
-        # Probability of 90° angle rotations
         self.aug_90_angle_rot_prob = setting["aug_90_angle_rot_prob"]
-        # Probability of small angle rotations
-        self.small_angle_rot_prob = setting["aug_small_angle_rot_prob"] 
-        # Small-angle rotation
-        self.small_angle_rot = setting["aug_small_angle_rot"] 
-        # Fill color for gaps due to small angle rotation
-        # fill=0: black background, fill=255: white background
-        self.small_angle_fill_gray = setting["aug_small_angle_fill_gray"] # For grayscale images
-        self.small_angle_fill_rgb = setting["aug_small_angle_fill_rgb"] # For RGB images
+        self.small_angle_rot_prob = setting["aug_small_angle_rot_prob"]
+        self.small_angle_rot = setting["aug_small_angle_rot"]
+        self.small_angle_fill_gray = setting["aug_small_angle_fill_gray"]
+        self.small_angle_fill_rgb = setting["aug_small_angle_fill_rgb"]
 
-        # INTENSITY AUGMENTATIONS:
+        # INTENSITY AUGMENTATIONS
         self.intense_prob = setting["aug_intense_prob"]
         self.brightness = setting["aug_brightness"]
         self.contrast = setting["aug_contrast"]
-        self.saturation = setting["aug_saturation"] # only for RGB images
-        # Gamma correction
-        # Gamma = 1: No change. The image looks "natural" (linear brightness)
-        # Gamma < 1 (e.g., 0.5): Dark areas get brighter, bright areas stay mostly the same
-        # Gamma > 1 (e.g., 2.0): Bright areas get darker, dark areas stay mostly the same
+        self.saturation = setting["aug_saturation"]  # only for RGB images
         self.gamma_prob = setting["aug_gamma_prob"]
         self.gamma_min = setting["aug_gamma_min"]
         self.gamma_max = setting["aug_gamma_max"]
 
-        # OPTICAL AUGMENTATIONS:
-        # Gaussian Blur Parameters
-        # Probability
+        # OPTICAL AUGMENTATIONS
+        # Gaussian Blur
         self.gauss_prob = setting["aug_gauss_prob"]
-        # Kernel size
         self.gauss_kernel_size = setting["aug_gauss_kernel_size"]
-        # Sigma: ontrols the "spread" of the blur (how intense/smooth it is)
         self.gauss_sigma_min = setting["aug_gauss_sigma_min"]
         self.gauss_sigma_max = setting["aug_gauss_sigma_max"]
         # Poisson noise
-        # Probability
         self.poiss_prob = setting["aug_poiss_prob"]
-        # Controls how much the noise depends on image brightness
-        # Suggested range: 0.01-0.1 (higher = more noise)
         self.poiss_scaling = setting["aug_poiss_scaling"]
-        # Noise Strength: Final noise intensity multiplier
         self.poiss_noise_strength = setting["aug_poiss_noise_strength"]
 
     #############################################################################################################
-    # METHODS:
+    # METHODS
 
-    # Validate the validation split settings and issue warnings if needed
-    def validate_validation_settings(self):
+    # Validate the validation split settings and issue warnings if needed.
+    # Ensures that only one validation source is active at a time.
+    def validate_validation_settings(self) -> None:
         if self.val_from_train_split is False and self.val_from_test_split is False:
             print("WARNING: Both ds_val_from_train_split and ds_val_from_test_split in settings are set to False!")
             print("Defaulting to 0.1 validation split from training data.")
-            self.val_from_train_split = 0.1  # Default value
-            
+            self.val_from_train_split = 0.1
+
         elif self.val_from_train_split is not False and self.val_from_test_split is not False:
             print("WARNING: Both ds_val_from_train_split and ds_val_from_test_split in settings are set!")
             print("Using only the training data split and ignoring test data split.")
-            self.val_from_test_split = False 
+            self.val_from_test_split = False
 
-    # Helper Methods
-    def _gamma_correction(self, x):
+    # Gamma correction augmentation.
+    # Args:
+    #   x (torch.Tensor): Input tensor
+    # Returns:
+    #   torch.Tensor: Gamma-corrected tensor
+    def _gamma_correction(self, x: torch.Tensor) -> torch.Tensor:
         return (x + 1e-6) ** random.uniform(self.gamma_min, self.gamma_max)
-    def _add_poisson_noise(self, x):
+
+    # Poisson noise augmentation.
+    # Args:
+    #   x (torch.Tensor): Input tensor
+    # Returns:
+    #   torch.Tensor: Tensor with Poisson noise added
+    def _add_poisson_noise(self, x: torch.Tensor) -> torch.Tensor:
         return torch.clamp(x + torch.poisson(x * self.poiss_scaling) * self.poiss_noise_strength, 0, 1)
 
-    # Prints validation strategy
-    def print_dataset_info(self):
+    # Print the current validation strategy.
+    def print_dataset_info(self) -> None:
         if self.validation_from_test:
-            print(f"Validation strategy: Using test set images for validation ({self.val_from_test_split*100}%)")
+            print(f"Validation strategy: Using test set images for validation ({self.val_from_test_split * 100}%)")
         else:
-            print(f"Validation strategy: Using training set split for validation ({self.val_from_train_split*100}%)")
+            print(f"Validation strategy: Using training set split for validation ({self.val_from_train_split * 100}%)")
 
-    # Transformer for testing and predicting WITHOUT AUGMENTATIONS
-    def get_transformer_test(self):
-        # Common base for both grayscale and RGB
-        base_transforms = [transforms.ToTensor()] 
+    # Create a transformer for testing and prediction WITHOUT augmentations.
+    # Returns:
+    #   transforms.Compose: Transformer pipeline for test images
+    def get_transformer_test(self) -> transforms.Compose:
+        base_transforms = [transforms.ToTensor()]
 
         if self.input_channels == 1:
-            # Grayscale pipeline
-            base_transforms.insert(0, transforms.Grayscale(num_output_channels=1))  # Early conversion
-            base_transforms.append(transforms.Normalize(mean=[0.5], std=[0.5]))  # [-1, 1]
+            base_transforms.insert(0, transforms.Grayscale(num_output_channels=1))
+            base_transforms.append(transforms.Normalize(mean=[0.5], std=[0.5]))
 
         elif self.input_channels == 3:
-            # RGB pipeline (using ImageNet stats)
-            base_transforms.append(transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]))
+            base_transforms.append(transforms.Normalize(
+                mean=[0.485, 0.456, 0.406],
+                std=[0.229, 0.224, 0.225]
+            ))
 
         else:
             raise ValueError(f"Unsupported input_channels: {self.input_channels}. Use 1 (grayscale) or 3 (RGB).")
 
         return transforms.Compose(base_transforms)
 
-    # Transformer for training WITH AUGMENTATIONS
+    # Create a transformer for training WITH augmentations.
+    # Returns:
+    #   transforms.Compose: Transformer pipeline for training images, or False if input_channels is invalid
     def get_transformer_train(self):
-        # Transformer for Grayscale images
-        # https://stackoverflow.com/questions/60116208/pytorch-load-dataset-of-grayscale-images
-        if(self.input_channels == 1):
+        if self.input_channels == 1:
             transformer = transforms.Compose([
-
-                # No resize needed as the images are already 512x512
-                # transforms.Resize((self.input_height, self.input_width)),
-
-                # Convert to grayscale first (1 channel)
                 transforms.Grayscale(num_output_channels=1),
 
-                # Spatial augmentations (PIL-level)
-                # Flip the image horizontally and vertically with 50% probability
+                # Spatial augmentations
                 transforms.RandomHorizontalFlip(p=self.hori_flip_prob),
                 transforms.RandomVerticalFlip(p=self.vert_flip_prob),
 
-                # Applies one of four fixed rotations (0°, 90°, 180°, 270°) at random
-                transforms.RandomApply(
-                    [
-                        transforms.RandomChoice([
-                            transforms.RandomRotation(degrees=[0, 0]),    # 0°
-                            transforms.RandomRotation(degrees=[90, 90]),  # 90°
-                            transforms.RandomRotation(degrees=[180, 180]),# 180°
-                            transforms.RandomRotation(degrees=[270, 270]) # 270°
-                        ])
-                    ],
-                    p=self.aug_90_angle_rot_prob 
-                ),
-                # Rotates the image by a small random angle (±10°) with a gray background
-                # fill=0: black background, 
-                # fill=255: white background, 
-                transforms.RandomApply(
-                    [transforms.RandomRotation(degrees=self.small_angle_rot , fill=self.small_angle_fill_gray)],
-                    p=self.small_angle_rot_prob
-                ),
+                # 90° rotations
+                transforms.RandomApply([
+                    transforms.RandomChoice([
+                        transforms.RandomRotation(degrees=[0, 0]),
+                        transforms.RandomRotation(degrees=[90, 90]),
+                        transforms.RandomRotation(degrees=[180, 180]),
+                        transforms.RandomRotation(degrees=[270, 270])
+                    ])
+                ], p=self.aug_90_angle_rot_prob),
 
-                # Convert PIL image to a PyTorch tensor (shape: [1, H, W]) and scales pixel values to [0, 1]
+                # Small angle rotations
+                transforms.RandomApply([
+                    transforms.RandomRotation(degrees=self.small_angle_rot, fill=self.small_angle_fill_gray)
+                ], p=self.small_angle_rot_prob),
+
                 transforms.ToTensor(),
 
-                # Intensity augmentations (tensor-level):
-                # Randomly adjust brightness and contrast by up to ±20% to
-                # simulate variations in lighting/staining intensity across samples
-                transforms.RandomApply(
-                    [transforms.ColorJitter(brightness=self.brightness, contrast=self.contrast)],
-                    p=self.intense_prob
-                ),
-                # Gamma correction: Mimics nonlinear microscope/camera responses
-                # Gamma = 1: No change. The image looks "natural" (linear brightness)
-                # Gamma < 1 (e.g., 0.5): Dark areas get brighter, bright areas stay mostly the same
-                # Gamma > 1 (e.g., 2.0): Bright areas get darker, dark areas stay mostly the same
-                transforms.RandomApply(
-                    [transforms.Lambda(self._gamma_correction)],  # <- Use method reference
-                    p=self.gamma_prob
-                ),
+                # Intensity augmentations
+                transforms.RandomApply([
+                    transforms.ColorJitter(brightness=self.brightness, contrast=self.contrast)
+                ], p=self.intense_prob),
 
-                # Optical augmentations (tensor-level)
-                # Apply mild Gaussian blur
-                # Simulates slight defocus or motion blur in microscopy
-                transforms.RandomApply(
-                    [transforms.GaussianBlur(kernel_size=self.gauss_kernel_size, sigma=(self.gauss_sigma_min, self.gauss_sigma_max))], 
-                    p=self.gauss_prob
-                ),
-                # Adds Poisson noise (a type of noise common in microscopy/imaging) scaled to 5% of pixel values
-                transforms.RandomApply(
-                    [transforms.Lambda(self._add_poisson_noise)],  # <- Use method reference
-                    p=self.poiss_prob
-                ),
+                # Gamma correction
+                transforms.RandomApply([
+                    transforms.Lambda(self._gamma_correction)
+                ], p=self.gamma_prob),
 
-                # Normalize to [-1, 1] (mean=0.5, std=0.5)
+                # Optical augmentations
+                transforms.RandomApply([
+                    transforms.GaussianBlur(
+                        kernel_size=self.gauss_kernel_size,
+                        sigma=(self.gauss_sigma_min, self.gauss_sigma_max)
+                    )
+                ], p=self.gauss_prob),
+
+                transforms.RandomApply([
+                    transforms.Lambda(self._add_poisson_noise)
+                ], p=self.poiss_prob),
+
                 transforms.Normalize(mean=[0.5], std=[0.5]),
             ])
             return transformer
 
-        # Transformer for RGB images
-        # https://pytorch.org/hub/pytorch_vision_resnet/
-        elif(self.input_channels == 3):
+        elif self.input_channels == 3:
             transformer = transforms.Compose([
-                # transforms.Resize((self.input_height, self.input_width)),
-
                 transforms.RandomHorizontalFlip(p=self.hori_flip_prob),
                 transforms.RandomVerticalFlip(p=self.vert_flip_prob),
 
-                # Applies one of four fixed rotations (0°, 90°, 180°, 270°) at random
-                transforms.RandomApply(
-                    [
-                        transforms.RandomChoice([
-                            transforms.RandomRotation(degrees=[0, 0]),    # 0°
-                            transforms.RandomRotation(degrees=[90, 90]),  # 90°
-                            transforms.RandomRotation(degrees=[180, 180]),# 180°
-                            transforms.RandomRotation(degrees=[270, 270]) # 270°
-                        ])
-                    ],
-                    p=self.aug_90_angle_rot_prob 
-                ),
-                # Rotates the image by a small random angle (±10°) with a gray background
-                transforms.RandomApply(
-                    [transforms.RandomRotation(degrees=self.small_angle_rot , fill=self.small_angle_fill_rgb)],
-                    p=self.small_angle_rot_prob
-                ),
-                
-                # Convert to tensor
+                # 90° rotations
+                transforms.RandomApply([
+                    transforms.RandomChoice([
+                        transforms.RandomRotation(degrees=[0, 0]),
+                        transforms.RandomRotation(degrees=[90, 90]),
+                        transforms.RandomRotation(degrees=[180, 180]),
+                        transforms.RandomRotation(degrees=[270, 270])
+                    ])
+                ], p=self.aug_90_angle_rot_prob),
+
+                # Small angle rotations
+                transforms.RandomApply([
+                    transforms.RandomRotation(degrees=self.small_angle_rot, fill=self.small_angle_fill_rgb)
+                ], p=self.small_angle_rot_prob),
+
                 transforms.ToTensor(),
-                
+
                 # Intensity augmentations
-                transforms.RandomApply(
-                    [transforms.ColorJitter(brightness=self.brightness, contrast=self.contrast, saturation=self.saturation)],
-                    p=self.intense_prob
-                ),
+                transforms.RandomApply([
+                    transforms.ColorJitter(
+                        brightness=self.brightness,
+                        contrast=self.contrast,
+                        saturation=self.saturation
+                    )
+                ], p=self.intense_prob),
+
                 # Gamma correction
-                transforms.RandomApply(
-                    [transforms.Lambda(self._gamma_correction)],
-                    p=self.gamma_prob
-                ),
-                
+                transforms.RandomApply([
+                    transforms.Lambda(self._gamma_correction)
+                ], p=self.gamma_prob),
+
                 # Optical augmentations
-                # Gaussian blurr
-                transforms.RandomApply(
-                    [transforms.GaussianBlur(kernel_size=self.gauss_kernel_size, sigma=(self.gauss_sigma_min, self.gauss_sigma_max))], 
-                    p=self.gauss_prob
+                transforms.RandomApply([
+                    transforms.GaussianBlur(
+                        kernel_size=self.gauss_kernel_size,
+                        sigma=(self.gauss_sigma_min, self.gauss_sigma_max)
+                    )
+                ], p=self.gauss_prob),
+
+                transforms.RandomApply([
+                    transforms.Lambda(self._add_poisson_noise)
+                ], p=self.poiss_prob),
+
+                transforms.Normalize(
+                    mean=[0.485, 0.456, 0.406],
+                    std=[0.229, 0.224, 0.225]
                 ),
-                # Poisson noise 
-                transforms.RandomApply(
-                    [transforms.Lambda(self._add_poisson_noise)],
-                    p=self.poiss_prob
-                ),
-                
-                # Normalization
-                transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
             ])
             return transformer
 
         else:
             return False
 
-    # Load dataset for training
-    # If validation data comes from training images, no augmetations will be applied
-    def load_training_dataset(self):
-        # Training dataset with or without augmentations
+    # Load the training dataset with optional validation split from training data.
+    # Returns:
+    #   bool: True if successful, False otherwise
+    def load_training_dataset(self) -> bool:
         if self.train_use_augment:
             train_transformer = self.get_transformer_train()
         else:
             train_transformer = self.get_transformer_test()
-            
+
         if not train_transformer:
             print("Loading of dataset failed! Input images must have either one (grayscale) or three (RGB) channels.")
             return False
 
-        # Create training dataset
         train_dataset = torchvision.datasets.ImageFolder(self.pth_train, transform=train_transformer)
         dataset_size = len(train_dataset)
         indices = list(range(dataset_size))
-        
-        # Only create validation data if splitting from training set
+
         if self.val_from_train_split is not False:
             split = int(np.floor(self.val_from_train_split * dataset_size))
             if self.shuffle:
                 np.random.seed(self.shuffle_seed)
                 np.random.shuffle(indices)
+
             train_indices, val_indices = indices[split:], indices[:split]
-            
+
             self.num_train_img = len(train_indices)
-            self.num_val_img = len(val_indices)        
-            
+            self.num_val_img = len(val_indices)
+
             train_sampler = SubsetRandomSampler(train_indices)
             val_sampler = SubsetRandomSampler(val_indices)
-            
-            # Create validation dataset with test transformer ONLY when needed
+
             val_dataset = torchvision.datasets.ImageFolder(
-                self.pth_train, 
-                transform=self.get_transformer_test()  # No augmentations for validation
+                self.pth_train,
+                transform=self.get_transformer_test()
             )
             validation_loader = DataLoader(
                 val_dataset,
@@ -427,35 +310,35 @@ class Dataset():
                 sampler=val_sampler,
                 num_workers=self.num_workers,
                 persistent_workers=True,
-                pin_memory=True  # Faster transfer to GPU
+                pin_memory=True
             )
         else:
-            # All training data is used for training if validation comes from test set
             self.num_train_img = dataset_size
             self.num_val_img = 0
             train_sampler = SubsetRandomSampler(indices)
             validation_loader = None
 
-        # Create train loader
         train_loader = DataLoader(
-            train_dataset, 
-            batch_size=self.batch_size, 
+            train_dataset,
+            batch_size=self.batch_size,
             sampler=train_sampler,
             num_workers=self.num_workers,
             persistent_workers=True,
-            pin_memory=True 
+            pin_memory=True
         )
-        
+
         self.num_train_batches = len(train_loader)
         self.num_val_batches = len(validation_loader) if validation_loader else 0
-        
-        self.ds_loaded = True  
+
+        self.ds_loaded = True
         self.ds_train = train_loader
-        self.ds_val = validation_loader  # Will be None if val_from_train_split is False
+        self.ds_val = validation_loader
         return True
 
-    # Loads test dataset for prediction
-    def load_test_dataset(self):
+    # Load the test dataset, optionally splitting for validation.
+    # Returns:
+    #   bool: True if successful, False otherwise
+    def load_test_dataset(self) -> bool:
         transformer = self.get_transformer_test()
         if not transformer:
             print("Loading of dataset failed! Input images must have either one (grayscale) or three (RGB) channels.")
@@ -464,32 +347,30 @@ class Dataset():
         dataset = torchvision.datasets.ImageFolder(self.pth_test, transform=transformer)
         dataset_size = len(dataset)
         self.num_test_img = dataset_size
-        
-        # If using test set for validation and training set isn't being used for validation
+
         if (self.val_from_test_split is not False) and (self.val_from_train_split is False):
             val_split_point = int(np.floor(self.val_from_test_split * dataset_size))
-            
+
             indices = list(range(dataset_size))
             if self.shuffle:
                 np.random.seed(self.shuffle_seed)
                 np.random.shuffle(indices)
-                
+
             val_indices, test_indices = indices[:val_split_point], indices[val_split_point:]
-            
+
             self.num_val_from_test_img = len(val_indices)
             self.num_test_after_val_img = len(test_indices)
-            
-            # Create samplers and dataloaders
+
             val_sampler = SubsetRandomSampler(val_indices)
             test_sampler = SubsetRandomSampler(test_indices)
-            
+
             self.ds_test_for_val = DataLoader(
                 dataset,
                 batch_size=self.batch_size,
                 sampler=val_sampler,
                 num_workers=self.num_workers,
                 persistent_workers=True,
-                pin_memory=True 
+                pin_memory=True
             )
             self.ds_test_for_test = DataLoader(
                 dataset,
@@ -497,152 +378,140 @@ class Dataset():
                 sampler=test_sampler,
                 num_workers=self.num_workers,
                 persistent_workers=True,
-                pin_memory=True 
+                pin_memory=True
             )
-            
-            # Use the test-for-val as the validation set
+
             self.ds_val = self.ds_test_for_val
             self.num_val_img = self.num_val_from_test_img
             self.num_val_batches = len(self.ds_val)
         else:
-            # Normal test loader when not using test set for validation
             self.ds_test_for_test = DataLoader(
                 dataset,
                 batch_size=self.batch_size_pred,
                 num_workers=self.num_workers,
                 persistent_workers=True,
-                pin_memory=True  
+                pin_memory=True
             )
             self.num_test_after_val_img = dataset_size
-        
-        # For backward compatibility
+
         self.ds_test = self.ds_test_for_test
         self.num_pred_img = self.num_test_after_val_img
-        
         return True
-        
-   
-    # Loads prediction dataset
-    def load_pred_dataset(self):
-     
+
+    # Load the prediction dataset (uses images from pth_prediction).
+    # Returns:
+    #   bool: True if successful, False otherwise
+    def load_pred_dataset(self) -> bool:
         transformer = self.get_transformer_test()
-        # Check if training images have either one or three channels
-        if(transformer):
+        if transformer:
             dataset = torchvision.datasets.ImageFolder(self.pth_prediction, transform=transformer)
-            # Create dataloader object
             prediction_loader = DataLoader(
-                dataset, 
+                dataset,
                 batch_size=self.batch_size_pred,
-                shuffle=False, # No shuffling here!
+                shuffle=False,
                 num_workers=self.num_workers,
                 persistent_workers=True,
-                pin_memory=True  
+                pin_memory=True
             )
-            # Get number of images in test dataset
             self.num_pred_img = len(prediction_loader)
-            self.ds_pred = prediction_loader  
-            # Set datasets to loaded
-            self.ds_loaded = True  
-            return True  
+            self.ds_pred = prediction_loader
+            self.ds_loaded = True
+            return True
         else:
             print("Loading of dataset failed! Input images must have either one (grayscale) or three (RGB) channels.")
             return False
 
-    # Show dataset examples after normalization
-    def show_training_examples(self, plot_path, num_images=9, rows=3, cols=3, figsize=(10, 10), show_plot=False, save_plot=True):
-
+    # Display a grid of training image examples after normalization.
+    # Args:
+    #   plot_path (Path): Directory to save the plot
+    #   num_images (int): Number of images to display
+    #   rows (int): Number of rows in the grid
+    #   cols (int): Number of columns in the grid
+    #   figsize (tuple): Figure size in inches
+    #   show_plot (bool): If True, display the plot interactively
+    #   save_plot (bool): If True, save the plot to disk
+    def show_training_examples(
+        self,
+        plot_path: Path,
+        num_images: int = 9,
+        rows: int = 3,
+        cols: int = 3,
+        figsize: tuple = (10, 10),
+        show_plot: bool = False,
+        save_plot: bool = True
+    ) -> None:
         if not self.ds_loaded:
             print("Error: Dataset not loaded. Call load_training_dataset() first.")
             return
-        
-        # Get a batch of images from the training loader
+
         data_iter = iter(self.ds_train)
-        images, _ = next(data_iter)  # Assumes batch_size >= num_images
-        
-        # If batch_size < num_images, pad with empty tensors
+        images, _ = next(data_iter)
+
         if images.shape[0] < num_images:
             empty_images = torch.zeros((num_images - images.shape[0], *images.shape[1:]))
             images = torch.cat([images, empty_images], dim=0)
         else:
             images = images[:num_images]
-        
+
         # Denormalize images back to [0,1] range for visualization
         if self.input_channels == 1:
-            # Grayscale: mean=0.5, std=0.5
             images = images * 0.5 + 0.5
         elif self.input_channels == 3:
-            # RGB: ImageNet stats
             mean = torch.tensor([0.485, 0.456, 0.406]).view(1, 3, 1, 1)
             std = torch.tensor([0.229, 0.224, 0.225]).view(1, 3, 1, 1)
             images = images * std + mean
-        
-        # Create grid
+
         grid = vutils.make_grid(images, nrow=cols, padding=2, normalize=False)
-        
-        # Plot
+
         plt.figure(figsize=figsize)
         if self.input_channels == 1:
             plt.imshow(grid[0], cmap='gray')
         else:
-            plt.imshow(grid.permute(1, 2, 0))  # CHW -> HWC for matplotlib
+            plt.imshow(grid.permute(1, 2, 0))
         plt.axis('off')
-        plt.title(f"Training Image Examples")
+        plt.title("Training Image Examples")
 
-        # Adjust layout
         plt.tight_layout()
-        # Save plot
+
         if save_plot:
             plt.savefig(str(plot_path / "training_examples"), bbox_inches='tight', dpi=300)
             plt.close()
-        # Show plot
         if show_plot:
             plt.show()
 
-    def export_validation_images(self, output_folder):
-        """
-        Copies all images from the validation dataset to a specified folder.
-        Preserves the class/subfolder structure.
-        
-        Args:
-            output_folder (str): Path to the output folder.
-        """
-        # Check if validation dataset exists
+    # Export all images from the validation dataset to a specified folder.
+    # Preserves the class/subfolder structure.
+    # Args:
+    #   output_folder (Path): Directory to copy images to
+    # Returns:
+    #   bool: True if successful, False otherwise
+    def export_validation_images(self, output_folder: Path) -> bool:
         if self.ds_val is None:
-            print("ERROR: No validation dataset loaded. Call load_training_dataset() or load_test_dataset() first.")
+            print("ERROR: No validation dataset loaded.")
             return False
-        
-        # Create output folder
+
         output_path = Path(output_folder)
         output_path.mkdir(parents=True, exist_ok=True)
-        
+
         print(f"Exporting validation images to: {output_path}")
-        
-        # Get the dataset from the dataloader
+
         val_dataset = self.ds_val.dataset
-        
-        # Get class names
+
         if hasattr(val_dataset, 'classes'):
             class_names = val_dataset.classes
         else:
             print("ERROR: Dataset does not have 'classes' attribute.")
             return False
-        
-        # Create subfolders for each class
+
         for class_name in class_names:
             (output_path / class_name).mkdir(parents=True, exist_ok=True)
-        
-        # Get the sampler indices
-        if hasattr(self.ds_val, 'sampler'):
-            if hasattr(self.ds_val.sampler, 'indices'):
-                indices = self.ds_val.sampler.indices
-            else:
-                print("ERROR: Sampler has no 'indices' attribute.")
-                return False
+
+        if hasattr(self.ds_val, 'sampler') and hasattr(self.ds_val.sampler, 'indices'):
+            indices = self.ds_val.sampler.indices
         else:
-            print("ERROR: Dataloader has no 'sampler' attribute.")
+            print("ERROR: Dataloader sampler has no 'indices' attribute.")
             return False
-        
-        # Get samples from the dataset
+
         if hasattr(val_dataset, 'samples'):
             samples = val_dataset.samples
         elif hasattr(val_dataset, 'imgs'):
@@ -650,72 +519,69 @@ class Dataset():
         else:
             print("ERROR: Dataset has no 'samples' or 'imgs' attribute.")
             return False
-        
-        # Copy images
+
         copied_count = 0
         for idx in indices:
             img_path, class_idx = samples[idx]
             class_name = class_names[class_idx]
             filename = Path(img_path).name
-            
             dest_path = output_path / class_name / filename
-            
+
             try:
                 shutil.copy2(img_path, dest_path)
                 copied_count += 1
             except Exception as e:
                 print(f"  Warning: Could not copy {img_path}: {e}")
-        
+
         print(f"✓ Exported {copied_count} validation images to: {output_path}")
         return True
 
-    #############################################################################################################################
-    # Only for cross validation with synthetic images
+    ############################
+    # SYNTHETIC IMAGE HANDLING #
+    ############################
 
-    # Check if an image is synthetic based on filename pattern
-    # Synthetic images start with 's' (=seed) followed by a number
-    def _is_synthetic_image(self, path):
-
+    # Check if an image is synthetic based on filename pattern.
+    # Synthetic images start with 's' followed by a number.
+    # Args:
+    #   path (Path or str): Path to the image file
+    # Returns:
+    #   bool: True if synthetic, False otherwise
+    def _is_synthetic_image(self, path) -> bool:
         filename = Path(path).name
-        # Check if starts with 's' and next character is a digit
         return filename.startswith('s') and filename[1:2].isdigit()
-    
-    # Load ONLY real test images for final evaluation
-    # Otherwise, load all images (for pure real data)
-    def load_real_test_dataset_only(self, real_image_names=None):
 
+    # Load ONLY real test images for final evaluation (excluding synthetic images).
+    # Args:
+    #   real_image_names (list, optional): List of real image filenames to include
+    # Returns:
+    #   bool: True if successful, False otherwise
+    def load_real_test_dataset_only(self, real_image_names: list = None) -> bool:
         transformer = self.get_transformer_test()
         if not transformer:
             print("Loading of dataset failed!")
             return False
-        
-        # Create full dataset
+
         full_dataset = torchvision.datasets.ImageFolder(self.pth_test, transform=transformer)
-        
+
         if real_image_names is not None:
-            # Load only specified real images (for synthetic data case)
             real_indices = []
             for idx, (path, _) in enumerate(full_dataset.samples):
                 filename = Path(path).name
                 if filename in real_image_names:
                     real_indices.append(idx)
-            
+
             if len(real_indices) == 0:
                 print("ERROR: No specified real test images found!")
                 return False
-            
+
             print(f"Creating test dataset with {len(real_indices)} specified real images")
-            
-            # Create subset
             test_dataset = torch.utils.data.Subset(full_dataset, real_indices)
             self.num_pred_real = len(real_indices)
         else:
-            # Load all images (for pure real data case)
             test_dataset = full_dataset
             self.num_pred_real = len(full_dataset)
             print(f"Creating test dataset with all {self.num_pred_real} images (pure real data)")
-        
-        # Create DataLoader
+
         self.ds_test_real_only = DataLoader(
             test_dataset,
             batch_size=self.batch_size_pred,
@@ -723,5 +589,5 @@ class Dataset():
             persistent_workers=True,
             pin_memory=True
         )
-        
+
         return True

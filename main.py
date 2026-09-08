@@ -1,4 +1,4 @@
-# Own modules
+# ===== Own Modules =====
 import functions as fn
 from model import CNN_Model
 from dataset_gen import DatasetGenerator
@@ -20,14 +20,16 @@ from settings import setting
 # Create a dataset object
 ds = Dataset()
 # Create wrapper (contains all metadata)
-cnn_wrapper = CNN_Model()   
+cnn_wrapper = CNN_Model()
 
 ########
 # MAIN #
 ########
 
-def main():
-
+# Main entry point for the program.
+# Displays a menu and routes user input to the appropriate functionality.
+# Handles initialization of objects, device selection, and folder creation.
+def main() -> None:
     # Show system information and select device (cpu or gpu)
     device = fn.show_cuda_and_versions()
     # Create program folders if they don't exist already
@@ -37,7 +39,7 @@ def main():
     # Main Menu #
     #############
 
-    while(True):  
+    while True:
         print("\n:MAIN MENU:")
         print("1) Create CNN Network")
         print("2) Show Network Summary")
@@ -56,48 +58,48 @@ def main():
         menu1 = int(fn.input_int("Please choose: "))
 
         ######################
-        # Create CNN Network # 
-        ###################### 
+        # Create CNN Network #
+        ######################
 
-        if(menu1 == 1):       
-            print("\n:NEW CNN NETWORK:")  
+        if menu1 == 1:
+            print("\n:NEW CNN NETWORK:")
             # Check if a model was already loaded
-            if(cnn_wrapper.model_loaded):
+            if cnn_wrapper.model_loaded:
                 print("A network was already loaded!")
             else:
-                if(cnn_wrapper):
+                if cnn_wrapper:
                     # Print class information
                     cnn_wrapper.print_class_list()
                     # Load model
                     print(f"Creating new {cnn_wrapper.cnn_type} network...")
                     # Get actual model (nn.Module)
                     cnn = cnn_wrapper.load_model(device).to(device)
-                    print("New network was successfully created.")   
-                    cnn_wrapper.print_model_size()  
+                    print("New network was successfully created.")
+                    cnn_wrapper.print_model_size()
                 else:
-                    print("Unable to load the requested cnn architecture!")          
+                    print("Unable to load the requested cnn architecture!")
 
         ########################
-        # Show Network Summary #  
+        # Show Network Summary #
         ########################
 
-        elif(menu1 == 2):        
-            print("\n:SHOW NETWORK SUMMARY:")   
-            if(cnn_wrapper.model_loaded):
-                cnn_wrapper.model_summary(device) # print(cnn.model)   
+        elif menu1 == 2:
+            print("\n:SHOW NETWORK SUMMARY:")
+            if cnn_wrapper.model_loaded:
+                cnn_wrapper.model_summary(device)
             else:
-                print("No network was generated yet!") 
+                print("No network was generated yet!")
 
         ######################
-        # Load Training Data # 
+        # Load Training Data #
         ######################
-        
-        elif(menu1 == 3):       
-            print("\n:LOAD TRAINING DATA:") 
+
+        elif menu1 == 3:
+            print("\n:LOAD TRAINING DATA:")
             # Check for correct settings in settings file
             ds.validate_validation_settings()
-            # Load training dataset AND
-            # validation dataset if validation set comes from training images
+            # Load training dataset and validation dataset if validation set
+            # comes from training images
             ds.load_training_dataset()
             # Load validation dataset if validation set comes from test images
             if ds.validation_from_test:
@@ -106,7 +108,7 @@ def main():
             ds.print_dataset_info()
 
             # OPTIONAL: Export validation images
-            if(setting['ds_save_val_images']):
+            if setting['ds_save_val_images']:
                 print("Exporting validation images. Please wait....")
                 val_img_export_pth = setting['pth_ds_gen_output'] / "validation_images"
                 # Check if folder exists, if not create it
@@ -114,23 +116,29 @@ def main():
                     val_img_export_pth.mkdir(parents=True, exist_ok=True)
                 ds.export_validation_images(val_img_export_pth)
 
-            if(ds.ds_loaded):
+            if ds.ds_loaded:
                 print("Training and validation datasets successfully loaded.")
                 print(f"Number training images/batches: {ds.num_train_img}/{ds.num_train_batches}")
-                print(f"Number validation images/batches: {ds.num_val_img}/{ds.num_val_batches}") 
+                print(f"Number validation images/batches: {ds.num_val_img}/{ds.num_val_batches}")
                 # Save training examples
-                ds.show_training_examples(setting["pth_plots"], num_images=25, rows=5, cols=5, figsize=(12, 12))
+                ds.show_training_examples(
+                    setting["pth_plots"],
+                    num_images=25,
+                    rows=5,
+                    cols=5,
+                    figsize=(12, 12)
+                )
                 print(f"Training image examples were saved to {str(setting['pth_plots'])}.")
 
         #################
-        # Train Network #  
+        # Train Network #
         #################
-                
-        elif(menu1 == 4):
-            print("\n:TRAIN NETWORK:") 
-            if not (cnn_wrapper.model_loaded):
+
+        elif menu1 == 4:
+            print("\n:TRAIN NETWORK:")
+            if not cnn_wrapper.model_loaded:
                 print('No CNN generated yet!')
-            elif not (ds.ds_loaded):
+            elif not ds.ds_loaded:
                 print('No training data loaded yet!')
             else:
                 print("Start training...")
@@ -144,30 +152,30 @@ def main():
         # Load Weights #
         ################
 
-        elif(menu1 == 5):
+        elif menu1 == 5:
             # Load checkpoint weights
-            print("\n:LOAD WEIGHTS:") 
-            if not (cnn_wrapper.model_loaded):
+            print("\n:LOAD WEIGHTS:")
+            if not cnn_wrapper.model_loaded:
                 print('No CNN generated yet!')
             else:
                 cnn_wrapper.load_checkpoint()
 
         ############################
-        # Predict images in folder #  
+        # Predict images in folder #
         ############################
 
-        elif(menu1 == 6):  
-            print("\n:PREDICT CLASS FROM PREDICTION FOLDER:") 
+        elif menu1 == 6:
+            print("\n:PREDICT CLASS FROM PREDICTION FOLDER:")
 
             analyzer = ClassAnalyzer(device)
             analyzer.analyze_prediction_folder()
 
         #####################
-        # Dataset Generator #  
+        # Dataset Generator #
         #####################
 
-        elif(menu1 == 7):  
-            print("\n:DATASET GENERATOR FOR CROSS VALIDATION:")  
+        elif menu1 == 7:
+            print("\n:DATASET GENERATOR FOR CROSS VALIDATION:")
             # Quick verification
             synthetic_dir = setting["pth_ds_gen_input_synthetic"]
             real_dir = setting["pth_ds_gen_input_real"]
@@ -190,58 +198,58 @@ def main():
             print("You can inspect the generated datasets in that folder.")
 
         ##############################
-        # Automatic Cross Validation #  
+        # Automatic Cross Validation #
         ##############################
 
-        elif(menu1 == 8):  
-            print("\n:AUTOMATIC CROSS VALIDATION:")  
+        elif menu1 == 8:
+            print("\n:AUTOMATIC CROSS VALIDATION:")
             acv = AutoCrossValidation(device)
             acv()
 
         #######################
-        # Confidence Analyzer #  
+        # Confidence Analyzer #
         #######################
 
-        elif(menu1 == 9):  
-            print("\n:CONFIDENCE ANALYZER:")  
+        elif menu1 == 9:
+            print("\n:CONFIDENCE ANALYZER:")
             confa = ConfidenceAnalyzer(device)
             confa()
 
         ####################
-        # GradCAM Analyzer #  
+        # GradCAM Analyzer #
         ####################
 
-        elif(menu1 == 10):  
-            print("\n:GradCAM ANALYZER (for DenseNet-121):") 
+        elif menu1 == 10:
+            print("\n:GradCAM ANALYZER (for DenseNet-121):")
             gradcam = GradCAMAnalyzer(device)
             gradcam()
 
         ################
-        # Class Sorter #  
+        # Class Sorter #
         ################
 
-        elif(menu1 == 11):  
-            print("\n:CLASS SORTER:") 
+        elif menu1 == 11:
+            print("\n:CLASS SORTER:")
             # Create and run sorter (all configuration is loaded from settings.py)
             sorter = ClassSorter(device)
             output_dir = sorter.run()
 
         #######################
-        # Dimension Reduction #  
+        # Dimension Reduction #
         #######################
 
-        elif(menu1 == 12):  
-            print("\n:DIMENSION REDUCTION:") 
+        elif menu1 == 12:
+            print("\n:DIMENSION REDUCTION:")
             # DimRed simple version
             dimred = DimRed(device)
             dimred()
 
         ##################
-        # FID calculator #  
+        # FID calculator #
         ##################
 
-        elif(menu1 == 13):  
-            print("\n:FID CALCULATOR:") 
+        elif menu1 == 13:
+            print("\n:FID CALCULATOR:")
             fid_score_calc = FIDCalculator(device)
             fid_score_calc()
 
@@ -249,13 +257,13 @@ def main():
         # Exit Program #
         ################
 
-        elif(menu1 == 14):
+        elif menu1 == 14:
             print("\nExit program...")
             break
-        
+
         # Wrong Input
         else:
-            print("Not a valid option!")    
+            print("Not a valid option!")
 
 
 if __name__ == "__main__":

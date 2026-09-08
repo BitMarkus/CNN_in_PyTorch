@@ -1,95 +1,86 @@
-"""
-Dimensionality Reduction Script with CSV Export
-=================================================
-This script performs dimensionality reduction (UMAP, t-SNE, TriMAP, PaCMAP) on
-image features extracted from a CNN. For each method, it exports:
-- A publication-ready matplotlib plot
-- A CSV file with the raw embedding coordinates for custom plotting
-- A JSON file with the reduction parameters
-
-The CSV files can be opened directly in Excel, Prism, Origin, or any plotting software.
-"""
-
+# ===== Standard Library Imports =====
+import os
+import json
+import time
+import gc
+from pathlib import Path
+# ===== Third-Party Imports =====
 import torch
 import numpy as np
-import os
-from pathlib import Path
-from tqdm import tqdm
+import pandas as pd
 import matplotlib.pyplot as plt
-import time
-import sklearn
+from tqdm import tqdm
+from sklearn.preprocessing import StandardScaler
 from sklearn.manifold import TSNE
 import umap
 import trimap
 from pacmap import PaCMAP
-from sklearn.preprocessing import StandardScaler
-import gc
-import pandas as pd
-import json
-# Own modules
+import sklearn
+# ===== Own Modules =====
 from settings import setting
 from dataset import Dataset
+
 
 class DimRed:
 
     #############################################################################################################
-    # CONSTRUCTOR:
+    # CONSTRUCTOR
 
-    def __init__(self, device):
-         
+    # Initialize the dimensionality reduction handler.
+    # Supports UMAP, t-SNE, TriMAP, and PaCMAP for visualizing high-dimensional
+    # feature embeddings from CNN models.
+    # Args:
+    #   device (torch.device): Device to run feature extraction on
+    def __init__(self, device: torch.device) -> None:
+
         self.device = device
 
         # Settings parameters
         self.classes = setting['classes']
         self.pth_prediction = Path(setting['pth_prediction'])
         self.pth_checkpoint = Path(setting['pth_checkpoint'])
-        
+
         # Group settings
         self.mode = setting['dimred_mode']  # "train", "test", or "groups"
-        self.group_mode = setting['dimred_group_mode'] # 'auto' or 'manual'
-        self.group_mapping = setting['dimred_group_mapping'] 
+        self.group_mode = setting['dimred_group_mode']  # 'auto' or 'manual'
+        self.group_mapping = setting['dimred_group_mapping']
 
         # Color palette setting
-        self.color_palette = setting['dimred_color_palette']  # 'default' or any matplotlib colormap name, like 'rainbow', 'jet', etc.
-        
+        self.color_palette = setting['dimred_color_palette']
+
         # Export format setting
-        self.export_format = setting.get('dimred_export_format', 'csv')  # 'csv' or 'json'
+        self.export_format = setting.get('dimred_export_format', 'csv')
 
         # Set up group mapping based on mode
         if self.mode == "groups":
             if self.group_mode == "manual" and isinstance(self.group_mapping, dict) and self.group_mapping:
-                # Convert manual mapping format
                 manual_mapping = {}
                 for idx, (folder_name, display_name) in enumerate(self.group_mapping.items()):
                     manual_mapping[folder_name] = (display_name, idx)
                 self.group_mapping = manual_mapping
                 print(f"Manual mapping set up: {list(self.group_mapping.keys())}")
             else:
-                # Auto-detect groups
                 self._setup_auto_group_mapping()
-            # Check to ensure groups were actually set up
+
             if not self.group_mapping:
                 raise ValueError("No groups found for dimensionality reduction!")
-        
+
         # Method activation flags
-        self.use_umap = setting['dimred_use_umap'] 
-        self.use_tsne = setting['dimred_use_tsne'] 
-        self.use_trimap = setting['dimred_use_trimap'] 
-        self.use_pacmap = setting['dimred_use_pacmap']      
-        
-        # Store parameters for each method
+        self.use_umap = setting['dimred_use_umap']
+        self.use_tsne = setting['dimred_use_tsne']
+        self.use_trimap = setting['dimred_use_trimap']
+        self.use_pacmap = setting['dimred_use_pacmap']
+
         # UMAP parameters
         self.umap_params = {
             'n_neighbors': setting['dimred_umap_n_neighbors'],
             'min_dist': setting['dimred_umap_min_dist'],
             'random_state': 42
         }
-        # t-SNE parameters
-        # Check scikit-learn version
-        sklearn_version = tuple(map(int, sklearn.__version__.split('.')[:2]))
 
+        # t-SNE parameters (check scikit-learn version for API compatibility)
+        sklearn_version = tuple(map(int, sklearn.__version__.split('.')[:2]))
         if sklearn_version >= (1, 2):
-            # New version: use max_iter
             self.tsne_params = {
                 'perplexity': setting['dimred_tsne_perplexity'],
                 'learning_rate': setting['dimred_tsne_learning_rate'],
@@ -97,19 +88,20 @@ class DimRed:
                 'max_iter': 1000
             }
         else:
-            # Old version: use n_iter
             self.tsne_params = {
                 'perplexity': setting['dimred_tsne_perplexity'],
                 'learning_rate': setting['dimred_tsne_learning_rate'],
                 'random_state': 42,
                 'n_iter': 1000
             }
+
         # TriMAP parameters
         self.trimap_params = {
-            'n_inliers':  setting['dimred_trimap_n_inliers'],
+            'n_inliers': setting['dimred_trimap_n_inliers'],
             'n_outliers': setting['dimred_trimap_n_outliers'],
             'n_random': 5
         }
+
         # PaCMAP parameters
         self.pacmap_params = {
             'n_neighbors': setting['dimred_pacmap_n_neighbors'],
@@ -122,46 +114,45 @@ class DimRed:
         self.scaler = StandardScaler()
         self.checkpoint_name = "untrained"
         self.checkpoint_loaded = False
-        
+        self.sample_ids = []
+        self.n_features = 0
+
         # Initialize model
         from model import CNN_Model
         self.cnn_wrapper = CNN_Model()
         self.cnn = self.cnn_wrapper.load_model(self.device).to(self.device)
         torch.backends.cudnn.benchmark = True
-        
-        # Store sample identifiers for export
-        self.sample_ids = []
 
     #############################################################################################################
-    # METHODS:
+    # METHODS
 
-    # Automatically set up group mapping based on folder structure in predictions/ folder
-    def _setup_auto_group_mapping(self):
-        
+    # Automatically set up group mapping based on folder structure in predictions folder.
+    def _setup_auto_group_mapping(self) -> None:
         if not self.pth_prediction.exists():
             print(f"Warning: Predictions directory {self.pth_prediction} does not exist for auto group detection")
             self.group_mapping = {}
             return
-        
-        # Find which folders actually exist and create mapping
+
         self.group_mapping = {}
-        
+
         for folder_name in os.listdir(self.pth_prediction):
             folder_path = self.pth_prediction / folder_name
             if folder_path.is_dir():
-                # Use folder name as display name
                 label_val = len(self.group_mapping)
                 self.group_mapping[folder_name] = (folder_name, label_val)
-        
+
         print(f"Auto-detected {len(self.group_mapping)} groups in predictions folder: {list(self.group_mapping.keys())}")
 
-    """
-    def load_checkpoint(self):
+    # Load model weights from a selected checkpoint.
+    # Handles both direct state dict and wrapped format from train.py.
+    # Returns:
+    #   bool: True if loading succeeded, False otherwise
+    def load_checkpoint(self) -> bool:
         silent_checkpoints = self.cnn_wrapper.print_checkpoints_table(self.pth_checkpoint, print_table=False)
         if not silent_checkpoints:
             print("No checkpoints found!")
             return False
-        
+
         if len(silent_checkpoints) == 1:
             checkpoint_file = silent_checkpoints[0][1]
             print(f"\nFound single checkpoint: {checkpoint_file}")
@@ -170,73 +161,21 @@ class DimRed:
             checkpoint_file = self.cnn_wrapper.select_checkpoint(silent_checkpoints, "Select checkpoint: ")
             if not checkpoint_file:
                 return False
-        
+
         try:
             original_params = list(self.cnn.parameters())[0].clone()
             full_path = self.pth_checkpoint / checkpoint_file
-            
-            # Load checkpoint weights
-            checkpoint_weights = torch.load(full_path)
-            model_dict = self.cnn.state_dict()
-            
-            # Filter out incompatible weights (like the classifier)
-            compatible_weights = {k: v for k, v in checkpoint_weights.items() 
-                                if k in model_dict and model_dict[k].shape == v.shape}
-            
-            # Load only compatible weights
-            model_dict.update(compatible_weights)
-            self.cnn.load_state_dict(model_dict)
-            
-            # Report what was loaded
-            print(f"Loaded {len(compatible_weights)}/{len(checkpoint_weights)} layers from checkpoint")
-            if len(compatible_weights) < len(checkpoint_weights):
-                print("Note: Skipped incompatible classifier layer - using feature extractor only")
-            
-            # Verify weights changed
-            new_params = list(self.cnn.parameters())[0]
-            if torch.equal(original_params, new_params):
-                print("Warning: Model weights unchanged after loading!")
-            
-            self.checkpoint_loaded = True
-            self.checkpoint_name = full_path.stem
-            print(f"Successfully loaded compatible weights from {checkpoint_file}\n")
-            return True
-            
-        except Exception as e:
-            print(f"Error loading checkpoint: {e}")
-            return False
-    """
-    def load_checkpoint(self):
-        silent_checkpoints = self.cnn_wrapper.print_checkpoints_table(self.pth_checkpoint, print_table=False)
-        if not silent_checkpoints:
-            print("No checkpoints found!")
-            return False
-        
-        if len(silent_checkpoints) == 1:
-            checkpoint_file = silent_checkpoints[0][1]
-            print(f"\nFound single checkpoint: {checkpoint_file}")
-        else:
-            self.cnn_wrapper.print_checkpoints_table(self.pth_checkpoint)
-            checkpoint_file = self.cnn_wrapper.select_checkpoint(silent_checkpoints, "Select checkpoint: ")
-            if not checkpoint_file:
-                return False
-        
-        try:
-            original_params = list(self.cnn.parameters())[0].clone()
-            full_path = self.pth_checkpoint / checkpoint_file
-            
-            # Load checkpoint
+
             checkpoint = torch.load(full_path, map_location=self.device)
-            
-            # Extract state dict (handle both direct and wrapped formats)
+
             if 'model_state_dict' in checkpoint:
                 checkpoint_weights = checkpoint['model_state_dict']
                 print(f"Loaded from training checkpoint (epoch {checkpoint.get('epoch', '?')}, acc={checkpoint.get('accuracy', 0):.2%})")
             else:
                 checkpoint_weights = checkpoint
                 print("Loaded direct state dict format")
-            
-            # Clean layer names (remove 'model.' or 'module.' prefixes if present)
+
+            # Clean layer names (remove 'model.' or 'module.' prefixes)
             cleaned_weights = {}
             for k, v in checkpoint_weights.items():
                 new_k = k
@@ -245,14 +184,12 @@ class DimRed:
                 if new_k.startswith('module.'):
                     new_k = new_k[7:]
                 cleaned_weights[new_k] = v
-            
-            # Get current model state dict
+
             model_dict = self.cnn.state_dict()
-            
-            # Load compatible weights (skip classifier if shape mismatch)
+
             compatible_weights = {}
             skipped_layers = []
-            
+
             for k, v in cleaned_weights.items():
                 if k in model_dict:
                     if model_dict[k].shape == v.shape:
@@ -261,57 +198,55 @@ class DimRed:
                         skipped_layers.append(f"{k} (shape mismatch)")
                 else:
                     skipped_layers.append(f"{k} (not in model)")
-            
-            # Count feature layers loaded (excluding classifier)
+
             feature_layers_loaded = [k for k in compatible_weights.keys() if 'classifier' not in k]
             print(f"Loaded {len(feature_layers_loaded)} feature extraction layers")
-            
+
             if skipped_layers:
                 classifier_skipped = [s for s in skipped_layers if 'classifier' in s]
                 if classifier_skipped:
                     print(f"Skipped {len(classifier_skipped)} classifier layers (expected)")
-            
-            # Update and load
+
             model_dict.update(compatible_weights)
             self.cnn.load_state_dict(model_dict)
-            
-            # Verify weights actually changed
+
             new_params = list(self.cnn.parameters())[0]
             if torch.equal(original_params, new_params):
                 print("ERROR: No weights loaded! Checkpoint format may be incompatible.")
                 return False
-            
+
             self.checkpoint_loaded = True
             self.checkpoint_name = full_path.stem
             print(f"Successfully loaded weights from {checkpoint_file}\n")
             return True
-            
+
         except Exception as e:
             print(f"Error loading checkpoint: {e}")
             return False
 
-    def extract_features(self):
-
+    # Extract features from images using the CNN model.
+    # Returns:
+    #   tuple: (features, labels) as numpy arrays
+    def extract_features(self) -> tuple:
         features, labels = [], []
-        self.sample_ids = []  # Reset sample IDs
-        
-        if self.mode in ["train", "test", "groups"]:
+        self.sample_ids = []
 
+        if self.mode in ["train", "test", "groups"]:
             self.ds = Dataset()
-            
-            if(self.mode == "train"):
+
+            if self.mode == "train":
                 if not self.ds.load_training_dataset():
                     raise ValueError("Failed to load training data")
                 dataloader = self.ds.ds_train
-            elif(self.mode == "test"):
+            elif self.mode == "test":
                 if not self.ds.load_test_dataset():
                     raise ValueError("Failed to load test data")
                 dataloader = self.ds.ds_test
-            elif(self.mode == "groups"):
+            elif self.mode == "groups":
                 if not self.ds.load_pred_dataset():
                     raise ValueError("Failed to load prediction data")
                 dataloader = self.ds.ds_pred
-            
+
             self.cnn.eval()
             with torch.no_grad():
                 for batch_idx, (images, batch_labels) in enumerate(tqdm(dataloader, desc="Extracting features")):
@@ -320,58 +255,53 @@ class DimRed:
                     pooled = torch.nn.functional.adaptive_avg_pool2d(batch_features, (1, 1))
                     flattened = pooled.view(images.size(0), -1)
                     features.append(flattened.cpu().numpy())
-                    
-                    # Collect sample identifiers (image filenames) for groups mode
+
                     if self.mode == "groups" and hasattr(dataloader.dataset, 'samples'):
                         for idx_in_batch in range(len(batch_labels)):
                             sample_idx = batch_idx * dataloader.batch_size + idx_in_batch
                             if sample_idx < len(dataloader.dataset.samples):
                                 img_path = dataloader.dataset.samples[sample_idx][0]
                                 self.sample_ids.append(Path(img_path).name)
-                    
-                    # For groups mode, we need to REMAP the labels to match our group_mapping
+
                     if self.mode == "groups":
-                        # The dataloader gives us ImageFolder's automatic labels
-                        # We need to map them to our desired group_mapping labels
                         numeric_labels = []
                         for label_val in batch_labels.numpy():
-                            # Find which folder name corresponds to this numeric label
                             folder_name = None
                             if hasattr(dataloader.dataset, 'classes') and label_val < len(dataloader.dataset.classes):
                                 folder_name = dataloader.dataset.classes[label_val]
-                            
-                            # Now map to our group_mapping numeric value
+
                             if folder_name and folder_name in self.group_mapping:
                                 _, desired_label = self.group_mapping[folder_name]
                                 numeric_labels.append(desired_label)
                             else:
-                                # Keep original if not found
                                 numeric_labels.append(label_val)
-                        
+
                         labels.append(np.array(numeric_labels))
                     else:
                         labels.append(batch_labels.numpy())
-                        
+
         else:
             raise ValueError(f"Unknown mode: {self.mode}. Use 'train', 'test', or 'groups'")
-                
+
         all_features = np.concatenate(features)
         all_labels = np.concatenate(labels)
 
-        # If we didn't collect sample IDs (e.g., train/test mode), create dummy IDs
         if len(self.sample_ids) != len(all_labels):
             self.sample_ids = [f"sample_{i}" for i in range(len(all_labels))]
 
         return all_features, all_labels
 
-    def _get_color_map(self, num_groups):
-        """Get colormap with comprehensive error handling - supports any matplotlib colormap"""
-        # List of safe fallback colormaps in order of preference
+    # Get a colormap with comprehensive error handling.
+    # Supports any matplotlib colormap name.
+    # Args:
+    #   num_groups (int): Number of groups for discrete colormaps
+    # Returns:
+    #   matplotlib.colors.Colormap: The selected colormap
+    def _get_color_map(self, num_groups: int):
         FALLBACK_MAPS = ['viridis', 'plasma', 'tab10', 'rainbow']
-        
+
         try:
             if self.color_palette == 'default':
-                # Keep the original smart default behavior
                 if num_groups <= 10:
                     return plt.cm.tab10
                 elif num_groups <= 20:
@@ -379,58 +309,42 @@ class DimRed:
                 else:
                     return plt.cm.viridis
             else:
-                # Try to get the requested colormap
                 cmap = plt.cm.get_cmap(self.color_palette)
-                
-                # Warn if using discrete colormap with many groups
                 discrete_maps = ['tab10', 'Set1', 'Set2', 'Set3', 'Dark2', 'Paired']
                 if self.color_palette in discrete_maps and num_groups > 10:
                     print(f"Warning: Discrete colormap '{self.color_palette}' used with {num_groups} groups. Colors will repeat.")
-                
                 return cmap
-                
+
         except (ValueError, AttributeError) as e:
-            # Try fallbacks
             for fallback in FALLBACK_MAPS:
                 try:
                     print(f"Colormap '{self.color_palette}' not found. Using '{fallback}' instead.")
                     return plt.cm.get_cmap(fallback)
                 except:
                     continue
-            
-            # Ultimate fallback
+
             print("All fallbacks failed. Using basic rainbow.")
             return plt.cm.rainbow
 
-    def _export_embedding_data(self, method, embedding, labels, output_dir):
-        """
-        Export embedding data to CSV or JSON format.
-        
-        Args:
-            method: Name of the reduction method (UMAP, t-SNE, etc.)
-            embedding: numpy array of shape (n_samples, 2)
-            labels: numpy array of shape (n_samples,)
-            output_dir: Path to output directory
-        """
-        
-        # Get label names based on mode
+    # Export embedding data to CSV or JSON format.
+    # Args:
+    #   method (str): Name of the reduction method
+    #   embedding (np.ndarray): Embedding coordinates (n_samples, 2)
+    #   labels (np.ndarray): Labels (n_samples,)
+    #   output_dir (Path): Output directory
+    def _export_embedding_data(self, method: str, embedding: np.ndarray, labels: np.ndarray, output_dir: Path) -> None:
         if self.mode in ["train", "test"]:
-            # 2-class mode: use self.classes
             label_names_dict = {idx: name for idx, name in enumerate(self.classes)}
         else:
-            # Groups mode: create reverse mapping from numeric label to display name
             label_names_dict = {}
             for folder_name, (display_name, label_val) in self.group_mapping.items():
                 label_names_dict[label_val] = display_name
-        
-        # Build data rows
+
         export_rows = []
         for i in range(len(embedding)):
             label_val = int(labels[i])
-            
-            # Get label name
             label_name = label_names_dict.get(label_val, f"class_{label_val}")
-            
+
             row = {
                 'sample_id': self.sample_ids[i] if i < len(self.sample_ids) else f"sample_{i}",
                 f'{method.lower()}_dim1': float(embedding[i, 0]),
@@ -440,14 +354,13 @@ class DimRed:
                 'dataset': self.mode
             }
             export_rows.append(row)
-        
-        # Export based on format
+
         if self.export_format == 'csv':
             df = pd.DataFrame(export_rows)
             csv_path = output_dir / f"{method.lower()}_{self.mode}_{self.checkpoint_name}_embedding.csv"
             df.to_csv(csv_path, index=False)
             print(f"  ✓ Saved embedding CSV to {csv_path}")
-            
+
         elif self.export_format == 'json':
             export_data = {
                 'metadata': {
@@ -464,13 +377,13 @@ class DimRed:
             with open(json_path, 'w') as f:
                 json.dump(export_data, f, indent=2)
             print(f"  ✓ Saved embedding JSON to {json_path}")
-        
-        # Also always export parameters as JSON (useful for reproducibility)
+
+        # Always export parameters as JSON
         params_data = {
             'method': method,
             'parameters': getattr(self, f'{method.lower()}_params', {}),
             'n_samples': len(embedding),
-            'n_features_original': None,  # Will be filled in run_reduction
+            'n_features_original': self.n_features,
             'checkpoint': self.checkpoint_name,
             'mode': self.mode,
             'export_timestamp': time.strftime('%Y-%m-%d %H:%M:%S')
@@ -480,26 +393,28 @@ class DimRed:
             json.dump(params_data, f, indent=2)
         print(f"  ✓ Saved parameters to {params_path}")
 
-    def run_reduction(self, method, reducer, features, labels):
+    # Run a single dimensionality reduction method and save results.
+    # Args:
+    #   method (str): Name of the method
+    #   reducer: The reducer object (fit_transform method expected)
+    #   features (np.ndarray): Feature matrix
+    #   labels (np.ndarray): Labels
+    def run_reduction(self, method: str, reducer, features: np.ndarray, labels: np.ndarray) -> None:
         print(f"\nRunning {method}...")
-        
+
         start_time = time.time()
         scaled_features = self.scaler.fit_transform(features)
         embedding = reducer.fit_transform(scaled_features)
         print(f"{method} completed in {time.time()-start_time:.2f} seconds")
-        
-        # Create output directory
+
         output_dir = self.pth_prediction / "dim_red"
         output_dir.mkdir(exist_ok=True, parents=True)
-        
-        # Export raw embedding data
+
         self._export_embedding_data(method, embedding, labels, output_dir)
-        
-        # Create plot
+
         plt.figure(figsize=(12, 8))
-        
+
         if self.mode in ["train", "test"]:
-            # Original 2-class plotting
             for class_idx, class_name in enumerate(self.classes):
                 mask = labels == class_idx
                 if np.sum(mask) == 0:
@@ -509,91 +424,76 @@ class DimRed:
                     label=class_name, alpha=0.7, s=40
                 )
         else:
-            # Plot by sample count (largest first = background, smallest last = foreground)
             unique_labels, counts = np.unique(labels, return_counts=True)
-            
-            # Create list of (label, count) pairs and sort by count (descending)
             label_counts = list(zip(unique_labels, counts))
-            label_counts.sort(key=lambda x: x[1], reverse=True)  # Sort by count descending
-            
+            label_counts.sort(key=lambda x: x[1], reverse=True)
+
             num_groups = len(unique_labels)
-            
-            # Get appropriate colormap with error handling
+
             try:
                 cmap = self._get_color_map(num_groups)
                 print(f"Using colormap: {self.color_palette}")
             except Exception as e:
                 print(f"Error loading colormap '{self.color_palette}': {e}. Using viridis instead.")
                 cmap = plt.cm.viridis
-            
-            # Create scatter plots
+
             scatter_objects = []
             legend_labels = []
-            
-            # Plot in order: largest groups first (background), smallest last (foreground)
+
             for i, (label_val, count) in enumerate(label_counts):
                 mask = labels == label_val
                 if np.sum(mask) == 0:
                     continue
-                
-                # Find display name
+
                 display_name = f"Label_{label_val}"
                 for folder_name, (name, val) in self.group_mapping.items():
                     if val == label_val:
                         display_name = name
                         break
-                
-                # Enhanced color assignment for any colormap
+
                 if self.color_palette == 'default':
-                    # Use discrete color selection for default behavior
                     color = cmap(i % cmap.N)
                 else:
-                    # For named colormaps, distribute colors evenly across the colormap
-                    # This works for both continuous and discrete colormaps
                     color = cmap(i / max(1, num_groups - 1))
-                
-                # Create scatter plot
+
                 scatter = plt.scatter(
                     embedding[mask, 0], embedding[mask, 1],
                     color=color,
-                    alpha=0.7, 
+                    alpha=0.7,
                     s=40
                 )
                 scatter_objects.append(scatter)
                 legend_labels.append(display_name)
 
-        # Update title based on mode and color palette
         if self.mode == "groups":
             title = f"{method} Projection ({len(self.group_mapping)} Groups)\nCheckpoint: {self.checkpoint_name} | Palette: {self.color_palette}"
         else:
             title = f"{method} Projection ({self.mode} set)\nCheckpoint: {self.checkpoint_name} | Palette: {self.color_palette}"
-        
+
         plt.title(title)
         plt.xlabel(f"{method} 1")
         plt.ylabel(f"{method} 2")
-        
-        # Create legend using the actual scatter objects
+
         if self.mode == "groups":
             n_groups = len(scatter_objects)
             if n_groups > 10:
-                plt.legend(scatter_objects, legend_labels, 
+                plt.legend(scatter_objects, legend_labels,
                         bbox_to_anchor=(0.5, -0.2), loc='upper center', ncol=3)
             else:
-                plt.legend(scatter_objects, legend_labels, 
+                plt.legend(scatter_objects, legend_labels,
                         bbox_to_anchor=(1.05, 1), loc='upper left')
         else:
             plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
-            
+
         plt.grid(alpha=0.3)
         plt.gca().set_facecolor('#f5f5f5')
         plt.tight_layout()
-        
-        # Save plot
+
         if self.mode == "groups":
             output_path = output_dir / f"{method.lower()}_{len(self.group_mapping)}_groups_{self.checkpoint_name}_{self.color_palette}.png"
         else:
             output_path = output_dir / f"{method.lower()}_{self.mode}_{self.checkpoint_name}_{self.color_palette}.png"
-            
+
         plt.savefig(output_path, dpi=300, bbox_inches='tight')
         plt.close()
         print(f"  ✓ Saved {method} plot to {output_path}")
@@ -601,8 +501,8 @@ class DimRed:
     #############################################################################################################
     # CALL
 
-    def __call__(self):
-
+    # Run all enabled dimensionality reduction methods.
+    def __call__(self) -> None:
         if not any([self.use_umap, self.use_tsne, self.use_trimap, self.use_pacmap]):
             print("Warning: No dimensionality reduction methods enabled!")
             return
@@ -613,22 +513,20 @@ class DimRed:
         print(f"Mode: {self.mode}")
         print(f"Color palette: {self.color_palette}")
         print(f"Export format: {self.export_format.upper()}")
-        
+
         if self.pth_checkpoint.exists():
             self.load_checkpoint()
         if not self.checkpoint_loaded:
             print("Warning: Using untrained weights")
-        
+
         features, labels = self.extract_features()
-        
-        # Debug info
+
         print(f"\nExtracted features: {features.shape}")
         unique_labels, counts = np.unique(labels, return_counts=True)
         print(f"Labels: {dict(zip(unique_labels, counts))}")
-        
-        # Store feature dimensions for parameter export
+
         self.n_features = features.shape[1]
-        
+
         if self.use_umap:
             reducer = umap.UMAP(
                 n_components=2,
@@ -637,7 +535,7 @@ class DimRed:
             )
             self.run_reduction("UMAP", reducer, features, labels)
             gc.collect()
-        
+
         if self.use_tsne:
             reducer = TSNE(
                 n_components=2,
@@ -646,7 +544,7 @@ class DimRed:
             )
             self.run_reduction("t-SNE", reducer, features, labels)
             gc.collect()
-        
+
         if self.use_trimap:
             reducer = trimap.TRIMAP(
                 n_dims=2,
@@ -655,7 +553,7 @@ class DimRed:
             )
             self.run_reduction("TriMAP", reducer, features, labels)
             gc.collect()
-        
+
         if self.use_pacmap:
             reducer = PaCMAP(
                 n_components=2,
@@ -664,7 +562,7 @@ class DimRed:
             )
             self.run_reduction("PaCMAP", reducer, features, labels)
             gc.collect()
-        
+
         torch.cuda.empty_cache()
         print(f"\n{'='*60}")
         print("All reductions completed!")

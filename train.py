@@ -1,68 +1,70 @@
-# Start tensorboard:
+# TENSORBOARD USAGE INSTRUCTIONS:
 # Navigate to project folder in explorer, type cmd in the address bar to open terminal
-# Activate virtual environment: conda activate yolov8
-# Open logfile from path: python -m tensorboard.main --logdir "D:\CLN7 AI - Paper\Data\ACV&CA_high_conf_ds\acv_results\logs"
+# Activate virtual environment: conda activate {env_name}
+# Open logfile from path: python -m tensorboard.main --logdir "{path to logdir}\logs"
 # Start tensorboard: python -m tensorboard.main --logdir ./logs
 
-######################
-# Class for training #
-######################
-
-from torch.optim import Adam, SGD, AdamW
-from torch import nn
-from tqdm import tqdm
-import torch
+# ===== Standard Library Imports =====
 from pathlib import Path
-import matplotlib.pyplot as plt
-from torch.amp import GradScaler, autocast 
-from torch.utils.tensorboard import SummaryWriter
-from sklearn.metrics import (f1_score, confusion_matrix, roc_curve, auc, 
-                            roc_auc_score, precision_recall_curve, average_precision_score,
-                            balanced_accuracy_score)
 from datetime import datetime
-import numpy as np
 import json
-# Own modules
+# ===== Third-Party Imports =====
+import torch
+from torch import nn
+from torch.optim import Adam, SGD, AdamW
+from torch.amp import GradScaler, autocast
+from torch.utils.tensorboard import SummaryWriter
+import numpy as np
+import matplotlib.pyplot as plt
+from tqdm import tqdm
+from sklearn.metrics import (
+    f1_score, confusion_matrix, roc_curve, auc,
+    roc_auc_score, precision_recall_curve, average_precision_score,
+    balanced_accuracy_score
+)
+# ===== Own Modules =====
 from settings import setting
 import functions as fn
-
 
 class Train():
 
     #############################################################################################################
-    # CONSTRUCTOR:
-    
-    def __init__(self, cnn_wrapper, dataset, device, dataset_idx=None):
+    # CONSTRUCTOR
+
+    # Initialize the training handler with model, dataset, and configuration.
+    # Sets up optimizer, loss function, learning rate scheduler, and TensorBoard logging.
+    # Args:
+    #   cnn_wrapper (CNN_Model): Wrapper containing the model
+    #   dataset (Dataset): Dataset handler with train/val loaders
+    #   device (torch.device): Device to run training on
+    #   dataset_idx (int, optional): Index for cross-validation dataset naming
+    def __init__(self, cnn_wrapper, dataset, device: torch.device, dataset_idx: int = None) -> None:
         # Input validation
         assert len(dataset.ds_train) > 0, "Training dataset is empty"
         assert len(dataset.ds_val) > 0, "Validation dataset is empty"
-        
+
         self.device = device
         self.cnn_wrapper = cnn_wrapper
         self.cnn = cnn_wrapper.model
-
-        # Store dataset_idx for use in train() method
         self.dataset_idx = dataset_idx
 
         # Generate logs subfolder name for this run
-        # If dataset_idx is set (during cross-validation), take this as folder name
         if self.dataset_idx is not None:
             self.timestamp = f"ds{self.dataset_idx:02d}"
         else:
             self.timestamp = datetime.now().strftime('%Y%m%d-%H%M%S')
-        
-        # Initialize TensorBoard writer - creates a subfolder with timestamp
+
+        # Initialize TensorBoard writer
         self.log_dir = Path("logs") / self.timestamp
         self.writer = SummaryWriter(str(self.log_dir))
-        
+
         # Create directory for saving per-epoch probability data
-        # Put probabilities inside the same timestamped subfolder as TensorBoard logs
         self.prob_dir = self.log_dir / "probabilities"
         self.prob_dir.mkdir(parents=True, exist_ok=True)
-        
+
         # Class names
-        self.classes = setting["classes"] 
-        
+        self.classes = setting["classes"]
+
         # Enhanced TensorBoard layout
         custom_layout = {
             'Accuracy': {
@@ -99,29 +101,23 @@ class Train():
             }
         }
         self.writer.add_custom_scalars(custom_layout)
-        
-        # Pretrained
-        self.is_pretrained = setting["cnn_is_pretrained"] 
+
         # Datasets
         self.ds_train = dataset.ds_train
         self.ds_val = dataset.ds_val
-
-        # Number of training and validation images in each dataset
         self.num_train_img = dataset.num_train_img
         self.num_val_img = dataset.num_val_img
-        # Number of training and validation batches in each dataset
         self.num_train_batches = dataset.num_train_batches
         self.num_val_batches = dataset.num_val_batches
-        # Number of epochs
-        self.num_epochs = setting["train_num_epochs"] 
-        # Initial learning rate and scheduler
+
+        # Training hyperparameters
+        self.num_epochs = setting["train_num_epochs"]
         self.init_lr = setting["train_init_lr"]
-        self.warmup_epochs = setting["train_lr_warmup_epochs"] 
-        self.lr_eta_min = setting["train_lr_eta_min"] 
-        # Weight decay
-        self.weight_decay = setting["train_weight_decay"] 
-        # Label smoothing
-        self.label_smoothing = setting["train_label_smoothing"] 
+        self.warmup_epochs = setting["train_lr_warmup_epochs"]
+        self.lr_eta_min = setting["train_lr_eta_min"]
+        self.weight_decay = setting["train_weight_decay"]
+        self.label_smoothing = setting["train_label_smoothing"]
+
         # Optimizer specific
         self.optimizer_type = setting["train_optimizer_type"]
         self.sgd_momentum = setting["train_sgd_momentum"]
@@ -129,48 +125,48 @@ class Train():
         self.adam_beta1 = setting["train_adam_beta1"]
         self.adam_beta2 = setting["train_adam_beta2"]
 
-        # Use weighted loss function and training metrics
-        # Useful for imbalanced datasets
+        # Loss function settings
         self.use_weighted_loss = setting["train_use_weighted_loss"]
-        
-        # Composite score settings (for checkpoint selection when using composite_score)
+
+        # Save checkpoints
+        self.chckpt_save = setting["chckpt_save"]
+        # Checkpoint selection method
+        self.chckpt_selection_method = setting.get("chckpt_selection_method", "both")
+        # Composite score
         self.min_class_acc_threshold = setting["chckpt_min_class_acc_threshold"]
         self.penalty_weight = setting["chckpt_penalty_weight"]
-        
-        # Balanced accuracy settings (for checkpoint selection when using balanced_accuracy)
+        # Balanced accuracy
         self.min_balanced_acc_threshold = setting.get("chckpt_min_balanced_acc_threshold", 0.60)
         self.min_per_class_acc_balanced = setting.get("chckpt_min_per_class_acc_balanced", 0.0)
 
         # Validation split settings
-        # Validation split from training dataset in the folder data/train/
         self.val_from_train_split = setting["ds_val_from_train_split"]
-        # Validation split from test dataset in the folder data/test/
         self.val_from_test_split = setting["ds_val_from_test_split"]
 
         # Calculate class weights for metrics
         self.class_weights = self._get_class_weights_for_metrics(dataset)
 
-        # Optmizer, learning rate scheduler and loss function
-        if(self.optimizer_type == "ADAM"):
+        # Optimizer
+        if self.optimizer_type == "ADAM":
             self.optimizer = Adam(
                 self.cnn.parameters(),
-                lr=self.init_lr, 
-                weight_decay=self.weight_decay, 
+                lr=self.init_lr,
+                weight_decay=self.weight_decay,
                 betas=(self.adam_beta1, self.adam_beta2),
                 amsgrad=False
             )
-        elif(self.optimizer_type == "ADAMW"):
+        elif self.optimizer_type == "ADAMW":
             self.optimizer = AdamW(
                 self.cnn.parameters(),
-                lr=self.init_lr, 
-                weight_decay=self.weight_decay, 
+                lr=self.init_lr,
+                weight_decay=self.weight_decay,
                 betas=(self.adam_beta1, self.adam_beta2),
                 amsgrad=False
             )
-        elif(self.optimizer_type == "SGD"):
+        elif self.optimizer_type == "SGD":
             self.optimizer = SGD(
-                self.cnn.parameters(), 
-                lr=self.init_lr, 
+                self.cnn.parameters(),
+                lr=self.init_lr,
                 momentum=self.sgd_momentum,
                 weight_decay=self.weight_decay,
                 nesterov=self.sgd_use_nesterov
@@ -183,11 +179,8 @@ class Train():
                 class_weights, class_counts = self._calculate_weights_from_dataloader()
             else:
                 class_weights, class_counts = self._calculate_weights_from_folder(dataset.pth_train)
-            
-            # Print BOTH class distribution AND weights
+
             self._print_class_analysis(class_counts, class_weights)
-            
-            # Store class counts for TensorBoard logging
             self.class_counts = class_counts
 
             self.loss_function = nn.CrossEntropyLoss(
@@ -196,7 +189,6 @@ class Train():
             )
         else:
             print("\n> Using NON-WEIGHTED loss function.")
-            # Still calculate and show distribution for reference
             if self.val_from_train_split is not False:
                 _, class_counts = self._calculate_weights_from_dataloader()
             else:
@@ -206,12 +198,12 @@ class Train():
 
         # Learning rate scheduler
         self.scheduler_CA = torch.optim.lr_scheduler.CosineAnnealingLR(
-            self.optimizer, 
+            self.optimizer,
             T_max=self.num_epochs - self.warmup_epochs,
             eta_min=self.lr_eta_min,
         )
         self.warmup_scheduler = torch.optim.lr_scheduler.LinearLR(
-            self.optimizer, 
+            self.optimizer,
             start_factor=0.01,
             total_iters=self.warmup_epochs,
         )
@@ -221,71 +213,54 @@ class Train():
             milestones=[self.warmup_epochs],
         )
 
-        # Add gradient scaler for mixed precision training
+        # Mixed precision training
         self.scaler = GradScaler()
-        
-        # Add memory monitoring
+
+        # GPU memory monitoring
         self.total_gpu_memory = torch.cuda.get_device_properties(device).total_memory if torch.cuda.is_available() else 0
 
-        # Track best scores for both metrics, balanced accuracy and composite score (initialized in train() method)
-        print(f"\n> Checkpoint saving: BOTH METHODS ACTIVE")
-        print(f"  - Balanced Accuracy: min={self.min_balanced_acc_threshold:.0%}, per-class={self.min_per_class_acc_balanced:.0%}")
-        print(f"  - Composite Score: min_class={self.min_class_acc_threshold:.0%}, penalty={self.penalty_weight}")
+        # Print checkpoint saving configuration
+        print(f"\n> Checkpoint saving: {self.chckpt_selection_method.upper()}")
+        if self.chckpt_selection_method in ["balanced_accuracy", "both"]:
+            print(f"  - Balanced Accuracy: min={self.min_balanced_acc_threshold:.0%}, per-class={self.min_per_class_acc_balanced:.0%}")
+        if self.chckpt_selection_method in ["composite_score", "both"]:
+            print(f"  - Composite Score: min_class={self.min_class_acc_threshold:.0%}, penalty={self.penalty_weight}")
 
     #############################################################################################################
-    # METHODS:
+    # METHODS
 
-    def _calculate_composite_score(self, class_accuracies, overall_accuracy, penalty_weight=2.0):
-        """
-        Calculate a composite score that balances overall accuracy with class performance parity.
-        
-        Formula: Composite = (Overall_Accuracy) - penalty_weight * (Standard_Deviation_of_Class_Accuracies)
-        
-        Args:
-            class_accuracies: dict of per-class accuracies
-            overall_accuracy: mean accuracy across all classes
-            penalty_weight: how heavily to penalize class imbalance (higher = stricter)
-        
-        Returns:
-            composite_score: higher is better
-            class_std: standard deviation of class accuracies (for logging)
-            min_class_acc: minimum class accuracy (for logging)
-        """
+    # Calculate the composite score for checkpoint selection.
+    # Formula: Composite = Overall_Accuracy - penalty_weight * (Standard_Deviation_of_Class_Accuracies)
+    # Args:
+    #   class_accuracies (dict): Per-class accuracies
+    #   overall_accuracy (float): Mean accuracy across all classes
+    #   penalty_weight (float): Penalty for class imbalance (higher = stricter)
+    # Returns:
+    #   tuple: (composite_score, class_std, min_class_acc)
+    def _calculate_composite_score(self, class_accuracies: dict, overall_accuracy: float, penalty_weight: float = 2.0) -> tuple:
         acc_values = list(class_accuracies.values())
         class_std = np.std(acc_values)
         min_class_acc = min(acc_values)
-        
-        # Composite score: overall accuracy minus weighted penalty for imbalance
         composite_score = overall_accuracy - (penalty_weight * class_std)
-        
         return composite_score, class_std, min_class_acc
 
-    # Plot ROC curve and save to TensorBoard
-    def _plot_roc_curve_to_tensorboard(self, fpr, tpr, roc_auc, epoch, title="ROC Curves"):
-        """
-        Plot ROC curves for all classes and save to TensorBoard.
-        
-        Args:
-            fpr: dict of false positive rates per class
-            tpr: dict of true positive rates per class
-            roc_auc: dict of AUC values per class
-            epoch: current epoch
-            title: plot title
-        """
+    # Plot ROC curves and save to TensorBoard.
+    # Args:
+    #   fpr (dict): False positive rates per class
+    #   tpr (dict): True positive rates per class
+    #   roc_auc (dict): AUC values per class
+    #   epoch (int): Current epoch
+    #   title (str): Plot title
+    def _plot_roc_curve_to_tensorboard(self, fpr: dict, tpr: dict, roc_auc: dict, epoch: int, title: str = "ROC Curves") -> None:
         fig, ax = plt.subplots(figsize=(8, 6))
-        
-        # Color map for classes
         colors = plt.cm.rainbow(np.linspace(0, 1, len(self.classes)))
-        
-        # Plot ROC curve for each class
+
         for i, (class_name, color) in enumerate(zip(self.classes, colors)):
             if i in fpr and i in tpr and i in roc_auc:
                 ax.plot(fpr[i], tpr[i], color=color, lw=2,
                        label=f'{class_name} (AUC = {roc_auc[i]:.3f})')
-        
-        # Plot diagonal line (random classifier)
+
         ax.plot([0, 1], [0, 1], 'k--', lw=1, label='Random (AUC=0.5)')
-        
         ax.set_xlim([0.0, 1.0])
         ax.set_ylim([0.0, 1.05])
         ax.set_xlabel('False Positive Rate', fontsize=12)
@@ -293,38 +268,26 @@ class Train():
         ax.set_title(f'{title} (Epoch {epoch+1})', fontsize=14, fontweight='bold')
         ax.legend(loc="lower right", fontsize=10, frameon=False)
         ax.grid(True, alpha=0.3)
-        
-        # Add micro-average if multiclass (optional)
-        if len(self.classes) > 2:
-            # Calculate micro-average ROC if needed
-            pass
-        
+
         self.writer.add_figure('ROC/All_Classes', fig, epoch)
         plt.close(fig)
-    
-    # Plot Precision-Recall curve and save to TensorBoard
-    def _plot_pr_curve_to_tensorboard(self, precision, recall, average_precision, epoch, title="Precision-Recall Curves"):
-        """
-        Plot Precision-Recall curves for all classes and save to TensorBoard.
-        
-        Args:
-            precision: dict of precision values per class
-            recall: dict of recall values per class
-            average_precision: dict of AP values per class
-            epoch: current epoch
-            title: plot title
-        """
+
+    # Plot Precision-Recall curves and save to TensorBoard.
+    # Args:
+    #   precision (dict): Precision values per class
+    #   recall (dict): Recall values per class
+    #   average_precision (dict): AP values per class
+    #   epoch (int): Current epoch
+    #   title (str): Plot title
+    def _plot_pr_curve_to_tensorboard(self, precision: dict, recall: dict, average_precision: dict, epoch: int, title: str = "Precision-Recall Curves") -> None:
         fig, ax = plt.subplots(figsize=(8, 6))
-        
-        # Color map for classes
         colors = plt.cm.rainbow(np.linspace(0, 1, len(self.classes)))
-        
-        # Plot PR curve for each class
+
         for i, (class_name, color) in enumerate(zip(self.classes, colors)):
             if i in precision and i in recall and i in average_precision:
                 ax.plot(recall[i], precision[i], color=color, lw=2,
                        label=f'{class_name} (AP = {average_precision[i]:.3f})')
-        
+
         ax.set_xlim([0.0, 1.0])
         ax.set_ylim([0.0, 1.05])
         ax.set_xlabel('Recall', fontsize=12)
@@ -332,23 +295,18 @@ class Train():
         ax.set_title(f'{title} (Epoch {epoch+1})', fontsize=14, fontweight='bold')
         ax.legend(loc="lower left", fontsize=10, frameon=False)
         ax.grid(True, alpha=0.3)
-        
+
         self.writer.add_figure('PR/All_Classes', fig, epoch)
         plt.close(fig)
-    
-    # Save probability data for retrospective analysis
-    def _save_probability_data(self, all_probs, all_labels, all_preds, epoch):
-        """
-        Save probability data to JSON for future reference.
-        This allows generating ROC/PR curves without re-running validation.
-        
-        Args:
-            all_probs: numpy array of probabilities (n_samples, n_classes)
-            all_labels: numpy array of true labels
-            all_preds: numpy array of predictions
-            epoch: current epoch
-        """
-        # Always save the full data as numpy arrays (more efficient)
+
+    # Save probability data for retrospective analysis.
+    # Saves as .npz (full data) and .json (summary).
+    # Args:
+    #   all_probs (np.ndarray): Probabilities (n_samples, n_classes)
+    #   all_labels (np.ndarray): True labels
+    #   all_preds (np.ndarray): Predictions
+    #   epoch (int): Current epoch
+    def _save_probability_data(self, all_probs: np.ndarray, all_labels: np.ndarray, all_preds: np.ndarray, epoch: int) -> None:
         np.savez_compressed(
             self.prob_dir / f'probabilities_epoch_{epoch:03d}.npz',
             probabilities=all_probs,
@@ -356,8 +314,7 @@ class Train():
             predictions=all_preds,
             classes=np.array(self.classes)
         )
-        
-        # Also save summary as JSON
+
         summary = {
             'epoch': epoch,
             'num_samples': len(all_labels),
@@ -365,61 +322,65 @@ class Train():
             'classes': self.classes,
             'class_distribution': {self.classes[i]: int(np.sum(all_labels == i)) for i in range(len(self.classes))}
         }
-        
+
         with open(self.prob_dir / f'probabilities_epoch_{epoch:03d}_summary.json', 'w') as f:
             json.dump(summary, f, indent=2)
 
-    # Get class weights for metrics calculation
-    def _get_class_weights_for_metrics(self, dataset):
+    # Get class weights for metrics calculation.
+    # Args:
+    #   dataset (Dataset): Dataset handler
+    # Returns:
+    #   torch.Tensor: Class weights
+    def _get_class_weights_for_metrics(self, dataset) -> torch.Tensor:
         if self.use_weighted_loss:
             if self.val_from_train_split is not False:
                 weights, _ = self._calculate_weights_from_dataloader()
             else:
                 weights, _ = self._calculate_weights_from_folder(dataset.pth_train)
         else:
-            # Return equal weights for all classes (on CPU initially)
             weights = torch.ones(len(self.classes))
-        
-        return weights  # Keep on CPU initially, will move to device when needed
+        return weights
 
-    # Calculate class weights from a DataLoader
-    def _calculate_weights_from_dataloader(self):
+    # Calculate class weights from a DataLoader.
+    # Returns:
+    #   tuple: (normalized_weights, class_counts)
+    def _calculate_weights_from_dataloader(self) -> tuple:
         train_dataset = self.ds_train.dataset
         class_counts = torch.zeros(len(self.classes))
         for _, label in train_dataset:
             class_counts[label] += 1
-        
-        # Calculate inverse frequency weights
+
         weights = 1.0 / (class_counts + 1e-6)
         weights_normalized = weights / weights.sum()
-        
         return weights_normalized, class_counts
 
-    # For standalone train/val folders
-    def _calculate_weights_from_folder(self, folder_path):
+    # Calculate class weights from folder structure.
+    # Args:
+    #   folder_path (Path): Path to folder with class subdirectories
+    # Returns:
+    #   tuple: (normalized_weights, class_counts)
+    def _calculate_weights_from_folder(self, folder_path: Path) -> tuple:
         class_counts = []
         for class_dir in sorted(Path(folder_path).iterdir()):
             if class_dir.is_dir():
                 class_counts.append(len(list(class_dir.glob("*.*"))))
-        
+
         counts = torch.tensor(class_counts, dtype=torch.float32)
-        
-        # Calculate inverse frequency weights (higher weight for minority class)
         weights = 1.0 / (counts + 1e-6)
         weights_normalized = weights / weights.sum()
-        
         return weights_normalized, counts
 
-    # Print both class distribution and weights
-    def _print_class_analysis(self, class_counts, class_weights):
-        """Print comprehensive class analysis including distribution and weights"""
+    # Print comprehensive class analysis including distribution and weights.
+    # Args:
+    #   class_counts (torch.Tensor): Number of samples per class
+    #   class_weights (torch.Tensor): Loss weights per class
+    def _print_class_analysis(self, class_counts: torch.Tensor, class_weights: torch.Tensor) -> None:
         total = class_counts.sum().item()
-        
-        print("\n" + "="*60)
+
+        print("\n" + "=" * 60)
         print("CLASS DISTRIBUTION ANALYSIS")
-        print("="*60)
-        
-        # Print actual class distribution
+        print("=" * 60)
+
         print("\n📊 ACTUAL CLASS DISTRIBUTION:")
         max_len = max(len(cls) for cls in self.classes)
         for i, cls in enumerate(self.classes):
@@ -427,40 +388,38 @@ class Train():
             percentage = (class_counts[i] / total) * 100
             print(f"  {cls.ljust(max_len)} : {count:6d} images ({percentage:.2f}%)")
         print(f"  {'Total'.ljust(max_len)} : {int(total):6d} images (100.00%)")
-        
-        # Print loss weights
+
         print("\n⚖️  LOSS FUNCTION WEIGHTS (for CrossEntropyLoss):")
         print("  Note: Higher weight = more importance in loss calculation")
         for i, cls in enumerate(self.classes):
             weight_pct = class_weights[i].item() * 100
             print(f"  {cls.ljust(max_len)} : {weight_pct:.2f}% weight")
-        
-        # Print explanation
+
         print("\n📝 INTERPRETATION:")
         majority_idx = torch.argmax(class_counts).item()
         minority_idx = torch.argmin(class_counts).item()
         majority_class = self.classes[majority_idx]
         minority_class = self.classes[minority_idx]
-        
+
         majority_weight = class_weights[majority_idx].item() * 100
         minority_weight = class_weights[minority_idx].item() * 100
-        
+
         print(f"  • {majority_class} is MAJORITY class ({class_counts[majority_idx].item():.0f} images)")
         print(f"  • {minority_class} is MINORITY class ({class_counts[minority_idx].item():.0f} images)")
         print(f"  • Loss weight ratio: {minority_class}:{majority_class} = {minority_weight/majority_weight:.2f}:1")
         print(f"  • Each {minority_class} sample gets {minority_weight/majority_weight:.2f}x more importance")
-        print("="*60 + "\n")
-        
-        # Log to TensorBoard
+        print("=" * 60 + "\n")
+
         for i, cls in enumerate(self.classes):
             self.writer.add_scalar(f'Data/class_count/{cls}', class_counts[i].item(), 0)
             self.writer.add_scalar(f'Data/class_weight/{cls}', class_weights[i].item(), 0)
 
-    # Print only class distribution (for non-weighted loss)
-    def _print_class_distribution(self, class_counts):
-        """Print class distribution when not using weighted loss"""
+    # Print class distribution only (for non-weighted loss).
+    # Args:
+    #   class_counts (torch.Tensor): Number of samples per class
+    def _print_class_distribution(self, class_counts: torch.Tensor) -> None:
         total = class_counts.sum().item()
-        
+
         print("\n📊 CLASS DISTRIBUTION:")
         max_len = max(len(cls) for cls in self.classes)
         for i, cls in enumerate(self.classes):
@@ -468,36 +427,40 @@ class Train():
             percentage = (class_counts[i] / total) * 100
             print(f"  {cls.ljust(max_len)} : {count:6d} images ({percentage:.2f}%)")
         print(f"  {'Total'.ljust(max_len)} : {int(total):6d} images")
-        
-        # Log to TensorBoard
+
         for i, cls in enumerate(self.classes):
             self.writer.add_scalar(f'Data/class_count/{cls}', class_counts[i].item(), 0)
 
-    # Calculate weighted accuracy if using weighted loss, otherwise standard accuracy
-    def _calculate_weighted_accuracy(self, preds, labels):
+    # Calculate weighted accuracy if using weighted loss, otherwise standard accuracy.
+    # Args:
+    #   preds (torch.Tensor): Predictions
+    #   labels (torch.Tensor): True labels
+    # Returns:
+    #   tuple: (accuracy, total_weight_or_samples)
+    def _calculate_weighted_accuracy(self, preds: torch.Tensor, labels: torch.Tensor) -> tuple:
         if self.use_weighted_loss:
-            # Ensure class weights are on the same device as labels
             if self.class_weights.device != labels.device:
                 self.class_weights = self.class_weights.to(labels.device)
-            
-            # Calculate accuracy directly on GPU
+
             correct = (preds == labels).float()
             batch_weights = self.class_weights[labels]
-            
-            # Calculate weighted accuracy
+
             weighted_accuracy = (correct * batch_weights).sum().item()
             total_weight = batch_weights.sum().item()
-            
             return weighted_accuracy, total_weight
         else:
-            # Standard accuracy calculation
             accuracy = (preds == labels).sum().item()
             return accuracy, labels.size(0)
 
-    # Generate metrics plot at the end of a training
-    def _plot_metrics(self, history, plot_path, show_plot=True, save_plot=True):
+    # Generate metrics plot at the end of training.
+    # Args:
+    #   history (dict): Training history
+    #   plot_path (Path): Directory to save the plot
+    #   show_plot (bool): If True, display the plot
+    #   save_plot (bool): If True, save the plot to disk
+    def _plot_metrics(self, history: dict, plot_path: Path, show_plot: bool = True, save_plot: bool = True) -> None:
         plt.figure(figsize=(24, 12))
-        
+
         # 1. Accuracy Plot
         plt.subplot(2, 3, 1)
         epochs_range = range(1, len(history["train_acc"]) + 1)
@@ -505,7 +468,7 @@ class Train():
         plt.plot(epochs_range, history["val_acc"], 'r-', label='Validation')
         plt.title('Accuracy' + (' (Weighted)' if self.use_weighted_loss else ''))
         plt.legend()
-        
+
         # 2. Loss Plot
         plt.subplot(2, 3, 2)
         plt.plot(epochs_range, history["train_loss"], 'g-', label='Training')
@@ -513,12 +476,12 @@ class Train():
         plt.title('Loss' + (' (Weighted)' if self.use_weighted_loss else ''))
         plt.legend()
         plt.ylim(0, min(5, max(max(history["val_loss"]), max(history["train_loss"])) * 1.1))
-        
+
         # 3. Learning Rate
         plt.subplot(2, 3, 3)
         plt.plot(epochs_range, history["lr"], 'b-')
         plt.title('Learning Rate')
-        
+
         # 4. F1 Scores
         plt.subplot(2, 3, 4)
         plt.plot(epochs_range, history["f1_macro"], 'b-', label='Macro')
@@ -526,21 +489,21 @@ class Train():
         plt.title('F1 Scores')
         plt.legend()
         plt.ylim(0, 1)
-        
+
         # 5. ROC Curves (last epoch only)
         plt.subplot(2, 3, 5)
         colors = plt.cm.rainbow(np.linspace(0, 1, len(self.classes)))
         last_epoch = -1
         for i, color in zip(range(len(self.classes)), colors):
             if i in history["fpr"][last_epoch]:
-                plt.plot(history["fpr"][last_epoch][i], 
+                plt.plot(history["fpr"][last_epoch][i],
                         history["tpr"][last_epoch][i],
                         color=color,
                         label=f'{self.classes[i]} (AUC={history["roc_auc"][last_epoch][i]:.2f})')
         plt.plot([0, 1], [0, 1], 'k--')
         plt.title('ROC Curves')
         plt.legend()
-        
+
         # 6. PR Curves (last epoch only)
         plt.subplot(2, 3, 6)
         for i, color in zip(range(len(self.classes)), colors):
@@ -551,7 +514,7 @@ class Train():
                         label=f'{self.classes[i]} (AP={history["average_precision"][last_epoch][i]:.2f})')
         plt.title('Precision-Recall')
         plt.legend()
-        
+
         plt.tight_layout()
         if save_plot:
             weight_suffix = "_weighted" if self.use_weighted_loss else "_standard"
@@ -560,57 +523,62 @@ class Train():
         if show_plot:
             plt.show()
 
-    # Creates a styled confusion matrix plot
-    def _plot_confusion_matrix(self, cm, class_names=None, epoch=None):
+    # Create a styled confusion matrix plot.
+    # Args:
+    #   cm (np.ndarray): Confusion matrix
+    #   class_names (list): List of class names
+    #   epoch (int, optional): Current epoch
+    # Returns:
+    #   matplotlib.figure.Figure: The figure object
+    def _plot_confusion_matrix(self, cm: np.ndarray, class_names: list = None, epoch: int = None):
         fig, ax = plt.subplots(figsize=(8, 8))
 
-        # Normalize and plot
         cm_normalized = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis]
         im = ax.imshow(cm_normalized, interpolation='nearest', cmap=plt.cm.Blues)
 
-        # Customize fonts
         title_font = {'size': 14, 'weight': 'bold'}
         label_font = {'size': 12}
         tick_font = {'size': 12}
         text_font = {'size': 12}
 
-        # Add labels/title
         ax.set_xlabel('Predicted Label', fontdict=label_font)
         ax.set_ylabel('True Label', fontdict=label_font)
         title = f'Confusion Matrix (Epoch {epoch+1})' if epoch else 'Confusion Matrix'
         if self.use_weighted_loss:
             title += ' - Weighted Loss'
         ax.set_title(title, fontdict=title_font)
-        
-        # Class names
+
         if class_names:
             ax.set_xticks(np.arange(len(class_names)))
             ax.set_yticks(np.arange(len(class_names)))
             ax.set_xticklabels(class_names, rotation=45, ha="right", fontdict=tick_font)
             ax.set_yticklabels(class_names, fontdict=tick_font)
 
-        # Annotations
         thresh = cm_normalized.max() / 2.
         for i in range(cm.shape[0]):
             for j in range(cm.shape[1]):
-                ax.text(j, i, 
-                    f"{cm_normalized[i,j]:.1%}\n({cm[i,j]})", 
+                ax.text(j, i,
+                    f"{cm_normalized[i,j]:.1%}\n({cm[i,j]})",
                     ha="center", va="center",
                     color="white" if cm_normalized[i,j] > thresh else "black",
                     fontsize=text_font['size'])
-                
-        # Colorbar
+
         cbar = plt.colorbar(im, fraction=0.046, pad=0.04)
         cbar.ax.tick_params(labelsize=12)
         plt.tight_layout()
 
         return fig
-    
-    ##################
-    # TRAIN FUNCTION #
-    ##################
 
-    def train(self, chckpt_pth, plot_pth):
+    #############################################################################################################
+    # TRAIN FUNCTION
+
+    # Main training loop.
+    # Args:
+    #   chckpt_pth (Path): Directory to save checkpoints
+    #   plot_pth (Path): Directory to save plots
+    # Returns:
+    #   dict: Training history
+    def train(self, chckpt_pth: Path, plot_pth: Path) -> dict:
         # Initialize metrics storage
         history = {
             "train_acc": [], "train_loss": [],
@@ -622,21 +590,18 @@ class Train():
             "confusion_matrices": []
         }
 
-        # Track best scores for BOTH metrics independently
+        # Track best scores for both metrics
         best_balanced_acc = -float('inf')
         best_composite_score = -float('inf')
         best_epoch_bal = -1
         best_epoch_comp = -1
-        
+
         # Build dynamic base name from settings
         pretrained_str = "pretr" if setting["cnn_is_pretrained"] else "scratch"
         model_name = setting["cnn_type"]
         dataset_suffix = f"_ds{self.dataset_idx}" if self.dataset_idx is not None else ""
 
-        # Iterate over epochs
         for epoch in range(self.num_epochs):
-
-            # Console output:
             print(f"\n>> Epoch [{epoch+1}/{self.num_epochs}]:")
 
             #################
@@ -658,24 +623,24 @@ class Train():
                     tepoch.set_description("Train")
 
                     images, labels = images.to(self.device), labels.to(self.device)
-                    
+
                     self.optimizer.zero_grad()
                     with autocast(device_type=self.device.type, enabled=self.device.type == 'cuda'):
                         outputs = self.cnn(images)
                         loss = self.loss_function(outputs, labels)
-                    
+
                     self.scaler.scale(loss).backward()
                     self.scaler.unscale_(self.optimizer)
                     torch.nn.utils.clip_grad_norm_(self.cnn.parameters(), max_norm=1.0)
                     self.scaler.step(self.optimizer)
                     self.scaler.update()
-                    
+
                     if torch.isnan(loss).any():
                         raise ValueError("NaN loss detected during training")
-                    
+
                     train_loss += loss.item() * images.size(0)
                     _, preds = torch.max(outputs, 1)
-                    
+
                     if self.use_weighted_loss:
                         batch_weighted_accuracy, batch_weight = self._calculate_weighted_accuracy(preds, labels)
                         weighted_train_accuracy += batch_weighted_accuracy
@@ -686,7 +651,7 @@ class Train():
                         batch_standard_accuracy, _ = self._calculate_weighted_accuracy(preds, labels)
                         standard_train_accuracy += batch_standard_accuracy
                         weighted_train_accuracy = standard_train_accuracy
-                    
+
                     actual_train_samples += labels.size(0)
 
                     if batch_idx % 10 == 0:
@@ -699,7 +664,7 @@ class Train():
                     final_weighted_train_accuracy = weighted_train_accuracy / total_train_weight
                 else:
                     final_weighted_train_accuracy = 0.0
-                
+
                 if actual_train_samples > 0:
                     final_standard_train_accuracy = standard_train_accuracy / actual_train_samples
                 else:
@@ -746,21 +711,20 @@ class Train():
                 with tqdm(self.ds_val, unit="batch") as tepoch:
                     tepoch.set_description("Valid")
                     for images, labels in tepoch:
-
                         images, labels = images.to(self.device), labels.to(self.device)
-                        
+
                         with autocast(device_type=self.device.type, enabled=self.device.type == 'cuda'):
                             outputs = self.cnn(images)
                             loss = self.loss_function(outputs, labels)
                             probs = torch.softmax(outputs.float(), dim=1)
-                        
+
                         val_loss += loss.item() * images.size(0)
                         _, preds = torch.max(outputs, 1)
-                        
+
                         batch_accuracy, batch_weight = self._calculate_weighted_accuracy(preds, labels)
                         val_accuracy += batch_accuracy
                         total_val_weight += batch_weight
-                        
+
                         all_probs.append(probs.cpu().detach())
                         all_preds.extend(preds.cpu().numpy())
                         all_labels.extend(labels.cpu().numpy())
@@ -777,7 +741,7 @@ class Train():
                     weighted_val_accuracy = 0.0
             else:
                 weighted_val_accuracy = val_accuracy / len(self.ds_val.dataset)
-                
+
             val_loss = val_loss / len(self.ds_val.dataset)
 
             class_accuracies = {}
@@ -791,18 +755,18 @@ class Train():
             balanced_accuracy = balanced_accuracy_score(all_labels, all_preds)
 
             class_acc_str = " | ".join([f"{acc:.2f} {cls}" for cls, acc in class_accuracies.items()])
-            
+
             composite_score, class_std, min_class_acc = self._calculate_composite_score(
                 class_accuracies, standard_val_accuracy, penalty_weight=self.penalty_weight
             )
-            
+
             with torch.no_grad():
                 all_probs = torch.cat(all_probs).numpy()
             all_labels_np = np.array(all_labels)
             all_preds_np = np.array(all_preds)
 
             if all_labels_np.ndim > 1 and all_labels_np.shape[1] > 1:
-                all_labels_np = np.argmax(all_labels_np, axis=1)        
+                all_labels_np = np.argmax(all_labels_np, axis=1)
 
             f1_macro = f1_score(all_labels_np, all_preds_np, average='macro')
             f1_weighted = f1_score(all_labels_np, all_preds_np, average='weighted')
@@ -833,11 +797,12 @@ class Train():
 
             self._plot_roc_curve_to_tensorboard(fpr, tpr, roc_auc, epoch)
             self._plot_pr_curve_to_tensorboard(precision, recall, average_precision, epoch)
-            
+
             cm_fig = self._plot_confusion_matrix(cm, class_names=self.classes, epoch=epoch)
             self.writer.add_figure('Confusion Matrix', cm_fig, epoch, close=True)
             plt.close(cm_fig)
-            
+
+            # Log metrics to TensorBoard
             self.writer.add_scalar('Loss/train', train_loss, epoch)
             self.writer.add_scalar('Accuracy/train', final_weighted_train_accuracy if self.use_weighted_loss else final_standard_train_accuracy, epoch)
             self.writer.add_scalar('Loss/val', val_loss, epoch)
@@ -847,7 +812,7 @@ class Train():
             self.writer.add_scalar('Metrics/Composite_Score', composite_score, epoch)
             self.writer.add_scalar('Metrics/Class_Accuracy_StdDev', class_std, epoch)
             self.writer.add_scalar('Metrics/Min_Class_Accuracy', min_class_acc, epoch)
-            
+
             if self.use_weighted_loss:
                 self.writer.add_scalar('Accuracy/train_standard', final_standard_train_accuracy, epoch)
 
@@ -872,6 +837,7 @@ class Train():
                 mem_usage = torch.cuda.memory_reserved() / self.total_gpu_memory
                 self.writer.add_scalar('System/GPU_Memory', mem_usage, epoch)
 
+            # Console output
             if self.use_weighted_loss:
                 print(f"> Val Loss: {val_loss:.5f} | Weighted Val Acc: {weighted_val_accuracy:.2f} | Standard Val Acc: {standard_val_accuracy:.2f} | Per-class: ({class_acc_str})")
                 print(f"> Balanced Accuracy: {balanced_accuracy:.4f} | Composite Score: {composite_score:.4f}")
@@ -880,60 +846,68 @@ class Train():
                 print(f"> Val Loss: {val_loss:.5f} | Val Acc: {standard_val_accuracy:.2f} | Per-class: ({class_acc_str})")
                 print(f"> Balanced Accuracy: {balanced_accuracy:.4f} | Composite Score: {composite_score:.4f}")
                 print(f"> F1 (Macro): {f1_macro:.4f} | AUC: {roc_auc_weighted:.4f} | AP: {ap_weighted:.4f}")
-            
+
             print(f"> Class STD: {class_std:.4f} | Min Class Acc: {min_class_acc:.2%}")
 
-            # =================================================================
-            # CHECKPOINT SAVING - BOTH METHODS ACTIVE SIMULTANEOUSLY
-            # =================================================================
-            
+            #####################
+            # CHECKPOINT SAVING #
+            #####################
+
             save_checkpoint = False
             trigger_reason = []
-            
-            # METHOD 1: Balanced Accuracy Checkpoint Saving
-            bal_threshold_met = balanced_accuracy >= self.min_balanced_acc_threshold
-            per_class_ok = True
-            if self.min_per_class_acc_balanced > 0:
-                if min_class_acc < self.min_per_class_acc_balanced:
-                    per_class_ok = False
-            
-            if bal_threshold_met and per_class_ok:
-                if balanced_accuracy > best_balanced_acc:
-                    save_checkpoint = True
-                    best_balanced_acc = balanced_accuracy
-                    best_epoch_bal = epoch
-                    trigger_reason.append(f"BalancedAcc improved to {balanced_accuracy:.4f}")
-                    print(f"> Balanced accuracy improved to {balanced_accuracy:.4f}!")
+
+            # METHOD 1: Balanced Accuracy (if enabled)
+            if self.chckpt_selection_method in ["balanced_accuracy", "both"]:
+                bal_threshold_met = balanced_accuracy >= self.min_balanced_acc_threshold
+                per_class_ok = True
+                if self.min_per_class_acc_balanced > 0:
+                    if min_class_acc < self.min_per_class_acc_balanced:
+                        per_class_ok = False
+
+                if bal_threshold_met and per_class_ok:
+                    if balanced_accuracy > best_balanced_acc:
+                        save_checkpoint = True
+                        best_balanced_acc = balanced_accuracy
+                        best_epoch_bal = epoch
+                        trigger_reason.append(f"BalancedAcc improved to {balanced_accuracy:.4f}")
+                        print(f"> Balanced accuracy improved to {balanced_accuracy:.4f}!")
+                    else:
+                        print(f"> Balanced accuracy {balanced_accuracy:.4f} did not improve over best {best_balanced_acc:.4f}")
                 else:
-                    print(f"> Balanced accuracy {balanced_accuracy:.4f} did not improve over best {best_balanced_acc:.4f}")
+                    if not bal_threshold_met:
+                        print(f"> Balanced accuracy ({balanced_accuracy:.4f}) below threshold ({self.min_balanced_acc_threshold:.0%})")
+                    elif not per_class_ok:
+                        print(f"> Min class accuracy ({min_class_acc:.2%}) below per-class threshold ({self.min_per_class_acc_balanced:.0%})")
             else:
-                if not bal_threshold_met:
-                    print(f"> Balanced accuracy ({balanced_accuracy:.4f}) below threshold ({self.min_balanced_acc_threshold:.0%})")
-                elif not per_class_ok:
-                    print(f"> Min class accuracy ({min_class_acc:.2%}) below per-class threshold ({self.min_per_class_acc_balanced:.0%})")
-            
-            # METHOD 2: Composite Score Checkpoint Saving
-            comp_threshold_met = min_class_acc >= self.min_class_acc_threshold
-            
-            if comp_threshold_met:
-                if composite_score > best_composite_score:
-                    save_checkpoint = True
-                    best_composite_score = composite_score
-                    best_epoch_comp = epoch
-                    trigger_reason.append(f"CompositeScore improved to {composite_score:.4f}")
-                    print(f"> Composite score improved to {composite_score:.4f}!")
+                # Not tracking balanced accuracy
+                print(f"> Balanced accuracy: {balanced_accuracy:.4f} (not used for checkpoint selection)")
+
+            # METHOD 2: Composite Score (if enabled)
+            if self.chckpt_selection_method in ["composite_score", "both"]:
+                comp_threshold_met = min_class_acc >= self.min_class_acc_threshold
+
+                if comp_threshold_met:
+                    if composite_score > best_composite_score:
+                        save_checkpoint = True
+                        best_composite_score = composite_score
+                        best_epoch_comp = epoch
+                        trigger_reason.append(f"CompositeScore improved to {composite_score:.4f}")
+                        print(f"> Composite score improved to {composite_score:.4f}!")
+                    else:
+                        print(f"> Composite score {composite_score:.4f} did not improve over best {best_composite_score:.4f}")
                 else:
-                    print(f"> Composite score {composite_score:.4f} did not improve over best {best_composite_score:.4f}")
+                    print(f"> Min class accuracy ({min_class_acc:.2%}) below composite threshold ({self.min_class_acc_threshold:.0%})")
             else:
-                print(f"> Min class accuracy ({min_class_acc:.2%}) below composite threshold ({self.min_class_acc_threshold:.0%})")
-            
-            # Save checkpoint if either method triggered
+                # Not tracking composite score
+                print(f"> Composite score: {composite_score:.4f} (not used for checkpoint selection)")
+
+            # Save checkpoint if either method triggered (or only one, depending on selection)
             if save_checkpoint:
-                # Simplified filename without trigger info
+
                 checkpoint_name = f"ckpt_{pretrained_str}_{model_name}_e{epoch+1:02d}_bal{balanced_accuracy:.3f}_comp{composite_score:.3f}{dataset_suffix}"
-                
+
                 checkpoint_path = chckpt_pth / f"{checkpoint_name}.pt"
-                
+
                 torch.save({
                     'epoch': epoch,
                     'model_state_dict': self.cnn.state_dict(),
@@ -944,25 +918,25 @@ class Train():
                     'per_class_accuracy': class_accuracies,
                     'loss': val_loss,
                 }, checkpoint_path)
-                
+
                 # Save validation confusion matrix
                 val_cm_filename = checkpoint_name.replace('.pt', '') + "_val"
                 fn.plot_confusion_matrix(
-                    {"y": all_labels_np, "y_hat": all_preds_np}, 
-                    self.classes, 
+                    {"y": all_labels_np, "y_hat": all_preds_np},
+                    self.classes,
                     plot_pth,
-                    chckpt_name=val_cm_filename, 
-                    show_plot=False, 
+                    chckpt_name=val_cm_filename,
+                    show_plot=False,
                     save_plot=True
                 )
-                
+
                 fn.save_confusion_matrix_results(
-                    {"y": all_labels_np, "y_hat": all_preds_np}, 
-                    self.classes, 
+                    {"y": all_labels_np, "y_hat": all_preds_np},
+                    self.classes,
                     plot_pth,
                     chckpt_name=val_cm_filename
                 )
-                
+
                 roc_pr_data = {
                     'epoch': epoch,
                     'classes': self.classes,
@@ -974,10 +948,10 @@ class Train():
                     'average_precision': {self.classes[i]: float(average_precision[i]) for i in average_precision},
                     'per_class_accuracy': {cls: float(acc) for cls, acc in class_accuracies.items()},
                 }
-                
+
                 with open(plot_pth / f"{val_cm_filename}_roc_pr.json", 'w') as f:
                     json.dump(roc_pr_data, f, indent=2)
-                
+
                 print(f"✓ Model saved! Epoch {epoch+1}")
                 print(f"  - Triggers: {', '.join(trigger_reason)}")
                 print(f"  - Balanced Accuracy: {balanced_accuracy:.4f}")
@@ -986,11 +960,11 @@ class Train():
                 print(f"  - Min Class Accuracy: {min_class_acc:.2%}")
                 print(f"  - Class STD: {class_std:.4f}")
                 print(f"✓ Validation confusion matrix saved: {val_cm_filename}.png/.json")
-            
+
             # ALWAYS save probability data for EVERY epoch
             self._save_probability_data(all_probs, all_labels_np, all_preds_np, epoch)
             print(f"✓ Probability data saved for epoch {epoch+1}")
-            
+
             # Store validation metrics in history
             history["val_acc"].append(standard_val_accuracy)
             history["val_loss"].append(val_loss)
@@ -1012,5 +986,5 @@ class Train():
         # Final cleanup and plotting
         self.writer.close()
         self._plot_metrics(history, plot_pth, show_plot=False, save_plot=True)
-        
+
         return history

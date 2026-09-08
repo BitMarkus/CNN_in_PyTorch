@@ -2,7 +2,7 @@
 # Program settings #
 ####################
 
-# Path handling
+# ===== Standard Library Imports =====
 from pathlib import Path
 # Base directory
 BASE_DIR = Path(__file__).parent
@@ -14,33 +14,33 @@ setting = {
     ############
 
     # Number of epochs
-    "train_num_epochs": 40,  # 30
+    "train_num_epochs": 40,
     # Batch size for training and validation datasets
-    "ds_batch_size": 50, 
+    "ds_batch_size": 50,
 
     # Optimizer:
     # Options: "SGD", "ADAM", and "ADAMW"
-    "train_optimizer_type": "ADAMW",  
+    "train_optimizer_type": "ADAMW",
     # Initial learning rate (later determined by lr scheduler)
-    # ADAM: 0.0001 (1e-4) - 0.0003 (3e-4), 
+    # ADAM: 0.0001 (1e-4) - 0.0003 (3e-4)
     # ADAMW: 0.0001 (3e-4) - 0.0005 (5e-4)
     # SGD: 0.01-0.001, 0.0001 (1e-4) for pretrained weights!
-    "train_init_lr": 1e-4,    
+    "train_init_lr": 1e-4,
     # Weight decay = L2 regularization
     # ADAM: 1e-4 (0.0001) - 1e-3 (0.001): 1e-4
     # ADAMW: 1e-3 (0.001) - 1e-2 (0.01): 1e-3
     # SGD: 1e-4
-    "train_weight_decay": 1e-3,  
+    "train_weight_decay": 1e-3,
     # Momentum
-    "train_sgd_momentum": 0.9,  # 0.9   
+    "train_sgd_momentum": 0.9,
     # Nesterov momentum for SGD (only works if momentum > 0)
     "train_sgd_use_nesterov": True,
     # ADAM/ADAMW beta 1 and 2
-    "train_adam_beta1": 0.9, # 0.9
-    "train_adam_beta2": 0.99, # 0.99
+    "train_adam_beta1": 0.9,
+    "train_adam_beta2": 0.99,
 
     # Loss function:
-    # Paramater to use weighted loss function or normal loss function
+    # Parameter to use weighted loss function or normal loss function
     # Also training metrics will change to weighted versions
     # Useful for class imbalance
     "train_use_weighted_loss": True,
@@ -48,10 +48,10 @@ setting = {
     # Learning rate scheduler:
     # Number of steps after which the lr is multiplied by the lr multiplier
     # Warmup scheduler:
-    "train_lr_warmup_epochs": 5, # 5
-    # CosineAnnealingLR
-    # SGD: 1e-5 
-    # ADAM: 1e-4 
+    "train_lr_warmup_epochs": 5,
+    # CosineAnnealingLR - Minimum learning rate (eta_min) that the scheduler decays toward:
+    # SGD: 1e-5
+    # ADAM: 1e-4
     # ADAMW: 1e-5 - 1e-6
     "train_lr_eta_min": 1e-5,
 
@@ -65,52 +65,66 @@ setting = {
     # Shuffle seed
     "ds_shuffle_seed": 44,
     # How many subprocesses are used to load data in parallel
-    "ds_num_workers": 3, # Intel Core i7-10700 CPU: 3
+    "ds_num_workers": 3,
     # Validation split settings
-    # Validation split from training dataset (False or percentage 0.0-1.0)
-    "ds_val_from_train_split": False, # For 9cl single trainings: 0.25, For cross-validation: False
-    # Validation split from test dataset (False or percentage 0.0-1.0)
-    "ds_val_from_test_split": 1.0, # 1.0 for cross validation
+    # Validation split from images in folder data/train/ (False or percentage 0.0-1.0)
+    "ds_val_from_train_split": False,
+    # Validation split from images in folder data/test/ (False or percentage 0.0-1.0)
+    "ds_val_from_test_split": 1.0,
     # Export validation images to a folder
     "ds_save_val_images": False,
 
-    # Classes:
-    # Define cell lines (for dataset generator)
-    # PROJECT 1:
-    # "wt_lines": ["WT_1618-02", "WT_JG", "WT_JT", "WT_KM", "WT_MS"],
-    # "ko_lines": ["KO_1096-01", "KO_1618-01", "KO_BR2986", "KO_BR3075"],
-    # PROJECT 2:
-    "wt_lines": ["WT_BJ", "WT_LF", "WT_MP", "WT_MW", "WT_NH"],
-    "ko_lines": ["MMD_155", "MMD_160", "MMD_169", "MMD_177"],
+    ##########################
+    # CLASSES AND CELL LINES #
+    ##########################
+
+    ### PROJECT 1 (CLN7) ###
     # Define classes
     # 2 classes (WT and KO):
     "classes": ["KO", "WT"],
     # 9 classes (one for each cell line):
     # "classes": ["KO_1096-01", "KO_1618-01", "KO_BR2986", "KO_BR3075", "WT_1618-02", "WT_JG", "WT_JT", "WT_KM", "WT_MS"],
+    # Define cell lines (for dataset generator)
+    "wt_lines": ["WT_1618-02", "WT_JG", "WT_JT", "WT_KM", "WT_MS"],
+    "ko_lines": ["KO_1096-01", "KO_1618-01", "KO_BR2986", "KO_BR3075"],
 
+    ### PROJECT 2 (MDD) ###
+    # Define classes
+    # 2 classes (WT and MDD):
+    # "classes": ["MDD", "WT"],
+    # Define cell lines (for dataset generator)
+    # "wt_lines": ["WT_BJ", "WT_LF", "WT_MP", "WT_MW", "WT_NH"],
+    # "ko_lines": ["MMD_155", "MMD_160", "MMD_169", "MMD_177"],
+    
     ###############
     # CHECKPOINTS #
     ###############
 
     # Set to True, if checkpoints shall be saved during training
-    # Checkpoint saving occurs when either balanced accuracy OR composite score improves 
+    # Checkpoint saving occurs when either balanced accuracy OR composite score improves
     # compared to the previous best checkpoint, and when minimum thresholds are met (if enabled).
-    "chckpt_save": True, 
+    "chckpt_save": True,
+
+    # Checkpoint selection method:
+    # Options: "balanced_accuracy", "composite_score", "both"
+    # "balanced_accuracy": Uses only balanced accuracy for checkpoint selection
+    # "composite_score": Uses only composite score for checkpoint selection
+    # "both": Uses both methods
+    "chckpt_selection_method": "balanced_accuracy",
 
     # Composite score settings:
     # Minimum acceptable per-class accuracy (0.60 = 60%)
-    "chckpt_min_class_acc_threshold": 0.65, # 0.65 for 2cl training, 0.4 for 9cl training
-    # Penalty weight fro checkpoint selection 
+    "chckpt_min_class_acc_threshold": 0.65,
+    # Penalty weight for checkpoint selection
     # Higher = more penalty for class imbalance (range: 1.0 to 4.0)
     "chckpt_penalty_weight": 2.0,
 
     # Balanced accuracy settings:
     # Minimum acceptable overall balanced accuracy
-    "chckpt_min_balanced_acc_threshold": 0.65, # 0.5 for 9cl training, 0.65 for 2cl training 
-    # Minimum per-class accuracy for balanced accuracy selection 
-    # Set to 0.0 to disable (use only balanced accuracy threshold) 
-    "chckpt_min_per_class_acc_balanced": 0.60, # ? for 9cl training, 0.60 for 2cl training      
-                                                    
+    "chckpt_min_balanced_acc_threshold": 0.65,
+    # Minimum per-class accuracy for balanced accuracy selection
+    # Set to 0.0 to disable (use only balanced accuracy threshold)
+    "chckpt_min_per_class_acc_balanced": 0.60,
 
     #########################
     # AUTO CROSS VALIDATION #
@@ -125,19 +139,19 @@ setting = {
     #################
 
     # Use augmentations
-    "train_use_augment": True, 
+    "train_use_augment": True,
 
     # FLIP AND ROTATION AUGMENTATIONS:
     # Horizontal flip probability
-    "aug_hori_flip_prob": 0.5, 
+    "aug_hori_flip_prob": 0.5,
     # Vertical flip probability
     "aug_vert_flip_prob": 0.5,
     # Probability of 90° angle rotations
     "aug_90_angle_rot_prob": 0.5,
-    # Probability of small angle rotations 
+    # Probability of small angle rotations
     "aug_small_angle_rot_prob": 0.5,
     # Small-angle rotation
-    "aug_small_angle_rot": 10, 
+    "aug_small_angle_rot": 10,
     # Fill color for gaps due to small angle rotation
     # fill=0: black background, fill=255: white background
     "aug_small_angle_fill_gray": 100,
@@ -147,7 +161,7 @@ setting = {
     "aug_intense_prob": 0.5,
     "aug_brightness": 0.2,
     "aug_contrast": 0.2,
-    "aug_saturation": 0.2, # only for RGB images
+    "aug_saturation": 0.2,  # only for RGB images
     # Gamma correction
     # Gamma = 1: No change. The image looks "natural" (linear brightness)
     # Gamma < 1 (e.g., 0.5): Dark areas get brighter, bright areas stay mostly the same
@@ -162,15 +176,15 @@ setting = {
     "aug_gauss_prob": 0.3,
     # Kernel size
     "aug_gauss_kernel_size": 5,
-    # Sigma: ontrols the "spread" of the blur (how intense/smooth it is)
+    # Sigma: controls the "spread" of the blur (how intense/smooth it is)
     "aug_gauss_sigma_min": 0.1,
     "aug_gauss_sigma_max": 0.5,
     # Poisson noise
     # Probability
-    "aug_poiss_prob": 0.4, 
+    "aug_poiss_prob": 0.4,
     # Controls how much the noise depends on image brightness
     # Suggested range: 0.01-0.1 (higher = more noise)
-    "aug_poiss_scaling": 0.05,  # 5% of pixel value
+    "aug_poiss_scaling": 0.05,
     # Noise Strength: Final noise intensity multiplier
     "aug_poiss_noise_strength": 0.1,
 
@@ -178,7 +192,7 @@ setting = {
     # 0.0: No smoothing (default CrossEntropyLoss). Hard labels (0 or 1)
     # 0.1: 10% smoothing (e.g., correct class = 0.9, others share 0.1/classes)
     # 0.2: 20% smoothing, etc.
-    "train_label_smoothing": 0.1, # 0.1
+    "train_label_smoothing": 0.1,
 
     #########
     # MODEL #
@@ -188,60 +202,60 @@ setting = {
     # ResNet: resnet18, resnet34, resnet50, resnet101, resnet152
     # ResNeXt variants: resnext101_32x8d, resnext101_64x4d
     # AlexNet: alexnet
-    # VGG (without batch norm): vgg11, vgg13", vgg16, vgg19
+    # VGG (without batch norm): vgg11, vgg13, vgg16, vgg19
     # VGG (with batch norm): vgg11_bn, vgg13_bn, vgg16_bn, vgg19_bn
     # DenseNet: densenet121, densenet169, densenet201
     # EfficientNet: efficientnet_b0, efficientnet_b3, efficientnet_b4, efficientnet_b7
     # ConvNeXt: convnext_tiny, convnext_small
     # Custom CNN architecture: custom
-    "cnn_type": "densenet121",  
+    "cnn_type": "densenet121",
     # Pretrained or initialized weights
-    "cnn_is_pretrained": True,  
+    "cnn_is_pretrained": True,
     # Initialization type for non-pretrained cnns
     # Options: kaiming and xavier
     # Kaiming: Designed for ReLU-like activations (ReLU, LeakyReLU, GELU),
     # Default for modern CNNs (ResNet, EfficientNet, etc.) with ReLU/LeakyReLU.
     # Xavier: Designed for Sigmoid, Tanh, and linear activations.
     # Older architectures like AlexNet (originally used Tanh), Output layers with Sigmoid (e.g., binary classification)
-    "cnn_initialization": "kaiming",  
+    "cnn_initialization": "kaiming",
 
     ################
     # CUSTOM MODEL #
     ################
 
-    # Dropout
+    # Dropout for CUSTOM CNN architecture (only used if cnn_type = "custom")
     "cnn_dropout": 0.3,
 
     ##########
     # IMAGES #
     ##########
 
-    # Image dimensions
-    "img_width": 512,   
+    # Training image dimensions
+    "img_width": 512,
     "img_height": 512,
-    "img_channels": 1,          
+    "img_channels": 1,
 
     ################
     # CLASS SORTER #
     ################
 
     # Selection mode and value: "top_n", "threshold" or "interval"
-    "sort_selection_mode": "interval", 
+    "sort_selection_mode": "interval",
     # Number of images for top_n, or threshold value
     # If sort_selection_mode is "top_n", this selects the top X most confident images per class (e.g. 50)
-    # If sort_selection_mode is "threshold", this needs to be a single number (e.g. 0.2) 
+    # If sort_selection_mode is "threshold", this needs to be a single number (e.g. 0.2)
     # If sort_selection_mode is "interval", this needs to be a list of min/max values (e.g. [0.2, 0.8])
-    "sort_selection_value": [0.5, 1.0], # [0.55, 0.95], [0.5, 1.0]
+    "sort_selection_value": [0.5, 1.0],
     # Filter criteria: 'confidence_only', 'logits_only', or 'combined'
     'sort_filter_mode': 'confidence_only',
     # Minimum max_logit value to keep
     "sort_logit_threshold": 0.0,
     # Rename files with either confidence scores, logit values, or both
     "sort_rename_images": True,
-    # Batch size for prediction   
-    "sort_pred_batch_size": 50,  
+    # Batch size for prediction
+    "sort_pred_batch_size": 50,
     # Interval borders for confidence statistics
-    "sort_conf_intervals": [10, 20, 30, 40, 50, 60, 70, 80, 90, 95],
+    "sort_conf_intervals": [10, 20, 30, 40, 50, 60, 70, 80, 90],
     # Interval borders for logit statistics
     "sort_logit_intervals": [-10, -5, -2, 0, 2, 5, 10],
 
@@ -251,7 +265,7 @@ setting = {
 
     # Rename files with confidence scores
     'analyze_rename_with_confidence': False,
-    # Include logits in filenames  
+    # Include logits in filenames
     'analyze_include_logits_in_rename': False,
 
     #######################
@@ -259,13 +273,13 @@ setting = {
     #######################
 
     # Min confidence for image sorting
-    "ca_min_conf": 0.8,     # 80%
+    "ca_min_conf": 0.8,
     # Max confidence for image sorting
     'ca_max_conf': 1.0,
     # Filter type for image sorting
     # "correct": Images correctly classified in all test folds, with confidence within [min_conf, max_conf] -> Reliable predictions for downstream analysis
     # "incorrect": Images incorrectly classified in all test folds, with confidence within [min_conf, max_conf] -> Systematic errors to investigate
-    # "low_confidence": Images with confidence below min_conf in all test folds (ignores max_conf)(regardless of correctness) -> Ambiguous cases needing manual review
+    # "low_confidence": Images with confidence below min_conf in all test folds (ignores max_conf) (regardless of correctness) -> Ambiguous cases needing manual review
     # "unsure": Images with confidence within [min_conf, max_conf] (regardless of correctness) -> Intermediate-confidence predictions
     'ca_filter_type': 'correct',
     # Maximum number of checkpoints which are analyzed for a dataset
@@ -279,58 +293,8 @@ setting = {
     "ca_use_test_cm": "validation",
     # Which set of images to run predictions on for confidence analysis
     # Decides which actual images to feed through the model for prediction
-    # Options: "validation", "test", "all"  
-    "ca_split_to_use": "validation", 
-
-    ##########
-    # CAPTUM #
-    ##########
-
-    # Show overlay image in addidion to original and heatmap image
-    "captum_show_overlay": True,
-    # Determines how to handle positive/negative attributions. 
-    # Options: "positive": Only positive attributions
-    # The options "all", "negative" and "absolute_value" DO NOT WORK YET!
-    "captum_sign": 'positive',
-    # Colormap for the heatmap. Common options:
-    # "viridis", "plasma", "magma", "inferno" (default), "cividis", etc
-    # Any valid Matplotlib colormap name
-    # Color map for original image
-    "captum_cmap_orig": 'gray',
-    # Color map for heatmap
-    "captum_cmap_heatmap": 'coolwarm',   # viridis
-    # Color map for overlay heatmap
-    "captum_cmap_overlay": 'coolwarm',
-    # Show color bar for different images
-    "captum_show_color_bar_orig": True,
-    "captum_show_color_bar_heatmap": True,
-    "captum_show_color_bar_overlay": True,
-    # The n_steps parameter in Integrated Gradients (IG) controls the number of 
-    # interpolation steps used when approximating the integral for computing attributions
-    # Higher n_steps = Smoother approximation of the integral (more accurate but slower)
-    # Lower n_steps = Rougher approximation (faster but potentially noisier)
-    # With too few steps (e.g., 5), attributions may appear pixelated or noisy
-    # With more steps (e.g., 50), heatmaps become smoother but take longer to compute
-    # Default: 50
-    "captum_n_steps_ig": 25,
-    # Image size of the result output
-    "captum_output_size": 8,
-    # Output figure resolution
-    'captum_dpi': 300,   
-    # Control transparency of the heatmap
-    # 0.0: Heatmap completely transparent (only original image visible)
-    # 1.0: Heatmap fully opaque (original image barely visible under intense colors)
-    "captum_alpha_overlay": 0.2,
-    # Controls how aggressively visualization focuses on the most important features by filtering out weaker attributions
-    # e.g., 80 = top 20% most important pixels
-    'captum_threshold_percentile': 70, 
-    # Clips the top/bottom X% of attribution values before visualization to:
-    # Improve contrast by ignoring extreme outliers
-    # Make heatmaps more comparable across images
-    # Default: 1
-    'captum_outlier_perc': 1, 
-    # Gaussian blur strength (lower = sharper)
-    'captum_sigma': 0.5, 
+    # Options: "validation", "test", "all"
+    "ca_split_to_use": "validation",
 
     ###########
     # GradCAM #
@@ -342,10 +306,10 @@ setting = {
     "gradcam_threshold_percent": 0.40,
     # Gaussian blur strength
     "gradcam_blurr_sigma": 15,
-    # Export mode: 
+    # Export mode:
     # False: Composition of original, gradcam and overlay images
     # True: Only export of gradcam image in 512x512 px
-   "gradcam_export_only_overlay": True, 
+    "gradcam_export_only_overlay": True,
 
     #######################
     # DIMENSION REDUCTION #
@@ -373,7 +337,7 @@ setting = {
         # Add more groups as needed
     },
     # Color palette for dimensionality reduction plots
-    # Options: # 'default' or any matplotlib colormap name, like 'rainbow', 'jet', etc.
+    # Options: 'default' or any matplotlib colormap name, like 'rainbow', 'jet', etc.
     'dimred_color_palette': 'jet',
 
     # Export format of raw data
@@ -420,7 +384,7 @@ setting = {
     "pth_ds_gen_input_synthetic": BASE_DIR / "dataset_gen/input_synthetic/",
     "pth_ds_gen_input_real": BASE_DIR / "dataset_gen/input_real/",
     "pth_ds_gen_input_mixed": BASE_DIR / "dataset_gen/input_mixed/",
-    "pth_ds_gen_output": BASE_DIR / "dataset_gen/output/",   
+    "pth_ds_gen_output": BASE_DIR / "dataset_gen/output/",
     # Automatic cross validation
     "pth_acv_results": BASE_DIR / "acv_results/",
     # Confidence analyzer results

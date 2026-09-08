@@ -1,52 +1,69 @@
+# ===== Third-Party Imports =====
 import torch.nn as nn
 
 class CustomCNN(nn.Module):
 
-    def __init__(self, input_channels, num_classes, batch_size, img_size, dropout=0.5):
+    #############################################################################################################
+    # CONSTRUCTOR
+
+    # Custom CNN architecture for fibroblast image classification.
+    # Encoder-decoder style network with 6 convolutional blocks and configurable decoder.
+    # Args:
+    #   input_channels (int): Number of input channels (1 for grayscale, 3 for RGB)
+    #   num_classes (int): Number of output classes
+    #   batch_size (int): Batch size (used for assertion checks)
+    #   img_size (tuple): (height, width) of input images
+    #   dropout (float): Dropout rate for decoder (default: 0.5)
+    def __init__(self, input_channels: int, num_classes: int, batch_size: int, img_size: tuple, dropout: float = 0.5) -> None:
+
         super().__init__()
+
         self.input_channels = input_channels
         self.batch_size = batch_size
         self.img_height, self.img_width = img_size
         self.num_classes = num_classes
         self.dropout = dropout
-        
-        # Define convolutional blocks = encoder
-        # Conv block 1:
-        # 512x512 -> 256x256
+
+        # Define convolutional blocks (encoder)
+        # Conv block 1: 512x512 -> 256x256
         self.conv_block_1 = self._cnn_block(self.input_channels, 64, first_cnn_block=True)
-        # Conv block 2:
-        # 256x256 -> 128x128
+        # Conv block 2: 256x256 -> 128x128
         self.conv_block_2 = self._cnn_block(64, 128, first_cnn_block=False)
-        # Conv block 3:
-        # 128x128 -> 64x64
+        # Conv block 3: 128x128 -> 64x64
         self.conv_block_3 = self._cnn_block(128, 256, first_cnn_block=False)
-        # Conv block 4:
-        # 64x64 -> 32x32
+        # Conv block 4: 64x64 -> 32x32
         self.conv_block_4 = self._cnn_block(256, 512, first_cnn_block=False)
-        # Conv block 5:
-        # 32x32 -> 16x16
+        # Conv block 5: 32x32 -> 16x16
         self.conv_block_5 = self._cnn_block(512, 512, first_cnn_block=False)
-        # Conv block 6:
-        # 16x16 -> 8x8
+        # Conv block 6: 16x16 -> 8x8
         self.conv_block_6 = self._cnn_block(512, 512, first_cnn_block=False)
-        
-        # Define decoder
-        # self.decoder = self._decoder_1(in_features=32768, out_features=self.num_classes)
+
+        # Define decoder (using decoder_2 by default)
         self.decoder = self._decoder_2(in_features=512, out_features=self.num_classes)
-   
+
 
     #############################################################################################################
-    # METHODS:
-    
-    def _cnn_block(        
-            self,
-            in_channels,
-            out_channels,
-            kernel_size=3,
-            stride=1,
-            padding=1,
-            first_cnn_block = False):
+    # METHODS
 
+    # Create a convolutional block with Conv2d, BatchNorm2d, ReLU, and MaxPool2d.
+    # Args:
+    #   in_channels (int): Number of input channels
+    #   out_channels (int): Number of output channels
+    #   kernel_size (int): Kernel size (default: 3)
+    #   stride (int): Stride (default: 1)
+    #   padding (int): Padding (default: 1)
+    #   first_cnn_block (bool): Unused, kept for compatibility
+    # Returns:
+    #   nn.Sequential: The convolutional block
+    def _cnn_block(
+        self,
+        in_channels: int,
+        out_channels: int,
+        kernel_size: int = 3,
+        stride: int = 1,
+        padding: int = 1,
+        first_cnn_block: bool = False
+    ) -> nn.Sequential:
         return nn.Sequential(
             nn.Conv2d(in_channels, out_channels, kernel_size, stride, padding),
             nn.BatchNorm2d(out_channels),
@@ -54,8 +71,13 @@ class CustomCNN(nn.Module):
             nn.MaxPool2d(kernel_size=(2, 2))
         )
 
-    def _decoder_1(self, in_features, out_features):  
-        
+    # Decoder with fully connected layers (original implementation).
+    # Args:
+    #   in_features (int): Number of input features
+    #   out_features (int): Number of output features (classes)
+    # Returns:
+    #   nn.Sequential: The decoder network
+    def _decoder_1(self, in_features: int, out_features: int) -> nn.Sequential:
         return nn.Sequential(
             nn.Flatten(),
             nn.Linear(in_features=in_features, out_features=4096),
@@ -64,80 +86,69 @@ class CustomCNN(nn.Module):
             nn.Linear(in_features=4096, out_features=512),
             nn.ReLU(),
             nn.Dropout(self.dropout),
-            # Classifier
             nn.Linear(in_features=512, out_features=out_features),
-        )  
-    
-    def _decoder_2(self, in_features, out_features):  
-        
+        )
+
+    # Decoder with 1x1 convolution and global average pooling.
+    # More parameter-efficient than decoder_1.
+    # Args:
+    #   in_features (int): Number of input channels (feature maps)
+    #   out_features (int): Number of output features (classes)
+    # Returns:
+    #   nn.Sequential: The decoder network
+    def _decoder_2(self, in_features: int, out_features: int) -> nn.Sequential:
         return nn.Sequential(
             # 1x1 convolution to reduce feature maps to number of classes
             nn.Conv2d(in_features, out_features, 1, 1, 0, bias=False),
-            # https://discuss.pytorch.org/t/global-average-pooling-in-pytorch/6721/4
-            # https://blog.paperspace.com/global-pooling-in-convolutional-neural-networks/
-            # Global average pooling: 8 as the size of the last feature maps is 8x8 
+            # Global average pooling (kernel size = 8 for 8x8 feature maps)
             nn.AvgPool2d(8),
-        )  
+        )
 
     #############################################################################################################
-    # FORWARD:       
+    # FORWARD
 
+    # Forward pass through the custom CNN.
+    # Args:
+    #   x (torch.Tensor): Input tensor of shape (batch_size, channels, height, width)
+    # Returns:
+    #   torch.Tensor: Output logits of shape (batch_size, num_classes)
     def forward(self, x):
-        # print(x.shape)
-        assert (x.shape[1] == self.input_channels and 
-                x.shape[2] == self.img_height and 
-                x.shape[3] == self.img_width)
-        
-        # ENCODER
-        # Conv block 1:
-        # 512x512 -> 256x256
-        x = self.conv_block_1(x)
-        assert (x.shape[1] == 64 and 
-                x.shape[2] == 256 and 
-                x.shape[3] == 256)
-        # Conv block 2:
-        # 256x256 -> 128x128
-        x = self.conv_block_2(x)
-        assert (x.shape[1] == 128 and 
-                x.shape[2] == 128 and 
-                x.shape[3] == 128)
-        # Conv block 3:
-        # 128x128 -> 64x64
-        x = self.conv_block_3(x)
-        assert (x.shape[1] == 256 and 
-                x.shape[2] == 64 and 
-                x.shape[3] == 64)
-        # Conv block 4:
-        # 64x64 -> 32x32
-        x = self.conv_block_4(x)
-        assert (x.shape[1] == 512 and 
-                x.shape[2] == 32 and 
-                x.shape[3] == 32)
-        # Conv block 5:
-        # 32x32 -> 16x16
-        x = self.conv_block_5(x)
-        assert (x.shape[1] == 512 and 
-                x.shape[2] == 16 and 
-                x.shape[3] == 16)
-        # Conv block 6:
-        # 16x16 -> 8x8
-        x = self.conv_block_6(x) 
-        assert (x.shape[1] == 512 and 
-                x.shape[2] == 8 and 
-                x.shape[3] == 8)
-        
-        # DECODER
-        x = self.decoder(x) 
-        # print(x.shape)
-        #######################################################################################################
-        # Line specific for decoder_2
-        # Reshapes the tensor from the global average pooling layer [batch_size, 2, 1, 1]
-        # to the desired output tensor [batch size, 2]
-        # x = x.view(-1, 2 * 1 * 1) -> better:
-        x = x.view(x.size(0), -1)  # Flatten all except batch dim
-        #######################################################################################################
-        # print(x.shape)
+        # Input validation
+        assert x.shape[1] == self.input_channels, f"Expected {self.input_channels} channels, got {x.shape[1]}"
+        assert x.shape[2] == self.img_height, f"Expected height {self.img_height}, got {x.shape[2]}"
+        assert x.shape[3] == self.img_width, f"Expected width {self.img_width}, got {x.shape[3]}"
 
-        assert (x.shape[1] == self.num_classes)
+        # ENCODER
+        # Conv block 1: 512x512 -> 256x256
+        x = self.conv_block_1(x)
+        assert x.shape[1] == 64 and x.shape[2] == 256 and x.shape[3] == 256
+
+        # Conv block 2: 256x256 -> 128x128
+        x = self.conv_block_2(x)
+        assert x.shape[1] == 128 and x.shape[2] == 128 and x.shape[3] == 128
+
+        # Conv block 3: 128x128 -> 64x64
+        x = self.conv_block_3(x)
+        assert x.shape[1] == 256 and x.shape[2] == 64 and x.shape[3] == 64
+
+        # Conv block 4: 64x64 -> 32x32
+        x = self.conv_block_4(x)
+        assert x.shape[1] == 512 and x.shape[2] == 32 and x.shape[3] == 32
+
+        # Conv block 5: 32x32 -> 16x16
+        x = self.conv_block_5(x)
+        assert x.shape[1] == 512 and x.shape[2] == 16 and x.shape[3] == 16
+
+        # Conv block 6: 16x16 -> 8x8
+        x = self.conv_block_6(x)
+        assert x.shape[1] == 512 and x.shape[2] == 8 and x.shape[3] == 8
+
+        # DECODER
+        x = self.decoder(x)
+
+        # Reshape from [batch_size, num_classes, 1, 1] to [batch_size, num_classes]
+        x = x.view(x.size(0), -1)
+
+        assert x.shape[1] == self.num_classes
 
         return x
