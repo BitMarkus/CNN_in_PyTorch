@@ -24,7 +24,8 @@ class ClassAnalyzer:
     #   device (torch.device): Device to run predictions on
     def __init__(self, device: torch.device) -> None:
         self.device = device
-        self.pth_prediction = setting['pth_prediction'].resolve()
+        self.pth_input = setting['pth_input'].resolve()
+        self.pth_output = setting['pth_output'].resolve()
         self.pth_checkpoint = setting['pth_checkpoint'].resolve()
         self.classes = setting['classes']
 
@@ -369,7 +370,7 @@ class ClassAnalyzer:
                 }
             }
 
-        json_path = self.pth_prediction / f"logit_statistics_{self.loaded_checkpoint_name}.json"
+        json_path = self.pth_output / f"logit_statistics_{self.loaded_checkpoint_name}.json"
         with open(json_path, 'w') as f:
             json.dump(logit_stats, f, indent=2)
 
@@ -385,10 +386,10 @@ class ClassAnalyzer:
             print("WARNING: Using untrained weights!")
             self.loaded_checkpoint_name = "untrained"
 
-        all_folders = [d.name for d in self.pth_prediction.iterdir() if d.is_dir()]
+        all_folders = [d.name for d in self.pth_input.iterdir() if d.is_dir()]
 
         if not all_folders:
-            print(f"No folders found in {self.pth_prediction}")
+            print(f"No folders found in {self.pth_input}")
             return None
 
         print(f"\nAnalyzing {len(all_folders)} folders...")
@@ -441,7 +442,7 @@ class ClassAnalyzer:
             return None
 
         df = pd.DataFrame(results)
-        output_path = self.pth_prediction / f"results_{self.loaded_checkpoint_name}.csv"
+        output_path = self.pth_output / f"results_{self.loaded_checkpoint_name}.csv"
         df.to_csv(output_path, index=False)
         print(f"\n{'='*60}")
         print(f"Saved results to: {output_path}")

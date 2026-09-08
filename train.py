@@ -8,6 +8,7 @@
 from pathlib import Path
 from datetime import datetime
 import json
+import shutil
 # ===== Third-Party Imports =====
 import torch
 from torch import nn
@@ -48,14 +49,35 @@ class Train():
         self.cnn = cnn_wrapper.model
         self.dataset_idx = dataset_idx
 
-        # Generate logs subfolder name for this run
+        # Generate timestamp for this training run
         if self.dataset_idx is not None:
+            # Cross-validation: use dataset index as folder name
             self.timestamp = f"ds{self.dataset_idx:02d}"
+            # For cross-validation, keep the old behavior (checkpoints stay in dataset folder)
+            self.train_output_dir = None
+            self.checkpoint_dir = None
+            self.plot_dir = None
+            self.log_dir = Path("logs") / self.timestamp
         else:
-            self.timestamp = datetime.now().strftime('%Y%m%d-%H%M%S')
+            # Single training: create timestamped folder in output/train/
+            self.timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            self.train_output_dir = setting['pth_output'] / "train" / self.timestamp
+            self.train_output_dir.mkdir(parents=True, exist_ok=True)
+
+            # Create subdirectories
+            self.checkpoint_dir = self.train_output_dir / "checkpoints"
+            self.checkpoint_dir.mkdir(exist_ok=True)
+            self.plot_dir = self.train_output_dir / "plots"
+            self.plot_dir.mkdir(exist_ok=True)
+            self.log_dir = self.train_output_dir / "logs"
+            self.log_dir.mkdir(exist_ok=True)
+
+            # Copy settings file for reproducibility
+            self._copy_settings_file(self.train_output_dir)
+
+            print(f"\n📁 Training results will be saved to: {self.train_output_dir}")
 
         # Initialize TensorBoard writer
-        self.log_dir = Path("logs") / self.timestamp
         self.writer = SummaryWriter(str(self.log_dir))
 
         # Create directory for saving per-epoch probability data
@@ -228,6 +250,78 @@ class Train():
 
     #############################################################################################################
     # METHODS
+
+    # Save training examples to the training output directory.
+    # This provides a quick visual sanity check of the training data.
+    # Args:
+    #   output_dir (Path): Directory to save the examples
+    #   num_images (int): Number of images to display
+    #   rows (int): Number of rows in the grid
+    #   cols (int): Number of columns in the grid
+    #   figsize (tuple): Figure size in inches
+    def _save_training_examples(
+        self,
+        output_dir: Path,
+        num_images: int = 25,
+        rows: int = 5,
+        cols: int = 5,
+        figsize: tuple = (12, 12)
+    ) -> None:
+        try:
+            # Get a batch of images from the training loader
+            data_iter = iter(self.ds_train)
+            images, _ = next(data_iter)
+
+            # If batch_size < num_images, pad with empty tensors
+            if images.shape[0] < num_images:
+                empty_images = torch.zeros((num_images - images.shape[0], *images.shape[1:]))
+                images = torch.cat([images, empty_images], dim=0)
+            else:
+                images = images[:num_images]
+
+            # Denormalize images back to [0,1] range for visualization
+            if self.device.type == 'cuda':
+                images = images.cpu()
+
+            if self.cnn_wrapper.input_channels == 1:
+                # Grayscale: mean=0.5, std=0.5
+                images = images * 0.5 + 0.5
+            else:
+                # RGB: ImageNet stats
+                mean = torch.tensor([0.485, 0.456, 0.406]).view(1, 3, 1, 1)
+                std = torch.tensor([0.229, 0.224, 0.225]).view(1, 3, 1, 1)
+                images = images * std + mean
+
+            # Create grid
+            import torchvision.utils as vutils
+            grid = vutils.make_grid(images, nrow=cols, padding=2, normalize=False)
+
+            # Plot
+            plt.figure(figsize=figsize)
+            if self.cnn_wrapper.input_channels == 1:
+                plt.imshow(grid[0], cmap='gray')
+            else:
+                plt.imshow(grid.permute(1, 2, 0))
+            plt.axis('off')
+            plt.title("Training Image Examples")
+
+            plt.tight_layout()
+            plt.savefig(str(output_dir / "training_examples.png"), bbox_inches='tight', dpi=300)
+            plt.close()
+
+            print(f"✓ Training examples saved to: {output_dir / 'training_examples.png'}")
+        except Exception as e:
+            print(f"⚠️  Could not save training examples: {e}")
+
+    # Copy the settings file to the training output directory for reproducibility.
+    # Args:
+    #   output_dir (Path): The training output directory
+    def _copy_settings_file(self, output_dir: Path) -> None:
+        settings_src = Path(__file__).parent / "settings.py"
+        settings_dst = output_dir / "settings_copy.py"
+        if settings_src.exists():
+            shutil.copy2(settings_src, settings_dst)
+            print(f"✓ Settings file copied to: {settings_dst}")
 
     # Calculate the composite score for checkpoint selection.
     # Formula: Composite = Overall_Accuracy - penalty_weight * (Standard_Deviation_of_Class_Accuracies)
@@ -455,10 +549,9 @@ class Train():
     # Generate metrics plot at the end of training.
     # Args:
     #   history (dict): Training history
-    #   plot_path (Path): Directory to save the plot
     #   show_plot (bool): If True, display the plot
     #   save_plot (bool): If True, save the plot to disk
-    def _plot_metrics(self, history: dict, plot_path: Path, show_plot: bool = True, save_plot: bool = True) -> None:
+    def _plot_metrics(self, history: dict, show_plot: bool = True, save_plot: bool = True) -> None:
         plt.figure(figsize=(24, 12))
 
         # 1. Accuracy Plot
@@ -518,7 +611,7 @@ class Train():
         plt.tight_layout()
         if save_plot:
             weight_suffix = "_weighted" if self.use_weighted_loss else "_standard"
-            plt.savefig(str(plot_path / f"train_metrics{weight_suffix}"), bbox_inches='tight', dpi=300)
+            plt.savefig(str(self.plot_dir / f"train_metrics{weight_suffix}"), bbox_inches='tight', dpi=300)
             plt.close()
         if show_plot:
             plt.show()
@@ -574,11 +667,29 @@ class Train():
 
     # Main training loop.
     # Args:
-    #   chckpt_pth (Path): Directory to save checkpoints
-    #   plot_pth (Path): Directory to save plots
+    #   chckpt_pth (Path, optional): Directory to save checkpoints. Required for cross-validation.
+    #   plot_pth (Path, optional): Directory to save plots. Required for cross-validation.
     # Returns:
     #   dict: Training history
-    def train(self, chckpt_pth: Path, plot_pth: Path) -> dict:
+    def train(self, chckpt_pth: Path = None, plot_pth: Path = None) -> dict:
+
+        # For single training: use pre-created directories
+        if chckpt_pth is None and self.dataset_idx is None:
+            chckpt_pth = self.checkpoint_dir
+            plot_pth = self.plot_dir
+
+        # For cross-validation: chckpt_pth and plot_pth should be provided
+        if chckpt_pth is None or plot_pth is None:
+            raise ValueError("checkpoint and plot paths must be provided for cross-validation")
+
+        # Set the paths for this training run
+        self.checkpoint_dir = chckpt_pth
+        self.plot_dir = plot_pth
+
+        # For single training: save training examples
+        if self.dataset_idx is None:
+            self._save_training_examples(self.plot_dir)       
+
         # Initialize metrics storage
         history = {
             "train_acc": [], "train_loss": [],
@@ -906,7 +1017,7 @@ class Train():
 
                 checkpoint_name = f"ckpt_{pretrained_str}_{model_name}_e{epoch+1:02d}_bal{balanced_accuracy:.3f}_comp{composite_score:.3f}{dataset_suffix}"
 
-                checkpoint_path = chckpt_pth / f"{checkpoint_name}.pt"
+                checkpoint_path = self.checkpoint_dir / f"{checkpoint_name}.pt"
 
                 torch.save({
                     'epoch': epoch,
@@ -924,7 +1035,7 @@ class Train():
                 fn.plot_confusion_matrix(
                     {"y": all_labels_np, "y_hat": all_preds_np},
                     self.classes,
-                    plot_pth,
+                    self.plot_dir,
                     chckpt_name=val_cm_filename,
                     show_plot=False,
                     save_plot=True
@@ -933,7 +1044,7 @@ class Train():
                 fn.save_confusion_matrix_results(
                     {"y": all_labels_np, "y_hat": all_preds_np},
                     self.classes,
-                    plot_pth,
+                    self.plot_dir,
                     chckpt_name=val_cm_filename
                 )
 
@@ -949,7 +1060,7 @@ class Train():
                     'per_class_accuracy': {cls: float(acc) for cls, acc in class_accuracies.items()},
                 }
 
-                with open(plot_pth / f"{val_cm_filename}_roc_pr.json", 'w') as f:
+                with open(self.plot_dir / f"{val_cm_filename}_roc_pr.json", 'w') as f:
                     json.dump(roc_pr_data, f, indent=2)
 
                 print(f"✓ Model saved! Epoch {epoch+1}")
@@ -985,6 +1096,6 @@ class Train():
 
         # Final cleanup and plotting
         self.writer.close()
-        self._plot_metrics(history, plot_pth, show_plot=False, save_plot=True)
+        self._plot_metrics(history, show_plot=False, save_plot=True)
 
         return history

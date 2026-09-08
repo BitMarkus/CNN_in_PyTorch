@@ -25,7 +25,7 @@ class FIDCalculator:
 
     # Initialize the FID (Fréchet Inception Distance) calculator.
     # Computes FID scores between a reference folder and all other folders
-    # in the prediction directory.
+    # in the input directory.
     # Args:
     #   device (torch.device): Device to run feature extraction on
     #   reference_folder (str, optional): Name of the reference folder
@@ -35,7 +35,8 @@ class FIDCalculator:
         self.reference_folder = reference_folder
 
         # Settings parameters
-        self.prediction_folder = setting['pth_prediction'].resolve()
+        self.pth_input = setting['pth_input'].resolve()
+        self.pth_output = setting['pth_output'].resolve()
         self.num_channels = setting['img_channels']
         self.batch_size = setting['fid_batch_size']
         self.balance_samples = setting['fid_balance_samples']
@@ -50,18 +51,18 @@ class FIDCalculator:
     #############################################################################################################
     # METHODS
 
-    # Validate folders in the prediction directory and identify reference folder.
+    # Validate folders in the input directory and identify reference folder.
     # Returns:
     #   bool: True if validation succeeded, False otherwise
     def validate_folders(self) -> bool:
-        if not self.prediction_folder.exists():
-            print(f"Error: Prediction folder '{self.prediction_folder}' does not exist.")
+        if not self.pth_input.exists():
+            print(f"Error: Input folder '{self.pth_input}' does not exist.")
             return False
 
-        subdirs = [d for d in self.prediction_folder.iterdir() if d.is_dir()]
+        subdirs = [d for d in self.pth_input.iterdir() if d.is_dir()]
 
         if len(subdirs) < 2:
-            print(f"Error: Expected at least 2 folders in '{self.prediction_folder}', found {len(subdirs)}")
+            print(f"Error: Expected at least 2 folders in '{self.pth_input}', found {len(subdirs)}")
             print(f"Found folders: {[d.name for d in subdirs]}")
             return False
 
@@ -322,12 +323,15 @@ class FIDCalculator:
 
         return self.fid_scores
 
-    # Save FID results to a file in the prediction folder.
+    # Save FID results to a file in the output folder.
     def save_results(self) -> None:
         self.results['timestamp'] = datetime.now().isoformat()
         self.results['device'] = str(self.device)
 
-        text_file = self.prediction_folder / "fid_results.txt"
+        # Create output directory if it doesn't exist
+        self.pth_output.mkdir(parents=True, exist_ok=True)
+
+        text_file = self.pth_output / "fid_results.txt"
         with open(text_file, 'w') as f:
             f.write("FID Score Results\n")
             f.write("=================\n\n")

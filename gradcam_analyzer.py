@@ -30,7 +30,8 @@ class GradCAMAnalyzer:
         self.device = device
 
         # Settings from configuration
-        self.pth_prediction = setting['pth_prediction']
+        self.pth_input = setting['pth_input']
+        self.pth_output = setting['pth_output']
         self.pth_checkpoint = setting['pth_checkpoint']
         self.classes = setting['classes']
         self.img_channels = setting['img_channels']
@@ -256,9 +257,9 @@ class GradCAMAnalyzer:
             img_np = image.permute(1, 2, 0).cpu().numpy()
 
         if self.selected_class_name:
-            output_folder = self.pth_prediction / f"{img_path.parent.name}_gradcam_{self.selected_class_name}"
+            output_folder = self.pth_output / f"{img_path.parent.name}_gradcam_{self.selected_class_name}"
         else:
-            output_folder = self.pth_prediction / f"{img_path.parent.name}_gradcam"
+            output_folder = self.pth_output / f"{img_path.parent.name}_gradcam"
         output_folder.mkdir(exist_ok=True, parents=True)
 
         if self.export_only_overlay:
@@ -348,11 +349,11 @@ class GradCAMAnalyzer:
                     print(f"\nError processing {img_path.name}: {str(e)}")
                     continue
 
-    # Verify folder structure in the prediction directory.
+    # Verify folder structure in the input directory.
     def verify_folder_structure(self) -> None:
         print("\nFolder Structure Verification:")
         for class_idx, class_name in enumerate(self.classes):
-            class_path = self.pth_prediction / class_name
+            class_path = self.pth_input / class_name
             if not class_path.exists():
                 print(f"WARNING: Missing folder for class {class_name}")
                 continue

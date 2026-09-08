@@ -20,7 +20,6 @@ import sklearn
 from settings import setting
 from dataset import Dataset
 
-
 class DimRed:
 
     #############################################################################################################
@@ -37,7 +36,8 @@ class DimRed:
 
         # Settings parameters
         self.classes = setting['classes']
-        self.pth_prediction = Path(setting['pth_prediction'])
+        self.pth_input = Path(setting['pth_input'])
+        self.pth_output = Path(setting['pth_output'])
         self.pth_checkpoint = Path(setting['pth_checkpoint'])
 
         # Group settings
@@ -126,22 +126,22 @@ class DimRed:
     #############################################################################################################
     # METHODS
 
-    # Automatically set up group mapping based on folder structure in predictions folder.
+    # Automatically set up group mapping based on folder structure in input folder.
     def _setup_auto_group_mapping(self) -> None:
-        if not self.pth_prediction.exists():
-            print(f"Warning: Predictions directory {self.pth_prediction} does not exist for auto group detection")
+        if not self.pth_input.exists():
+            print(f"Warning: Input directory {self.pth_input} does not exist for auto group detection")
             self.group_mapping = {}
             return
 
         self.group_mapping = {}
 
-        for folder_name in os.listdir(self.pth_prediction):
-            folder_path = self.pth_prediction / folder_name
+        for folder_name in os.listdir(self.pth_input):
+            folder_path = self.pth_input / folder_name
             if folder_path.is_dir():
                 label_val = len(self.group_mapping)
                 self.group_mapping[folder_name] = (folder_name, label_val)
 
-        print(f"Auto-detected {len(self.group_mapping)} groups in predictions folder: {list(self.group_mapping.keys())}")
+        print(f"Auto-detected {len(self.group_mapping)} groups in input folder: {list(self.group_mapping.keys())}")
 
     # Load model weights from a selected checkpoint.
     # Handles both direct state dict and wrapped format from train.py.
@@ -407,7 +407,7 @@ class DimRed:
         embedding = reducer.fit_transform(scaled_features)
         print(f"{method} completed in {time.time()-start_time:.2f} seconds")
 
-        output_dir = self.pth_prediction / "dim_red"
+        output_dir = self.pth_output / "dim_red"
         output_dir.mkdir(exist_ok=True, parents=True)
 
         self._export_embedding_data(method, embedding, labels, output_dir)
@@ -566,5 +566,5 @@ class DimRed:
         torch.cuda.empty_cache()
         print(f"\n{'='*60}")
         print("All reductions completed!")
-        print(f"Output directory: {self.pth_prediction / 'dim_red'}")
+        print(f"Output directory: {self.pth_output / 'dim_red'}")
         print(f"{'='*60}\n")

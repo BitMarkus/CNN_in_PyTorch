@@ -46,13 +46,13 @@ def main() -> None:
         print("3) Load Training Data")
         print("4) Train Network")
         print("5) Load Weights")
-        print("6) Predict Class from Predict Folder")
+        print("6) Predict Class from Input Folder")
         print("7) Dataset Generator (ACV)")
         print("8) Automatic Cross Validation (ACV)")
         print("9) Confidence Analyzer (based on ACV)")
-        print("10) GradCAM Analyzer (for DenseNet-121)")
+        print("10) GradCAM Analyzer")
         print("11) Class Sorter")
-        print("12) Dimension reduction (for DenseNet-121)")
+        print("12) Dimension Reduction")
         print("13) FID Calculator")
         print("14) Exit Program")
         menu1 = int(fn.input_int("Please choose: "))
@@ -120,15 +120,6 @@ def main() -> None:
                 print("Training and validation datasets successfully loaded.")
                 print(f"Number training images/batches: {ds.num_train_img}/{ds.num_train_batches}")
                 print(f"Number validation images/batches: {ds.num_val_img}/{ds.num_val_batches}")
-                # Save training examples
-                ds.show_training_examples(
-                    setting["pth_plots"],
-                    num_images=25,
-                    rows=5,
-                    cols=5,
-                    figsize=(12, 12)
-                )
-                print(f"Training image examples were saved to {str(setting['pth_plots'])}.")
 
         #################
         # Train Network #
@@ -145,7 +136,7 @@ def main() -> None:
                 # Create a training object
                 train = Train(cnn_wrapper, ds, device)
                 # Train network
-                train.train(setting["pth_checkpoint"], setting["pth_plots"])
+                train.train()
                 print("\nTraining finished!")
 
         ################
@@ -165,7 +156,9 @@ def main() -> None:
         ############################
 
         elif menu1 == 6:
-            print("\n:PREDICT CLASS FROM PREDICTION FOLDER:")
+            print("\n:PREDICT CLASS FROM INPUT FOLDER:")
+            print("  Place images to classify in the input/ folder")
+            print("  Results will be saved to output/")
 
             analyzer = ClassAnalyzer(device)
             analyzer.analyze_prediction_folder()
@@ -203,6 +196,7 @@ def main() -> None:
 
         elif menu1 == 8:
             print("\n:AUTOMATIC CROSS VALIDATION:")
+            print("  Results will be saved to output/cross_validation/")
             acv = AutoCrossValidation(device)
             acv()
 
@@ -212,6 +206,8 @@ def main() -> None:
 
         elif menu1 == 9:
             print("\n:CONFIDENCE ANALYZER:")
+            print("  Input: output/cross_validation/")
+            print("  Output: output/conf_analyzer/")
             confa = ConfidenceAnalyzer(device)
             confa()
 
@@ -220,7 +216,9 @@ def main() -> None:
         ####################
 
         elif menu1 == 10:
-            print("\n:GradCAM ANALYZER (for DenseNet-121):")
+            print("\n:GradCAM ANALYZER:")
+            print("  Input: input/ (place images to analyze)")
+            print("  Output: output/gradcam/")
             gradcam = GradCAMAnalyzer(device)
             gradcam()
 
@@ -230,6 +228,8 @@ def main() -> None:
 
         elif menu1 == 11:
             print("\n:CLASS SORTER:")
+            print("  Input: input/ (place images to sort)")
+            print("  Output: output/class_sorter/")
             # Create and run sorter (all configuration is loaded from settings.py)
             sorter = ClassSorter(device)
             output_dir = sorter.run()
@@ -240,16 +240,20 @@ def main() -> None:
 
         elif menu1 == 12:
             print("\n:DIMENSION REDUCTION:")
+            print("  Input: input/ (place images in folders or directly)")
+            print("  Output: output/dim_red/")
             # DimRed simple version
             dimred = DimRed(device)
             dimred()
 
         ##################
-        # FID calculator #
+        # FID Calculator #
         ##################
 
         elif menu1 == 13:
             print("\n:FID CALCULATOR:")
+            print("  Input: input/ (place folders with images to compare)")
+            print("  Output: output/fid/")
             fid_score_calc = FIDCalculator(device)
             fid_score_calc()
 

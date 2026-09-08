@@ -373,24 +373,23 @@ setting = {
     # PATHS #
     #########
 
+    # ===== Training & Validation =====
     "pth_data": BASE_DIR / "data/",
     "pth_train": BASE_DIR / "data/train/",
     "pth_test": BASE_DIR / "data/test/",
-    "pth_checkpoint": BASE_DIR / "checkpoints/",
-    "pth_plots": BASE_DIR / "plots/",
-    "pth_prediction": BASE_DIR / "prediction/",
-    # Dataset generator
-    "pth_ds_gen_input": BASE_DIR / "dataset_gen/input_mixed/",
+
+    # ===== Dataset Generator =====
     "pth_ds_gen_input_synthetic": BASE_DIR / "dataset_gen/input_synthetic/",
     "pth_ds_gen_input_real": BASE_DIR / "dataset_gen/input_real/",
     "pth_ds_gen_input_mixed": BASE_DIR / "dataset_gen/input_mixed/",
     "pth_ds_gen_output": BASE_DIR / "dataset_gen/output/",
-    # Automatic cross validation
-    "pth_acv_results": BASE_DIR / "acv_results/",
-    # Confidence analyzer results
-    "pth_conf_analizer_results": BASE_DIR / "ca_results/",
-    # Class sorter
-    # Input dir: folder "prediction"
-    # Output dir:
-    "pth_sort_output": BASE_DIR / "sort_output/",
+
+    # ===== Input Folder (Analysis Inputs) =====
+    "pth_input": BASE_DIR / "input/",
+    # All analysis inputs go directly into input/ (no subfolders)
+
+    # ===== Output Folder (Analysis Outputs) =====
+    "pth_output": BASE_DIR / "output/",
+    # All analysis outputs go into output/ with subfolders created by each script
+    # e.g., output/train/, output/cross_validation/, output/conf_analyzer/, etc.
 }

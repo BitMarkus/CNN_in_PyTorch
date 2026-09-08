@@ -33,10 +33,9 @@ class ConfidenceAnalyzer:
         self.device = device
 
         # Paths
-        self.pth_acv_results = Path(setting['pth_acv_results']).absolute()
+        self.pth_output = Path(setting['pth_output']).absolute()
         self.pth_ds_gen_input = Path(setting['pth_ds_gen_input_real']).absolute()
         self.pth_test = Path(setting['pth_test']).absolute()
-        self.pth_conf_analizer_results = Path(setting['pth_conf_analizer_results']).absolute()
 
         # Training data source configuration
         self.training_data_source = setting.get('train_data_source', 'mixed')
@@ -85,6 +84,9 @@ class ConfidenceAnalyzer:
 
         # Create required directories
         self.pth_test.mkdir(parents=True, exist_ok=True)
+
+        # Create output directory inside pth_output
+        self.pth_conf_analizer_results = self.pth_output / "conf_analyzer"
         self.pth_conf_analizer_results.mkdir(parents=True, exist_ok=True)
 
         # List of confidences for each testing for each image
@@ -99,6 +101,7 @@ class ConfidenceAnalyzer:
             print(f"  Checkpoint selection method: COMPOSITE SCORE (penalty_weight={self.penalty_weight}, min_class_acc_threshold={self.min_class_acc_threshold:.0%})")
         else:
             print(f"  Checkpoint selection method: {self.ckpt_select_method}")
+        print(f"  Output directory: {self.pth_conf_analizer_results}")
         print(f"  Mixed folder: {self.pth_ds_gen_input}")
         if self.pth_ds_gen_input_synthetic:
             print(f"  Synthetic folder: {self.pth_ds_gen_input_synthetic}")
@@ -161,13 +164,14 @@ class ConfidenceAnalyzer:
         composite_score = overall_accuracy - (penalty_weight * class_std)
         return composite_score, class_std, min_class_acc
 
-    # Get only dataset folders that exist in acv_results.
+    # Get only dataset folders that exist in the output/cross_validation directory.
     # Returns:
     #   dict: Dataset index -> {'test_wt': str, 'test_ko': str, 'dataset_idx': int}
     def _get_available_datasets(self) -> dict:
         datasets = {}
+        cross_val_dir = self.pth_output / "cross_validation"
         for idx, (wt, ko) in enumerate(product(self.wt_lines, self.ko_lines), 1):
-            dataset_path = self.pth_acv_results / f"dataset_{idx}"
+            dataset_path = cross_val_dir / f"dataset_{idx}"
             if dataset_path.exists():
                 datasets[idx] = {'test_wt': wt, 'test_ko': ko, 'dataset_idx': idx}
         return datasets
@@ -308,8 +312,9 @@ class ConfidenceAnalyzer:
     #   dict: Checkpoint name -> prediction results
     def _analyze_single_dataset(self, dataset_num: int, total_datasets: int) -> dict:
         dataset_results = {}
-        checkpoints_path = self.pth_acv_results / f"dataset_{dataset_num}" / 'checkpoints'
-        plots_path = self.pth_acv_results / f"dataset_{dataset_num}" / 'plots'
+        cross_val_dir = self.pth_output / "cross_validation"
+        checkpoints_path = cross_val_dir / f"dataset_{dataset_num}" / 'checkpoints'
+        plots_path = cross_val_dir / f"dataset_{dataset_num}" / 'plots'
 
         tqdm.write(f"\nLooking for {self.cm_source.upper()} confusion matrices in: {plots_path}")
 
@@ -481,6 +486,7 @@ class ConfidenceAnalyzer:
     # Args:
     #   results (dict): Dataset results
     def _build_image_history(self, results: dict) -> None:
+        cross_val_dir = self.pth_output / "cross_validation"
         for dataset_num, checkpoints in results.items():
             split_images, (split_count, other_count) = self._get_split_images(int(dataset_num))
             processed_images = 0
@@ -511,7 +517,8 @@ class ConfidenceAnalyzer:
     # Returns:
     #   tuple: (set_of_images, (split_count, other_count))
     def _get_split_images(self, dataset_num: int):
-        split_file = self.pth_acv_results / f"dataset_{dataset_num}" / "split_info.json"
+        cross_val_dir = self.pth_output / "cross_validation"
+        split_file = cross_val_dir / f"dataset_{dataset_num}" / "split_info.json"
         if not split_file.exists():
             tqdm.write(f"Dataset {dataset_num}: No split info found - will use all available images")
             return None, (0, 0)
@@ -720,7 +727,8 @@ class ConfidenceAnalyzer:
                 if epoch_num is None:
                     continue
 
-                plots_path = self.pth_acv_results / f"dataset_{dataset_num}" / 'plots'
+                cross_val_dir = self.pth_output / "cross_validation"
+                plots_path = cross_val_dir / f"dataset_{dataset_num}" / 'plots'
 
                 json_candidates = list(plots_path.glob(f"*_e{epoch_num:02d}_*_val_cm.json"))
                 if not json_candidates:
@@ -858,7 +866,8 @@ class ConfidenceAnalyzer:
         ds = Dataset()
         ds.load_test_dataset()
 
-        split_file = self.pth_acv_results / f"dataset_{dataset_num}" / "split_info.json"
+        cross_val_dir = self.pth_output / "cross_validation"
+        split_file = cross_val_dir / f"dataset_{dataset_num}" / "split_info.json"
         if not split_file.exists():
             return ds.ds_test
 

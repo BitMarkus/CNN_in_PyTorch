@@ -11,7 +11,6 @@ from train import Train
 from settings import setting
 import functions as fn
 
-
 class AutoCrossValidation:
 
     #############################################################################################################
@@ -30,13 +29,15 @@ class AutoCrossValidation:
         # Settings parameters
         self.wt_lines = setting['wt_lines']
         self.ko_lines = setting['ko_lines']
-        self.acv_results_dir = setting['pth_acv_results']
         self.data_dir = setting['pth_data']
         self.class_list = setting["classes"]
 
         # Validation split settings
         self.val_from_train_split = setting["ds_val_from_train_split"]
         self.val_from_test_split = setting["ds_val_from_test_split"]
+
+        # Output directory for cross-validation results
+        self.acv_results_dir = setting['pth_output'] / "cross_validation"
 
         # Objects
         self.ds_gen = DatasetGenerator(mode="acv")
@@ -149,7 +150,7 @@ class AutoCrossValidation:
 
     # Run the complete cross-validation.
     # Iterates over all WT/KO line combinations, trains a model on each combination,
-    # and saves results to the acv_results directory.
+    # and saves results to the output/cross_validation directory.
     def __call__(self) -> None:
         print("\nCleaning up old train and test data...")
         self.ds_gen.cleanup(self.data_dir)

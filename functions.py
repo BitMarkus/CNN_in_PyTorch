@@ -74,38 +74,35 @@ def check_int_range(var: int, min: int, max: int) -> bool:
 # Creates:
 #   - data/train/ with class subfolders
 #   - data/test/ with class subfolders
-#   - checkpoints/
-#   - plots/
-#   - prediction/
 #   - dataset_gen/input_synthetic/
 #   - dataset_gen/input_real/
 #   - dataset_gen/input_mixed/
 #   - dataset_gen/output/
+#   - input/ (all analysis inputs)
+#   - output/ (all analysis outputs)
 # Returns:
 #   bool: True if successful
 def create_prg_folders() -> bool:
-    # Create folder for training images with class subfolders
+    # Training and test folders
     train_base_pth = setting["pth_train"]
     train_base_pth.mkdir(parents=True, exist_ok=True)
     for class_name in setting["classes"]:
-        class_dir = train_base_pth / class_name
-        class_dir.mkdir(exist_ok=True)
+        (train_base_pth / class_name).mkdir(exist_ok=True)
 
-    # Create folder for testing images with class subfolders
     test_base_pth = setting["pth_test"]
     test_base_pth.mkdir(parents=True, exist_ok=True)
     for class_name in setting["classes"]:
-        class_dir = test_base_pth / class_name
-        class_dir.mkdir(exist_ok=True)
+        (test_base_pth / class_name).mkdir(exist_ok=True)
 
-    # Create other folders
-    setting["pth_checkpoint"].mkdir(parents=True, exist_ok=True)
-    setting["pth_plots"].mkdir(parents=True, exist_ok=True)
-    setting["pth_prediction"].mkdir(parents=True, exist_ok=True)
+    # Dataset generator folders
     setting["pth_ds_gen_input_synthetic"].mkdir(parents=True, exist_ok=True)
     setting["pth_ds_gen_input_real"].mkdir(parents=True, exist_ok=True)
     setting["pth_ds_gen_input_mixed"].mkdir(parents=True, exist_ok=True)
     setting["pth_ds_gen_output"].mkdir(parents=True, exist_ok=True)
+
+    # Input and Output Folders
+    setting["pth_input"].mkdir(parents=True, exist_ok=True)
+    setting["pth_output"].mkdir(parents=True, exist_ok=True)
 
     return True
 

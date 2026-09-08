@@ -55,8 +55,8 @@ class ClassSorter:
         self.logit_intervals = setting['sort_logit_intervals']
 
         # Paths
-        self.pth_prediction = setting['pth_prediction'].resolve()
-        self.sort_output_dir = setting['pth_sort_output'].resolve()
+        self.pth_input = setting['pth_input'].resolve()
+        self.pth_output = setting['pth_output'].resolve()
         self.pth_checkpoint = setting['pth_checkpoint'].resolve()
         self.classes = setting['classes']
         self.batch_size_pred = setting['sort_pred_batch_size']
@@ -202,11 +202,11 @@ class ClassSorter:
 
         known_classes_set = set(self.classes)
 
-        all_images = self._get_all_image_files_recursive(self.pth_prediction)
+        all_images = self._get_all_image_files_recursive(self.pth_input)
 
         for img_path in all_images:
             parent_folder = img_path.parent
-            folder_name = parent_folder.name if parent_folder != self.pth_prediction else None
+            folder_name = parent_folder.name if parent_folder != self.pth_input else None
 
             if folder_name and folder_name in known_classes_set:
                 true_class_mapping[str(img_path)] = folder_name
@@ -321,10 +321,10 @@ class ClassSorter:
         if not isinstance(self.rename_images, bool):
             raise ValueError(f"sort_rename_images must be boolean, got {type(self.rename_images)}")
 
-        if not self.pth_prediction.exists():
-            raise ValueError(f"Input directory does not exist: {self.pth_prediction}")
+        if not self.pth_input.exists():
+            raise ValueError(f"Input directory does not exist: {self.pth_input}")
 
-        self.sort_output_dir.mkdir(parents=True, exist_ok=True)
+        self.pth_output.mkdir(parents=True, exist_ok=True)
 
 
     # Set up input and output paths with timestamp for uniqueness.
@@ -350,7 +350,7 @@ class ClassSorter:
             else:
                 output_name += f"_top{self.selection_value}+logit{self.logit_threshold}"
 
-        self.output_dir = self.sort_output_dir / output_name / timestamp
+        self.output_dir = self.pth_output / output_name / timestamp
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
 
@@ -359,7 +359,7 @@ class ClassSorter:
         print(f"\n{'='*60}")
         print("CLASS SORTER - Configuration")
         print(f"{'='*60}")
-        print(f"Input directory: {self.pth_prediction}")
+        print(f"Input directory: {self.pth_input}")
         print(f"Output directory: {self.output_dir}")
         print(f"Selection mode: {self.selection_mode}")
         print(f"Selection value: {self.selection_value}")
@@ -1021,7 +1021,7 @@ class ClassSorter:
             'confidence_interval': [self.confidence_min, self.confidence_max] if self.selection_mode == 'interval' else None,
             'loaded_checkpoint': self.loaded_checkpoint_name,
             'classes': self.classes,
-            'input_directory': str(self.pth_prediction),
+            'input_directory': str(self.pth_input),
             'output_directory': str(self.output_dir),
             'total_processed': self.stats['total_processed'],
             'total_correct': self.stats['correct_predictions'],
@@ -1112,7 +1112,7 @@ class ClassSorter:
         with open(readme_path, 'w') as f:
             f.write("High-Confidence Image Selection for LoRA Training\n")
             f.write("=" * 60 + "\n\n")
-            f.write(f"Input Directory: {self.pth_prediction}\n")
+            f.write(f"Input Directory: {self.pth_input}\n")
             f.write(f"Output Directory: {self.output_dir}\n")
             f.write(f"Selection Mode: {self.selection_mode}\n")
             f.write(f"Selection Value: {self.selection_value}\n")
