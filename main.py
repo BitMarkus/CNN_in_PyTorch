@@ -7,6 +7,8 @@ from class_analyzer import ClassAnalyzer
 from gradcam_analyzer import GradCAMAnalyzer
 from utilities_menu import Utilities
 from cross_validation_menu import CrossValidationMenu
+from preprocessing_menu import PreprocessingMenu
+from export_plotting_menu import ExportPlottingMenu
 from settings import setting
 
 ###########
@@ -49,7 +51,9 @@ def main() -> None:
         print("8) GradCAM Analyzer")
         print("  ─── Tools ───")
         print("9) Utilities ↓")
-        print("10) Exit Program")
+        print("10) Preprocessing ↓")
+        print("11) Export & Plotting ↓")
+        print("12) Exit Program")
         menu1 = int(fn.input_int("Please choose: "))
 
         ######################
@@ -147,17 +151,17 @@ def main() -> None:
             else:
                 cnn_wrapper.load_checkpoint()
 
-        ########################
+        #########################
         # Cross Validation Menu #
-        ########################
+        #########################
 
         elif menu1 == 6:
             cv_menu = CrossValidationMenu()
             cv_menu.menu(device)
 
-        ############################
+        #############################
         # Predict from Input Folder #
-        ############################
+        #############################
 
         elif menu1 == 7:
             print("\n:PREDICT CLASS FROM INPUT FOLDER:")
@@ -178,19 +182,35 @@ def main() -> None:
             gradcam = GradCAMAnalyzer(device)
             gradcam()
 
-        ###############
-        # Utilities   #
-        ###############
+        ##############
+        # Utilities  #
+        ##############
 
         elif menu1 == 9:
             utilities = Utilities()
             utilities.menu()
 
+        #################
+        # Preprocessing #
+        #################
+
+        elif menu1 == 10:
+            preproc_menu = PreprocessingMenu()
+            preproc_menu.menu()
+
+        ######################
+        # Export & Plotting  #
+        ######################
+
+        elif menu1 == 11:
+            export_menu = ExportPlottingMenu()
+            export_menu.menu()
+
         ################
         # Exit Program #
         ################
 
-        elif menu1 == 10:
+        elif menu1 == 12:
             print("\nExit program...")
             break
 

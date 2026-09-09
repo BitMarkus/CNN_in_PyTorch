@@ -421,6 +421,374 @@ setting = {
     # Print progress messages
     "util_sort_seed_verbose": True,
 
+    ##########################
+    # PREPROCESSING SETTINGS #
+    ##########################
+
+    # CZI Export
+    # Number of tiles in the mosaic file in x and y direction
+    "preproc_num_tiles": {'x': 20, 'y': 26},
+    # Define sharpest plane of z-stack (None = auto-detect)
+    "preproc_sharpest_z_plane": None,
+    # Number of image channels: 1=grayscale, 3=RGB
+    "preproc_num_img_channels": 1,
+    # Scale factor when mosaic image is imported
+    "preproc_czi_import_scale": 1.0,
+    # Extension of a Carl Zeiss image file
+    "preproc_czi_img_ext": '.czi',
+    # Percentile normalization
+    "preproc_perc_min": 5.0,
+    "preproc_perc_max": 97.0,
+    # Define region for focus stacking
+    "preproc_focus_stacking_region": 5,
+    # Size of sliced images from original size
+    "preproc_slice_size": {'x': 1766, 'y': 1766},
+    # Size if resized slices for training
+    "preproc_slice_resize": {'x': 512, 'y': 512},
+
+    # Caption Generator
+    # Caption mode: "cell_line_only", "phenotype_only", or "both"
+    # cell_line_only: "KO_1096-01 cells, grayscale"
+    # phenotype_only: "knockout cells, grayscale"
+    # both: "KO_1096-01 knockout cells, grayscale"
+    "preproc_caption_mode": "phenotype_only",
+    # Overwrite existing caption files
+    "preproc_caption_overwrite": True,
+    # Cell line definitions
+    "preproc_caption_wt_lines": ["WT_1618-02", "WT_JG", "WT_JT", "WT_KM", "WT_MS"],
+    "preproc_caption_ko_lines": ["KO_1096-01", "KO_1618-01", "KO_BR2986", "KO_BR3075"],
+    # Image extensions to process
+    "preproc_caption_image_extensions": ['.png', '.jpg', '.jpeg', '.bmp', '.tiff', '.tif', '.webp'],
+
+    ##########################
+    # EXPORT & PLOTTING      #
+    ##########################
+
+    ### General Export Settings ###
+    # Mode for all export tools: 'auto' (auto-detect), 'crossval', or 'single'
+    # 'auto': Detects from folder structure (dsXX = crossval, timestamp = single)
+    # 'crossval': Forces cross-validation mode (expects dsXX folders)
+    # 'single': Forces single training mode (expects timestamp folders)
+    "export_mode": "auto",
+
+    ### Excel Exporter (extract_metrics_to_excel.py) ###
+    # Converts TensorBoard logs to Excel with charts
+
+    # Which epoch to use for ROC curves
+    # 'composite_score': Uses epoch with highest composite score from TensorBoard
+    # 'balanced_accuracy': Uses epoch with highest balanced accuracy
+    # 'last': Uses the last available epoch
+    # integer: Uses specific epoch number (1-indexed)
+    "export_excel_roc_epoch": "balanced_accuracy",
+    # Which epoch to use for Precision-Recall curves
+    # Same options as roc_epoch above
+    "export_excel_pr_epoch": "balanced_accuracy",
+
+
+    ### UMAP/t-SNE/PaCMAP Plotter (plot_umap_publication.py) ###
+    # Creates publication-ready plots from embedding CSV files
+
+    # Output format: 'png', 'tiff', 'svg', 'pdf'
+    # 'tiff': Recommended for print publications (600 DPI)
+    # 'png': Good for presentations, smaller file size
+    # 'svg'/'pdf': Vector graphics, editable in Illustrator/Corel Draw
+    "export_umap_format": "tiff",
+    # Resolution for raster formats (PNG, TIFF)
+    # 300: Minimum for presentations/posters
+    # 600: Recommended for print publications (Nature, Science, Cell)
+    # 1200: Extreme quality (very large files)
+    "export_umap_dpi": 600,
+    # Size of each point in the scatter plot (points = 1/72 inch)
+    # 1-5: Very small, good for massive datasets (>50k points)
+    # 10-20: Small, good for large datasets (10k-50k points)
+    # 30-50: Medium, good for medium datasets (1k-10k points)
+    # 80-150: Large, good for small datasets (<1k points)
+    # 30: 2,5-5,0 points
+    "export_umap_point_size": 30,
+    # Transparency of points (0.0 = fully transparent, 1.0 = fully opaque)
+    # For overlapping points, lower alpha reveals density patterns
+    # 0.3-0.5: Recommended for large datasets (overlapping points)
+    # 0.5-0.8: Good for medium datasets
+    # 0.9-1.0: Only for small datasets (<500 points)
+    "export_umap_point_alpha": 0.5,
+    # Show 95% confidence ellipses around each group
+    # True: Adds ellipses showing group distribution (good for presentations)
+    # False: Cleaner look (recommended for publications with many groups)
+    "export_umap_show_ellipses": False,
+    # Color palette for groups
+    # 'colorblind': Color-blind friendly (recommended for publications)
+    # 'jet': Classic rainbow (high contrast but not color-blind friendly)
+    # 'viridis': Modern, perceptually uniform
+    # 'plasma': Modern, perceptually uniform
+    # 'tab10': 10 distinct colors (good for up to 10 groups)
+    # 'tab20': 20 distinct colors (good for up to 20 groups)
+    # Any valid matplotlib colormap name
+    "export_umap_palette": "jet",
+    # Preserve data aspect ratio (True = 1:1, False = stretch to fit)
+    # True: Maintains the true shape of the embedding (recommended)
+    # False: Stretches to fill axes (can distort distances)
+    "export_umap_fixed_aspect": True,
+    # Height of the axes in inches (ALL plots have identical axes height)
+    # 4-6: Good for publications
+    # 6-8: Good for presentations
+    # 8-10: Good for posters
+    # Larger values = more detail, larger files
+    "export_umap_axes_height": 5.0,
+    # Show/hide legend
+    # True: Shows legend with group names
+    # False: Hides legend (useful if groups are labeled in the plot)
+    "export_umap_show_legend": True,
+    # Legend position
+    # 'inside': Places legend inside the plot area (recommended for small number of groups)
+    # 'outside': Places legend to the right of the plot (recommended for >8 groups)
+    # 'auto': Automatically chooses based on number of groups
+    "export_umap_legend_position": "outside",
+    # Size of legend markers (points)
+    # 30-50: Small legend markers
+    # 80-120: Medium legend markers (recommended)
+    # 150-200: Large legend markers
+    "export_umap_legend_marker_size": 100,
+    # Font family for all text
+    # 'Arial': Standard sans-serif (recommended for publications)
+    # 'Helvetica': Similar to Arial
+    # 'Times New Roman': Serif font (for some journals)
+    # 'DejaVu Sans': Open-source alternative
+    "export_umap_font_family": "Arial",
+    # Font size for axis labels (points)
+    # 12-16: Good for publications
+    # 18-24: Good for presentations
+    # 24-36: Good for posters
+    "export_umap_axis_label_size": 22,
+    # Font size for legend text (points)
+    # Same recommendations as axis_label_size
+    "export_umap_legend_font_size": 22,
+    # Font size for tick labels (axis numbers) (points)
+    # Same recommendations as axis_label_size
+    "export_umap_tick_label_size": 22,
+    # Show background grid
+    # True: Adds grid lines (helps readability)
+    # False: Clean background (minimalist)
+    "export_umap_show_grid": True,
+    # Grid line transparency (0.0 = invisible, 1.0 = solid)
+    # 0.2-0.4: Subtle grid (recommended)
+    # 0.5-0.8: More visible grid
+    "export_umap_grid_alpha": 0.3,
+    # Margins around the axes in inches
+    # Control spacing between axes and figure edges
+    "export_umap_left_margin": 1.2,         # Space for y-axis label and tick labels
+    "export_umap_right_margin": 1.0,        # Space on right side of axes
+    "export_umap_bottom_margin": 0.9,       # Space for x-axis label and tick labels
+    "export_umap_top_margin": 0.5,          # Space above axes
+    "export_umap_legend_margin_extra": 3.0, # Extra space for outside legend (right side)
+
+
+    ### Confusion Matrix Plotter (plot_conf_matrix_publication.py) ###
+    # Creates publication-ready confusion matrix plots from JSON files
+
+    # Output format: 'png', 'tiff', 'svg', 'pdf'
+    "export_cm_format": "tiff",
+    # Resolution for raster formats (PNG, TIFF)
+    # 300: Minimum for presentations
+    # 600: Recommended for print publications
+    "export_cm_dpi": 600,
+    # Normalization mode for the confusion matrix
+    # 'rows': Row-normalized (shows recall/TPR per class)
+    #        Each row sums to 1. Good for showing per-class accuracy.
+    # 'columns': Column-normalized (shows precision per class)
+    #           Each column sums to 1. Good for showing prediction reliability.
+    # 'none': Raw counts (no normalization)
+    #        Good for debugging or small datasets.
+    "export_cm_normalize": "rows",
+    # Show raw counts in cell annotations alongside normalized values
+    # Example: "0.750\n(150)" shows 75% normalized with 150 raw count
+    # True: Shows both values (recommended for publications)
+    # False: Shows only normalized values
+    "export_cm_show_counts": True,
+    # Combined mode: Show raw + normalized side-by-side
+    # True: Two matrices side by side (raw and normalized)
+    # False: Single matrix (normalized as selected)
+    "export_cm_combined": False,
+    # Use fixed axes height for all plots
+    # True: All plots have identical axes height (recommended for consistency)
+    # False: Uses manual figsize
+    "export_cm_use_fixed_height": True,
+    # Height of the axes in inches (when use_fixed_height = True)
+    # 4-6: Good for small matrices (<10 classes)
+    # 6-8: Good for medium matrices (10-20 classes)
+    # 8-12: Good for large matrices (>20 classes)
+    "export_cm_fixed_height": 6.0,
+    # Colormap for the heatmap
+    # 'Blues': Classic blue gradient (recommended)
+    # 'Reds': Red gradient
+    # 'Greens': Green gradient
+    # 'viridis': Modern perceptually uniform
+    # 'plasma': Modern perceptually uniform
+    # Any valid matplotlib colormap name
+    "export_cm_cmap": "Blues",
+    # Show/hide plot title
+    # True: Shows title with overall accuracy
+    # False: No title (cleaner)
+    "export_cm_show_title": True,
+    # Show/hide axis labels
+    # True: Shows "Predicted Class" and "True Class"
+    # False: No axis labels (cleaner)
+    "export_cm_show_axis_labels": True,
+    # Show/hide colorbar
+    # True: Shows colorbar indicating value scale
+    # False: No colorbar (cleaner)
+    "export_cm_show_colorbar": True,
+    # Show per-class accuracy on y-axis labels
+    # Example: "KO_1096-01\n(93.1%)" shows class name with accuracy
+    # True: Shows accuracy in labels (informative)
+    # False: Shows only class names (cleaner)
+    "export_cm_show_per_class_acc": False,
+    # Show overall accuracy in the title
+    # Example: "Confusion Matrix\nOverall Accuracy: 87.3%"
+    # True: Shows overall accuracy in title
+    # False: Title only shows matrix name
+    "export_cm_show_overall_acc": True,
+    # Font family for all text
+    # 'Arial': Recommended for publications
+    # 'Times New Roman': Serif font
+    "export_cm_font_family": "Arial",
+    # Master font size: If set, all fonts use this size (overrides individual sizes)
+    # None: Use individual sizes below
+    # 10-14: Good for publications
+    # 16-20: Good for presentations
+    "export_cm_master_font_size": None,
+    # Individual font sizes (only used when master_font_size is None)
+    # All sizes are in points (1/72 inch)
+    "export_cm_axis_label_size": 30,           # Size for axis labels (xlabel, ylabel)
+    "export_cm_title_font_size": 30,           # Size for plot title
+    "export_cm_tick_label_size": 25,           # Size for tick labels (class names)
+    "export_cm_annotation_font_size": 16,      # Size for numbers inside matrix cells
+    "export_cm_legend_font_size": 30,          # Size for colorbar label
+    # Rotation of tick labels (degrees)
+    # 45: Good for long class names (recommended)
+    # 90: Vertical (good for many classes)
+    # 0: Horizontal (only for short names)
+    "export_cm_xtick_rotation": 45,            # Rotation of x-axis labels (predicted classes)
+    "export_cm_ytick_rotation": 0,             # Rotation of y-axis labels (true classes)
+    # Number of decimal places for annotation values
+    # 3: Shows 3 decimal places (e.g., 0.123)
+    # 2: Shows 2 decimal places (e.g., 0.12)
+    # 1: Shows 1 decimal place (e.g., 0.1)
+    "export_cm_annotation_decimal_places": 3,
+
+
+    ### Training Metrics Plotter (plot_train_metrics_publication.py) ###
+    # Creates publication-ready plots from TensorBoard logs
+
+    # Output format: 'png', 'tiff', 'svg', 'pdf'
+    "export_train_format": "tiff",
+    # Resolution for raster formats (PNG, TIFF)
+    # 300: Good for presentations
+    # 600: Recommended for print publications
+    "export_train_dpi": 300,
+    # Which epoch to use for ROC curves (same options as excel exporter)
+    "export_train_roc_epoch": "balanced_accuracy",
+    "export_train_pr_epoch": "balanced_accuracy",
+    # Use fixed axes height for all plots
+    # True: All plots have identical axes height (recommended for consistency)
+    # False: Different plots may have different heights
+    "export_train_use_fixed_height": True,
+    # Height of the axes in inches (when use_fixed_height = True)
+    # 4-6: Good for publications
+    # 6-8: Good for presentations
+    "export_train_fixed_height": 5.0,
+    # Master font size for all text
+    # 10-14: Good for publications
+    # 16-22: Good for presentations
+    # 24-36: Good for posters
+    "export_train_master_font_size": 22,
+    # Line width for plot lines (points)
+    # 1.0-1.5: Thin lines (good for publications with many lines)
+    # 2.0-2.5: Medium lines (recommended)
+    # 3.0-4.0: Thick lines (good for presentations)
+    "export_train_line_width": 2.0,
+    # Show markers at data points
+    # True: Shows dots at each epoch (helps identify individual points)
+    # False: Only shows lines (cleaner look)
+    "export_train_show_markers": True,
+    # Size of markers (points)
+    # 2-4: Small markers (good for many epochs)
+    # 5-8: Medium markers (recommended)
+    # 10-15: Large markers (good for few epochs)
+    "export_train_marker_size": 5,
+    # Show every Nth marker (reduces clutter)
+    # 1: Show all markers (recommended for <50 epochs)
+    # 2: Show every 2nd marker
+    # 5: Show every 5th marker (recommended for >50 epochs)
+    # 10: Show every 10th marker
+    "export_train_marker_frequency": 1,
+    # Smoothing factor for curves
+    # 0.0: No smoothing (raw data, recommended)
+    # 0.5: Moderate smoothing
+    # 0.9: Strong smoothing (hides noise, may hide patterns)
+    # 0.95: Very strong smoothing
+    "export_train_smoothing": 0.0,
+    # Font family for all text
+    "export_train_font_family": "Arial",
+    # Individual font sizes (when master_font_size is None)
+    "export_train_axis_label_size": 12,        # Size for axis labels
+    "export_train_title_font_size": 14,        # Size for plot titles
+    "export_train_tick_label_size": 10,        # Size for tick labels
+    "export_train_legend_font_size": 10,       # Size for legend text
+    # Show/hide legend
+    "export_train_show_legend": True,
+    # Grid settings
+    "export_train_show_grid": True,
+    "export_train_grid_alpha": 0.3,            # Grid transparency (0.0-1.0)
+    "export_train_grid_linestyle": "--",       # Grid line style: '-', '--', ':', '-.'
+    "export_train_grid_color": "gray",         # Grid line color
+    # Minimum class accuracy threshold (shown as red dashed line)
+    # 0.60: 60% threshold (typical minimum acceptable accuracy)
+    # 0.65: 65% threshold
+    # None: No threshold line shown
+    "export_train_min_class_acc_threshold": 0.65,
+    #Plot Selection Flags
+    # Set to True to generate, False to skip
+    "export_train_plot_loss": True,                 # Training/validation loss curves
+    "export_train_plot_accuracy": True,             # Training/validation accuracy (weighted + standard)
+    "export_train_plot_f1": True,                   # Macro and weighted F1 scores
+    "export_train_plot_lr": False,                  # Learning rate schedule
+    "export_train_plot_auc": False,                 # AUC over epochs (overall + per-class)
+    "export_train_plot_ap": False,                  # Average Precision over epochs
+    "export_train_plot_per_class_acc": True,        # Per-class accuracy curves
+    "export_train_plot_class_weights": False,       # Bar chart of loss function class weights
+    "export_train_plot_class_counts": False,        # Bar chart of class distribution
+    "export_train_plot_composite": False,           # Composite score (balanced performance metric)
+    "export_train_plot_balanced_acc": True,         # Balanced accuracy over epochs
+    "export_train_plot_class_std": False,           # Standard deviation of class accuracies
+    "export_train_plot_min_class_acc": False,       # Minimum class accuracy over epochs
+    "export_train_plot_gpu_memory": False,          # GPU memory usage over training
+    "export_train_plot_roc": True,                  # ROC curves (requires .npz files)
+    "export_train_plot_pr": True,                   # Precision-Recall curves (requires .npz files)
+    #Legend Outside Settings
+    # Place legend outside the plot (right side)
+    # True: Legend placed to the right of the plot (recommended for many classes)
+    # False: Legend placed inside the plot
+    "export_train_per_class_legend_outside": True,  # Per-class accuracy legend outside
+    "export_train_roc_legend_outside": True,        # ROC curves legend outside
+    "export_train_pr_legend_outside": True,         # PR curves legend outside
+    # Legend Position Settings (Inside)
+    # Each plot type can have its own legend position
+    # Options: 'best', 'upper right', 'upper left', 'lower left', 'lower right', 'upper center', etc.
+    "export_train_loss_legend_loc": "upper right",
+    "export_train_accuracy_legend_loc": "lower right",
+    "export_train_f1_legend_loc": "lower right",
+    "export_train_per_class_legend_loc": "best",
+    "export_train_roc_legend_loc": "lower right",
+    "export_train_pr_legend_loc": "lower left",
+    "export_train_class_std_legend_loc": "upper right",
+    "export_train_min_class_acc_legend_loc": "lower right",
+    "export_train_composite_legend_loc": "lower right",
+    "export_train_balanced_acc_legend_loc": "lower right",
+    "export_train_gpu_memory_legend_loc": "best",
+    "export_train_lr_legend_loc": "best",
+    "export_train_auc_legend_loc": "lower right",
+    "export_train_ap_legend_loc": "lower right",
+
     #########
     # PATHS #
     #########
