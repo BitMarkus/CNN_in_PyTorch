@@ -8,7 +8,7 @@ import torchvision.models as models
 from tqdm import tqdm
 from prettytable import PrettyTable
 # ===== Own Modules =====
-from custom_cnn import CustomCNN
+from .custom_cnn import CustomCNN  
 from settings import setting
 import functions as fn
 

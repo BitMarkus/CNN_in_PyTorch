@@ -4,10 +4,10 @@ import json
 # ===== Third-Party Imports =====
 import torch
 # ===== Own Modules =====
-from dataset import Dataset
-from cross_validation.dataset_gen import DatasetGenerator
-from model import CNN_Model
-from train import Train
+from .dataset_gen import DatasetGenerator  
+from single_training import Dataset 
+from single_training import CNN_Model 
+from single_training import Train  
 from settings import setting
 import functions as fn
 

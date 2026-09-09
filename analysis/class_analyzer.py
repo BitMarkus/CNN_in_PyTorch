@@ -8,8 +8,8 @@ import pandas as pd
 from torch.utils.data import DataLoader, Subset
 from tqdm import tqdm
 # ===== Own Modules =====
-from dataset import Dataset
-from model import CNN_Model
+from single_training import Dataset 
+from single_training import CNN_Model  
 from settings import setting
 
 class ClassAnalyzer:

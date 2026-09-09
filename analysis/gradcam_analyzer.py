@@ -12,9 +12,9 @@ from scipy.ndimage import gaussian_filter
 from tqdm import tqdm
 from prettytable import PrettyTable
 # ===== Own Modules =====
+from single_training import Dataset  
+from single_training import CNN_Model 
 from settings import setting
-from dataset import Dataset
-from model import CNN_Model
 
 class GradCAMAnalyzer:
 

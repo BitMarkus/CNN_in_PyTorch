@@ -14,10 +14,9 @@ from tqdm import tqdm
 from sklearn.metrics import balanced_accuracy_score
 from torch.amp import autocast
 # ===== Own Modules =====
-from dataset import Dataset
-from model import CNN_Model
+from single_training import Dataset  # Changed: import from single_training package
+from single_training import CNN_Model  # Changed: import from single_training package
 from settings import setting
-
 
 class ConfidenceAnalyzer:
 

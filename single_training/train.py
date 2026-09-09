@@ -84,12 +84,13 @@ class Train():
 
             print(f"\n📁 Training results will be saved to: {self.train_output_dir}")
 
-            # Initialize TensorBoard writer for single training
+        # Class names - MOVED HERE BEFORE TensorBoard setup
+        self.classes = setting["classes"]
+
+        # Initialize TensorBoard writer for single training (after classes is set)
+        if self.dataset_idx is None:
             self.writer = SummaryWriter(str(self.log_dir))
             self._setup_tensorboard_layout()
-
-        # Class names
-        self.classes = setting["classes"]
 
         # Datasets
         self.ds_train = dataset.ds_train
