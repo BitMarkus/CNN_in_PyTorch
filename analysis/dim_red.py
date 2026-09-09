@@ -18,7 +18,9 @@ from pacmap import PaCMAP
 import sklearn
 # ===== Own Modules =====
 from settings import setting
-from dataset import Dataset
+from single_training import Dataset  
+from single_training import CNN_Model 
+
 
 class DimRed:
 
@@ -118,7 +120,7 @@ class DimRed:
         self.n_features = 0
 
         # Initialize model
-        from model import CNN_Model
+        from single_training import CNN_Model
         self.cnn_wrapper = CNN_Model()
         self.cnn = self.cnn_wrapper.load_model(self.device).to(self.device)
         torch.backends.cudnn.benchmark = True

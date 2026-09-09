@@ -17,6 +17,7 @@ from torchvision import models, transforms
 from PIL import Image
 # ===== Own Modules =====
 from settings import setting
+from single_training import Dataset
 
 class FIDCalculator:
 
