@@ -40,6 +40,7 @@ class Train():
     #   device (torch.device): Device to run training on
     #   dataset_idx (int, optional): Index for cross-validation dataset naming
     def __init__(self, cnn_wrapper, dataset, device: torch.device, dataset_idx: int = None) -> None:
+        
         # Input validation
         assert len(dataset.ds_train) > 0, "Training dataset is empty"
         assert len(dataset.ds_val) > 0, "Validation dataset is empty"
@@ -48,6 +49,7 @@ class Train():
         self.cnn_wrapper = cnn_wrapper
         self.cnn = cnn_wrapper.model
         self.dataset_idx = dataset_idx
+        self.writer = None
 
         # Generate timestamp for this training run
         if self.dataset_idx is not None:
@@ -57,7 +59,8 @@ class Train():
             self.train_output_dir = None
             self.checkpoint_dir = None
             self.plot_dir = None
-            self.log_dir = Path("logs") / self.timestamp
+            self.log_dir = None
+            self.prob_dir = None
         else:
             # Single training: create timestamped folder in output/train/
             self.timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
@@ -72,57 +75,21 @@ class Train():
             self.log_dir = self.train_output_dir / "logs"
             self.log_dir.mkdir(exist_ok=True)
 
+            # Create directory for saving per-epoch probability data
+            self.prob_dir = self.log_dir / "probabilities"
+            self.prob_dir.mkdir(parents=True, exist_ok=True)
+
             # Copy settings file for reproducibility
             self._copy_settings_file(self.train_output_dir)
 
-            print(f"📁 Training results will be saved to: {self.train_output_dir}")
+            print(f"\n📁 Training results will be saved to: {self.train_output_dir}")
 
-        # Initialize TensorBoard writer
-        self.writer = SummaryWriter(str(self.log_dir))
-
-        # Create directory for saving per-epoch probability data
-        self.prob_dir = self.log_dir / "probabilities"
-        self.prob_dir.mkdir(parents=True, exist_ok=True)
+            # Initialize TensorBoard writer for single training
+            self.writer = SummaryWriter(str(self.log_dir))
+            self._setup_tensorboard_layout()
 
         # Class names
         self.classes = setting["classes"]
-
-        # Enhanced TensorBoard layout
-        custom_layout = {
-            'Accuracy': {
-                'Training Accuracy': ['Scalar', 'Accuracy/Train'],
-                'Validation Accuracy': ['Scalar', 'Accuracy/Val'],
-                'Standard Accuracy': ['Scalar', 'Accuracy/val_standard'],
-                'Balanced Accuracy': ['Scalar', 'Metrics/Balanced_Accuracy'],
-                'Per-Class Accuracy': ['Multiline', [f'Accuracy/class/{cls}' for cls in self.classes]],
-            },
-            'Loss': {
-                'Training Loss': ['Scalar', 'Loss/Train'],
-                'Validation Loss': ['Scalar', 'Loss/Val'],
-            },
-            'Metrics': {
-                'F1 Scores': ['Multiline', ['Metrics/F1/Macro', 'Metrics/F1/Weighted']],
-                'AUC Scores': ['Multiline', ['Metrics/AUC'] + [f'Metrics/AUC/{cls}' for cls in self.classes]],
-                'AP Scores': ['Multiline', ['Metrics/AP'] + [f'Metrics/AP/{cls}' for cls in self.classes]],
-                'Learning Rate': ['Scalar', 'Metrics/LR'],
-                'Composite Score': ['Scalar', 'Metrics/Composite_Score'],
-                'Balanced Accuracy': ['Scalar', 'Metrics/Balanced_Accuracy'],
-            },
-            'ROC Curves': {
-                'ROC - All Classes': ['Image', 'ROC/All_Classes'],
-            },
-            'PR Curves': {
-                'PR - All Classes': ['Image', 'PR/All_Classes'],
-            },
-            'Data': {
-                'Class Distribution': ['Multiline', [f'Data/class_count/{cls}' for cls in self.classes]],
-                'Class Weights': ['Multiline', [f'Data/class_weight/{cls}' for cls in self.classes]],
-            },
-            'System': {
-                'GPU Memory': ['Scalar', 'System/GPU_Memory']
-            }
-        }
-        self.writer.add_custom_scalars(custom_layout)
 
         # Datasets
         self.ds_train = dataset.ds_train
@@ -251,6 +218,47 @@ class Train():
     #############################################################################################################
     # METHODS
 
+    # Set up the TensorBoard custom layout.
+    def _setup_tensorboard_layout(self) -> None:
+        if self.writer is None:
+            return
+
+        custom_layout = {
+            'Accuracy': {
+                'Training Accuracy': ['Scalar', 'Accuracy/Train'],
+                'Validation Accuracy': ['Scalar', 'Accuracy/Val'],
+                'Standard Accuracy': ['Scalar', 'Accuracy/val_standard'],
+                'Balanced Accuracy': ['Scalar', 'Metrics/Balanced_Accuracy'],
+                'Per-Class Accuracy': ['Multiline', [f'Accuracy/class/{cls}' for cls in self.classes]],
+            },
+            'Loss': {
+                'Training Loss': ['Scalar', 'Loss/Train'],
+                'Validation Loss': ['Scalar', 'Loss/Val'],
+            },
+            'Metrics': {
+                'F1 Scores': ['Multiline', ['Metrics/F1/Macro', 'Metrics/F1/Weighted']],
+                'AUC Scores': ['Multiline', ['Metrics/AUC'] + [f'Metrics/AUC/{cls}' for cls in self.classes]],
+                'AP Scores': ['Multiline', ['Metrics/AP'] + [f'Metrics/AP/{cls}' for cls in self.classes]],
+                'Learning Rate': ['Scalar', 'Metrics/LR'],
+                'Composite Score': ['Scalar', 'Metrics/Composite_Score'],
+                'Balanced Accuracy': ['Scalar', 'Metrics/Balanced_Accuracy'],
+            },
+            'ROC Curves': {
+                'ROC - All Classes': ['Image', 'ROC/All_Classes'],
+            },
+            'PR Curves': {
+                'PR - All Classes': ['Image', 'PR/All_Classes'],
+            },
+            'Data': {
+                'Class Distribution': ['Multiline', [f'Data/class_count/{cls}' for cls in self.classes]],
+                'Class Weights': ['Multiline', [f'Data/class_weight/{cls}' for cls in self.classes]],
+            },
+            'System': {
+                'GPU Memory': ['Scalar', 'System/GPU_Memory']
+            }
+        }
+        self.writer.add_custom_scalars(custom_layout)
+
     # Save training examples to the training output directory.
     # This provides a quick visual sanity check of the training data.
     # Args:
@@ -346,6 +354,9 @@ class Train():
     #   epoch (int): Current epoch
     #   title (str): Plot title
     def _plot_roc_curve_to_tensorboard(self, fpr: dict, tpr: dict, roc_auc: dict, epoch: int, title: str = "ROC Curves") -> None:
+        if self.writer is None:
+            return
+
         fig, ax = plt.subplots(figsize=(8, 6))
         colors = plt.cm.rainbow(np.linspace(0, 1, len(self.classes)))
 
@@ -374,6 +385,9 @@ class Train():
     #   epoch (int): Current epoch
     #   title (str): Plot title
     def _plot_pr_curve_to_tensorboard(self, precision: dict, recall: dict, average_precision: dict, epoch: int, title: str = "Precision-Recall Curves") -> None:
+        if self.writer is None:
+            return
+
         fig, ax = plt.subplots(figsize=(8, 6))
         colors = plt.cm.rainbow(np.linspace(0, 1, len(self.classes)))
 
@@ -401,6 +415,9 @@ class Train():
     #   all_preds (np.ndarray): Predictions
     #   epoch (int): Current epoch
     def _save_probability_data(self, all_probs: np.ndarray, all_labels: np.ndarray, all_preds: np.ndarray, epoch: int) -> None:
+        if self.prob_dir is None:
+            return
+
         np.savez_compressed(
             self.prob_dir / f'probabilities_epoch_{epoch:03d}.npz',
             probabilities=all_probs,
@@ -504,9 +521,11 @@ class Train():
         print(f"  • Each {minority_class} sample gets {minority_weight/majority_weight:.2f}x more importance")
         print("=" * 60 + "\n")
 
-        for i, cls in enumerate(self.classes):
-            self.writer.add_scalar(f'Data/class_count/{cls}', class_counts[i].item(), 0)
-            self.writer.add_scalar(f'Data/class_weight/{cls}', class_weights[i].item(), 0)
+        # Only log to TensorBoard if writer exists
+        if self.writer is not None:
+            for i, cls in enumerate(self.classes):
+                self.writer.add_scalar(f'Data/class_count/{cls}', class_counts[i].item(), 0)
+                self.writer.add_scalar(f'Data/class_weight/{cls}', class_weights[i].item(), 0)
 
     # Print class distribution only (for non-weighted loss).
     # Args:
@@ -522,8 +541,10 @@ class Train():
             print(f"  {cls.ljust(max_len)} : {count:6d} images ({percentage:.2f}%)")
         print(f"  {'Total'.ljust(max_len)} : {int(total):6d} images")
 
-        for i, cls in enumerate(self.classes):
-            self.writer.add_scalar(f'Data/class_count/{cls}', class_counts[i].item(), 0)
+        # Only log to TensorBoard if writer exists
+        if self.writer is not None:
+            for i, cls in enumerate(self.classes):
+                self.writer.add_scalar(f'Data/class_count/{cls}', class_counts[i].item(), 0)
 
     # Calculate weighted accuracy if using weighted loss, otherwise standard accuracy.
     # Args:
@@ -552,6 +573,9 @@ class Train():
     #   show_plot (bool): If True, display the plot
     #   save_plot (bool): If True, save the plot to disk
     def _plot_metrics(self, history: dict, show_plot: bool = True, save_plot: bool = True) -> None:
+        if self.plot_dir is None:
+            return
+
         plt.figure(figsize=(24, 12))
 
         # 1. Accuracy Plot
@@ -624,6 +648,9 @@ class Train():
     # Returns:
     #   matplotlib.figure.Figure: The figure object
     def _plot_confusion_matrix(self, cm: np.ndarray, class_names: list = None, epoch: int = None):
+        if self.plot_dir is None:
+            return
+
         fig, ax = plt.subplots(figsize=(8, 8))
 
         cm_normalized = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis]
@@ -672,7 +699,6 @@ class Train():
     # Returns:
     #   dict: Training history
     def train(self, chckpt_pth: Path = None, plot_pth: Path = None) -> dict:
-
         # For single training: use pre-created directories
         if chckpt_pth is None and self.dataset_idx is None:
             chckpt_pth = self.checkpoint_dir
@@ -686,9 +712,31 @@ class Train():
         self.checkpoint_dir = chckpt_pth
         self.plot_dir = plot_pth
 
+        # For cross-validation: set up log directory inside the dataset folder
+        if self.dataset_idx is not None:
+            self.log_dir = self.checkpoint_dir.parent / "logs"
+            self.log_dir.mkdir(parents=True, exist_ok=True)
+            self.prob_dir = self.log_dir / "probabilities"
+            self.prob_dir.mkdir(parents=True, exist_ok=True)
+
+            # Initialize TensorBoard writer for cross-validation
+            self.writer = SummaryWriter(str(self.log_dir))
+
+            # Set up TensorBoard layout
+            self._setup_tensorboard_layout()
+
+            print(f"\n📁 Cross-validation training logs will be saved to: {self.log_dir}")
+
+        # For single training: verify writer is initialized
+        elif self.writer is None:
+            # Fallback: create writer if not already created
+            self.log_dir = self.checkpoint_dir.parent / "logs"
+            self.log_dir.mkdir(parents=True, exist_ok=True)
+            self.writer = SummaryWriter(str(self.log_dir))
+
         # For single training: save training examples
         if self.dataset_idx is None:
-            self._save_training_examples(self.plot_dir)       
+            self._save_training_examples(self.plot_dir)
 
         # Initialize metrics storage
         history = {
@@ -910,43 +958,45 @@ class Train():
             self._plot_pr_curve_to_tensorboard(precision, recall, average_precision, epoch)
 
             cm_fig = self._plot_confusion_matrix(cm, class_names=self.classes, epoch=epoch)
-            self.writer.add_figure('Confusion Matrix', cm_fig, epoch, close=True)
-            plt.close(cm_fig)
+            if cm_fig is not None:
+                self.writer.add_figure('Confusion Matrix', cm_fig, epoch, close=True)
+                plt.close(cm_fig)
 
-            # Log metrics to TensorBoard
-            self.writer.add_scalar('Loss/train', train_loss, epoch)
-            self.writer.add_scalar('Accuracy/train', final_weighted_train_accuracy if self.use_weighted_loss else final_standard_train_accuracy, epoch)
-            self.writer.add_scalar('Loss/val', val_loss, epoch)
-            self.writer.add_scalar('Accuracy/val', weighted_val_accuracy if self.use_weighted_loss else standard_val_accuracy, epoch)
-            self.writer.add_scalar('Accuracy/val_standard', standard_val_accuracy, epoch)
-            self.writer.add_scalar('Metrics/Balanced_Accuracy', balanced_accuracy, epoch)
-            self.writer.add_scalar('Metrics/Composite_Score', composite_score, epoch)
-            self.writer.add_scalar('Metrics/Class_Accuracy_StdDev', class_std, epoch)
-            self.writer.add_scalar('Metrics/Min_Class_Accuracy', min_class_acc, epoch)
+            # Log metrics to TensorBoard (only if writer exists)
+            if self.writer is not None:
+                self.writer.add_scalar('Loss/train', train_loss, epoch)
+                self.writer.add_scalar('Accuracy/train', final_weighted_train_accuracy if self.use_weighted_loss else final_standard_train_accuracy, epoch)
+                self.writer.add_scalar('Loss/val', val_loss, epoch)
+                self.writer.add_scalar('Accuracy/val', weighted_val_accuracy if self.use_weighted_loss else standard_val_accuracy, epoch)
+                self.writer.add_scalar('Accuracy/val_standard', standard_val_accuracy, epoch)
+                self.writer.add_scalar('Metrics/Balanced_Accuracy', balanced_accuracy, epoch)
+                self.writer.add_scalar('Metrics/Composite_Score', composite_score, epoch)
+                self.writer.add_scalar('Metrics/Class_Accuracy_StdDev', class_std, epoch)
+                self.writer.add_scalar('Metrics/Min_Class_Accuracy', min_class_acc, epoch)
 
-            if self.use_weighted_loss:
-                self.writer.add_scalar('Accuracy/train_standard', final_standard_train_accuracy, epoch)
+                if self.use_weighted_loss:
+                    self.writer.add_scalar('Accuracy/train_standard', final_standard_train_accuracy, epoch)
 
-            self.writer.add_scalar('Metrics/LR', current_lr, epoch)
-            self.writer.add_scalars('Metrics/F1', {'Macro': f1_macro, 'Weighted': f1_weighted}, epoch)
-            self.writer.add_scalar('Metrics/AUC', roc_auc_weighted, epoch)
-            self.writer.add_scalar('Metrics/AP', ap_weighted, epoch)
+                self.writer.add_scalar('Metrics/LR', current_lr, epoch)
+                self.writer.add_scalars('Metrics/F1', {'Macro': f1_macro, 'Weighted': f1_weighted}, epoch)
+                self.writer.add_scalar('Metrics/AUC', roc_auc_weighted, epoch)
+                self.writer.add_scalar('Metrics/AP', ap_weighted, epoch)
 
-            for i, class_name in enumerate(self.classes):
-                if i in roc_auc:
-                    self.writer.add_scalar(f'Metrics/AUC/{class_name}', roc_auc[i], epoch)
-                if i in average_precision:
-                    self.writer.add_scalar(f'Metrics/AP/{class_name}', average_precision[i], epoch)
-                if class_name in class_accuracies:
-                    self.writer.add_scalar(f'Accuracy/class/{class_name}', class_accuracies[class_name], epoch)
+                for i, class_name in enumerate(self.classes):
+                    if i in roc_auc:
+                        self.writer.add_scalar(f'Metrics/AUC/{class_name}', roc_auc[i], epoch)
+                    if i in average_precision:
+                        self.writer.add_scalar(f'Metrics/AP/{class_name}', average_precision[i], epoch)
+                    if class_name in class_accuracies:
+                        self.writer.add_scalar(f'Accuracy/class/{class_name}', class_accuracies[class_name], epoch)
 
-            for i, class_name in enumerate(self.classes):
-                if i in class_total:
-                    self.writer.add_scalar(f'Data/class_count/{class_name}', class_total[i], epoch)
+                for i, class_name in enumerate(self.classes):
+                    if i in class_total:
+                        self.writer.add_scalar(f'Data/class_count/{class_name}', class_total[i], epoch)
 
-            if torch.cuda.is_available():
-                mem_usage = torch.cuda.memory_reserved() / self.total_gpu_memory
-                self.writer.add_scalar('System/GPU_Memory', mem_usage, epoch)
+                if torch.cuda.is_available():
+                    mem_usage = torch.cuda.memory_reserved() / self.total_gpu_memory
+                    self.writer.add_scalar('System/GPU_Memory', mem_usage, epoch)
 
             # Console output
             if self.use_weighted_loss:
@@ -1095,7 +1145,9 @@ class Train():
         print(f"   Best Composite Score: {best_composite_score:.4f} at epoch {best_epoch_comp+1}")
 
         # Final cleanup and plotting
-        self.writer.close()
+        if self.writer is not None:
+            self.writer.close()
+
         self._plot_metrics(history, show_plot=False, save_plot=True)
 
         return history

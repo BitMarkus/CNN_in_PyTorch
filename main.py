@@ -1,14 +1,12 @@
 # ===== Own Modules =====
 import functions as fn
 from model import CNN_Model
-from dataset_gen import DatasetGenerator
-from auto_cross_validation import AutoCrossValidation
-from conf_analyzer import ConfidenceAnalyzer
 from dataset import Dataset
 from train import Train
 from class_analyzer import ClassAnalyzer
 from gradcam_analyzer import GradCAMAnalyzer
 from utilities_menu import Utilities
+from cross_validation_menu import CrossValidationMenu
 from settings import setting
 
 ###########
@@ -39,18 +37,19 @@ def main() -> None:
 
     while True:
         print("\n:MAIN MENU:")
+        print("  ─── Training ───")
         print("1) Create CNN Network")
         print("2) Show Network Summary")
         print("3) Load Training Data")
         print("4) Train Network")
         print("5) Load Weights")
-        print("6) Predict Class from Input Folder")
-        print("7) Dataset Generator (ACV)")
-        print("8) Automatic Cross Validation (ACV)")
-        print("9) Confidence Analyzer (based on ACV)")
-        print("10) GradCAM Analyzer")
-        print("11) Utilities")
-        print("12) Exit Program")
+        print("6) Cross Validation ↓")
+        print("  ─── Analysis ───")
+        print("7) Predict Class from Input Folder")
+        print("8) GradCAM Analyzer")
+        print("  ─── Tools ───")
+        print("9) Utilities ↓")
+        print("10) Exit Program")
         menu1 = int(fn.input_int("Please choose: "))
 
         ######################
@@ -122,14 +121,14 @@ def main() -> None:
         #################
 
         elif menu1 == 4:
-            print("\n:TRAIN NETWORK:\n")
-
+            print("\n:TRAIN NETWORK:")
+            print("  Results will be saved to output/train/[timestamp]/")
             if not cnn_wrapper.model_loaded:
                 print('No CNN generated yet!')
             elif not ds.ds_loaded:
                 print('No training data loaded yet!')
             else:
-                print("Start training...\n")
+                print("Start training...")
                 # Create a training object
                 train = Train(cnn_wrapper, ds, device)
                 # Train network
@@ -148,11 +147,19 @@ def main() -> None:
             else:
                 cnn_wrapper.load_checkpoint()
 
+        ########################
+        # Cross Validation Menu #
+        ########################
+
+        elif menu1 == 6:
+            cv_menu = CrossValidationMenu()
+            cv_menu.menu(device)
+
         ############################
         # Predict from Input Folder #
         ############################
 
-        elif menu1 == 6:
+        elif menu1 == 7:
             print("\n:PREDICT CLASS FROM INPUT FOLDER:")
             print("  Place images to classify in the input/ folder")
             print("  Results will be saved to output/")
@@ -160,59 +167,11 @@ def main() -> None:
             analyzer = ClassAnalyzer(device)
             analyzer.analyze_prediction_folder()
 
-        #####################
-        # Dataset Generator #
-        #####################
-
-        elif menu1 == 7:
-            print("\n:DATASET GENERATOR FOR CROSS VALIDATION:")
-            # Quick verification
-            synthetic_dir = setting["pth_ds_gen_input_synthetic"]
-            real_dir = setting["pth_ds_gen_input_real"]
-            print(f"Training data source: {setting['train_data_source']}")
-            print(f"Synthetic folder: {synthetic_dir}")
-            print(f"Real folder: {real_dir}")
-            if not synthetic_dir.exists():
-                print(f"ERROR: Synthetic folder not found!")
-                continue
-            if not real_dir.exists():
-                print(f"ERROR: Real folder not found!")
-                continue
-            # Create a dataset generation object (in generation mode)
-            ds_gen = DatasetGenerator(mode="gen")
-            print('\nGeneration of datasets is starting...')
-            print(f"Mode: {ds_gen.training_data_source}")
-            # Create datasets for cross validation
-            ds_gen.generate_all_datasets()
-            print(f"\nDatasets successfully created and saved to {setting['pth_ds_gen_output']}!")
-            print("You can inspect the generated datasets in that folder.")
-
-        ##############################
-        # Automatic Cross Validation #
-        ##############################
-
-        elif menu1 == 8:
-            print("\n:AUTOMATIC CROSS VALIDATION:")
-            print("  Results will be saved to output/cross_validation/")
-            acv = AutoCrossValidation(device)
-            acv()
-
-        #######################
-        # Confidence Analyzer #
-        #######################
-
-        elif menu1 == 9:
-            print("\n:CONFIDENCE ANALYZER:")
-            print("  Input: output/cross_validation/")
-            print("  Output: output/conf_analyzer/")
-            confa = ConfidenceAnalyzer(device)
-            confa()
-
         ####################
         # GradCAM Analyzer #
         ####################
 
-        elif menu1 == 10:
+        elif menu1 == 8:
             print("\n:GradCAM ANALYZER:")
             print("  Input: input/ (place images to analyze)")
             print("  Output: output/gradcam/")
@@ -223,7 +182,7 @@ def main() -> None:
         # Utilities   #
         ###############
 
-        elif menu1 == 11:
+        elif menu1 == 9:
             utilities = Utilities()
             utilities.menu()
 
@@ -231,7 +190,7 @@ def main() -> None:
         # Exit Program #
         ################
 
-        elif menu1 == 12:
+        elif menu1 == 10:
             print("\nExit program...")
             break
 

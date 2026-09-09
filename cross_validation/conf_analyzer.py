@@ -18,6 +18,7 @@ from dataset import Dataset
 from model import CNN_Model
 from settings import setting
 
+
 class ConfidenceAnalyzer:
 
     #############################################################################################################
@@ -29,7 +30,7 @@ class ConfidenceAnalyzer:
     # Args:
     #   device (torch.device): Device to run predictions on
     def __init__(self, device: torch.device) -> None:
-
+        
         self.device = device
 
         # Paths
@@ -121,15 +122,6 @@ class ConfidenceAnalyzer:
     # METHODS
 
     # Extract epoch number from checkpoint filename.
-    # Supports multiple naming patterns:
-    #   - ckpt_pretr_densenet121_e02_bal0.669_comp0.415_ds1.pt
-    #   - ckpt_*_e02_*.pt
-    #   - epoch_02.pt
-    #   - 02.pt
-    # Args:
-    #   filename (str): Name of the checkpoint file
-    # Returns:
-    #   int or None: Epoch number if found, else None
     def _extract_epoch_from_filename(self, filename: str):
         match = re.search(r'_e(\d+)_', filename)
         if match:
@@ -150,13 +142,6 @@ class ConfidenceAnalyzer:
         return None
 
     # Calculate composite score (matches train.py implementation).
-    # Formula: Composite = Overall_Accuracy - penalty_weight * (Standard_Deviation_of_Class_Accuracies)
-    # Args:
-    #   class_accuracies (dict): Per-class accuracies (e.g., {'WT': 0.85, 'KO': 0.75})
-    #   overall_accuracy (float): Mean accuracy across all classes
-    #   penalty_weight (float): Penalty for class imbalance (higher = stricter)
-    # Returns:
-    #   tuple: (composite_score, class_std, min_class_acc)
     def _calculate_composite_score(self, class_accuracies: dict, overall_accuracy: float, penalty_weight: float = 2.0) -> tuple:
         acc_values = list(class_accuracies.values())
         class_std = np.std(acc_values)
@@ -165,8 +150,6 @@ class ConfidenceAnalyzer:
         return composite_score, class_std, min_class_acc
 
     # Get only dataset folders that exist in the output/cross_validation directory.
-    # Returns:
-    #   dict: Dataset index -> {'test_wt': str, 'test_ko': str, 'dataset_idx': int}
     def _get_available_datasets(self) -> dict:
         datasets = {}
         cross_val_dir = self.pth_output / "cross_validation"
@@ -177,11 +160,6 @@ class ConfidenceAnalyzer:
         return datasets
 
     # Generate test set using appropriate source directory based on configuration.
-    # Args:
-    #   test_wt (str): WT cell line to use for testing
-    #   test_ko (str): KO cell line to use for testing
-    #   current_dataset (int, optional): Current dataset index for logging
-    #   total_datasets (int, optional): Total number of datasets for logging
     def _generate_test_set(self, test_wt: str, test_ko: str, current_dataset: int = None, total_datasets: int = None) -> None:
         shutil.rmtree(self.pth_test, ignore_errors=True)
         for cls in self.classes:
@@ -220,13 +198,6 @@ class ConfidenceAnalyzer:
             tqdm.write(f"  ⚠️  CRITICAL: No images copied to test folder!")
 
     # Select top checkpoints based on specified metric.
-    # Args:
-    #   checkpoint_files (list): List of checkpoint filenames
-    #   plots_path (Path): Path to plots directory containing JSON files
-    #   top_n (int): Number of checkpoints to select
-    #   method (str): Selection method ('balanced_sum', 'f1_score', 'min_difference', 'balanced_accuracy', 'composite_score')
-    # Returns:
-    #   list: Selected checkpoint filenames
     def _select_checkpoints_by_metric(self, checkpoint_files: list, plots_path: Path, top_n: int = 3, method: str = 'balanced_sum') -> list:
         scores = []
 
@@ -305,11 +276,6 @@ class ConfidenceAnalyzer:
         return selected
 
     # Analyze a single dataset's checkpoints.
-    # Args:
-    #   dataset_num (int): Dataset index
-    #   total_datasets (int): Total number of datasets
-    # Returns:
-    #   dict: Checkpoint name -> prediction results
     def _analyze_single_dataset(self, dataset_num: int, total_datasets: int) -> dict:
         dataset_results = {}
         cross_val_dir = self.pth_output / "cross_validation"
@@ -415,10 +381,6 @@ class ConfidenceAnalyzer:
         return dataset_results
 
     # Get predictions with confidence scores for all images in the test set.
-    # Args:
-    #   dataset_num (int): Dataset index
-    # Returns:
-    #   dict: Image path -> (true_class, pred_class, confidence)
     def _get_predictions_with_confidence(self, dataset_num: int) -> dict:
         test_loader = self._create_filtered_dataset(dataset_num)
         confidences = {}
@@ -447,10 +409,6 @@ class ConfidenceAnalyzer:
         return confidences
 
     # Organize prediction results into structured format.
-    # Args:
-    #   confidences (dict): Image path -> (true_class, pred_class, confidence)
-    # Returns:
-    #   dict: Per-image results and aggregated statistics
     def _organize_prediction_results(self, confidences: dict) -> dict:
         per_image = {}
         aggregated = {cls: {'all_confidences': [], 'correct': [], 'incorrect': []}
@@ -475,16 +433,12 @@ class ConfidenceAnalyzer:
         }
 
     # Get the source directory for searching original images.
-    # Returns:
-    #   Path: Source directory
     def _get_source_directory_for_search(self) -> Path:
         if self.training_data_source in ['synthetic_only', 'real_only'] and self.pth_ds_gen_input_real:
             return self.pth_ds_gen_input_real
         return self.pth_ds_gen_input
 
     # Build image history from all results.
-    # Args:
-    #   results (dict): Dataset results
     def _build_image_history(self, results: dict) -> None:
         cross_val_dir = self.pth_output / "cross_validation"
         for dataset_num, checkpoints in results.items():
@@ -512,10 +466,6 @@ class ConfidenceAnalyzer:
                 tqdm.write(f"Dataset {dataset_num}: Processed {processed_images} {self.split_to_use} images, skipped {other_count} other images")
 
     # Get images from the appropriate split based on ca_split_to_use setting.
-    # Args:
-    #   dataset_num (int): Dataset index
-    # Returns:
-    #   tuple: (set_of_images, (split_count, other_count))
     def _get_split_images(self, dataset_num: int):
         cross_val_dir = self.pth_output / "cross_validation"
         split_file = cross_val_dir / f"dataset_{dataset_num}" / "split_info.json"
@@ -556,12 +506,6 @@ class ConfidenceAnalyzer:
             return None, (0, 0)
 
     # Find the original image path from source directories.
-    # Args:
-    #   img_key (str): Image filename
-    # Returns:
-    #   str: Full path to the original image
-    # Raises:
-    #   FileNotFoundError: If image not found
     def _find_original_image_path(self, img_key: str) -> str:
         source_dir = self._get_source_directory_for_search()
         for line in self.wt_lines + self.ko_lines:
@@ -575,10 +519,6 @@ class ConfidenceAnalyzer:
         raise FileNotFoundError(f"Original image not found for {img_key}")
 
     # Find images matching the specified confidence filter criteria.
-    # Args:
-    #   results (dict): Dataset results
-    # Returns:
-    #   dict: Class name -> list of (image_path, avg_confidence, correctness_rate)
     def find_filtered_images(self, results: dict) -> dict:
         self._build_image_history(results)
         filtered_images = {cls: [] for cls in self.classes}
@@ -633,10 +573,6 @@ class ConfidenceAnalyzer:
         return filtered_images
 
     # Organize filtered images into output directories.
-    # Args:
-    #   filtered_images (dict): Class name -> list of (image_path, avg_confidence, correctness_rate)
-    # Returns:
-    #   Path: Output directory
     def organize_filtered_images(self, filtered_images: dict) -> Path:
         output_subdir = {
             'correct': "high_confidence_correct",
@@ -671,11 +607,6 @@ class ConfidenceAnalyzer:
         return output_dir
 
     # Save results to CSV file.
-    # Args:
-    #   results (dict): Dataset results
-    #   output_path (Path): Path to output CSV
-    # Returns:
-    #   bool: True if successful
     def _save_results_to_csv(self, results: dict, output_path: Path) -> bool:
         rows = []
         for dataset_num, checkpoints in results.items():
@@ -698,10 +629,6 @@ class ConfidenceAnalyzer:
         return False
 
     # Export information about which checkpoints were used for analysis.
-    # Args:
-    #   results (dict): Dataset results
-    # Returns:
-    #   bool: True if successful
     def _export_used_checkpoints(self, results: dict) -> bool:
         print("\n>> Exporting used checkpoints information...")
 
@@ -797,9 +724,6 @@ class ConfidenceAnalyzer:
             return False
 
     # Create a README file for the filtered images directory.
-    # Args:
-    #   output_dir (Path): Output directory
-    #   filtered_images (dict): Class name -> list of images
     def _create_filter_readme(self, output_dir: Path, filtered_images: dict) -> None:
         filter_descriptions = {
             'correct': f"Correctly classified in all cases with confidence between {self.min_conf:.0%}-{self.max_conf:.0%}",
@@ -825,8 +749,6 @@ class ConfidenceAnalyzer:
             shutil.rmtree(self.pth_test, ignore_errors=True)
 
     # Analyze all datasets in the cross-validation results.
-    # Returns:
-    #   dict: Dataset index -> checkpoint results
     def analyze_all_datasets(self) -> dict:
         all_results = {}
         available_datasets = self._get_available_datasets()
@@ -858,10 +780,6 @@ class ConfidenceAnalyzer:
         return all_results
 
     # Create a filtered dataset for the specified split.
-    # Args:
-    #   dataset_num (int): Dataset index
-    # Returns:
-    #   DataLoader: Filtered dataloader
     def _create_filtered_dataset(self, dataset_num: int):
         ds = Dataset()
         ds.load_test_dataset()

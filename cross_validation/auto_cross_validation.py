@@ -5,7 +5,7 @@ import json
 import torch
 # ===== Own Modules =====
 from dataset import Dataset
-from dataset_gen import DatasetGenerator
+from cross_validation.dataset_gen import DatasetGenerator
 from model import CNN_Model
 from train import Train
 from settings import setting
@@ -22,7 +22,7 @@ class AutoCrossValidation:
     # Args:
     #   device (torch.device): Device to run training on
     def __init__(self, device: torch.device) -> None:
-
+        
         # Passed parameters
         self.device = device
 

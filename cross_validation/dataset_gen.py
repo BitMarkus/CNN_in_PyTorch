@@ -23,7 +23,7 @@ class DatasetGenerator():
         self.mode = mode
 
         # Settings parameters
-        self.input_dir = setting['pth_ds_gen_input']
+        self.input_dir = setting['pth_ds_gen_input_mixed']
         self.input_dir_synthetic = setting.get('pth_ds_gen_input_synthetic', None)
         self.input_dir_real = setting.get('pth_ds_gen_input_real', None)
         self.training_data_source = setting.get('train_data_source', 'mixed')
@@ -32,7 +32,7 @@ class DatasetGenerator():
         self.ko_lines = setting['ko_lines']
         self.train_dir = setting['pth_train']
         self.test_dir = setting['pth_test']
-        self.acv_results_dir = setting['pth_acv_results']
+        self.acv_results_dir = setting['pth_output'] / "cross_validation"
 
     #############################################################################################################
     # METHODS
