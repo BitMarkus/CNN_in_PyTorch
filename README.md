@@ -2135,3 +2135,504 @@ The utility prints a summary at the end:
    ```
 
 ---
+
+## 6. Export & Plotting
+
+**Description**: The Export & Plotting module converts raw training results into publication-ready figures and Excel reports. It reads TensorBoard logs, confusion matrix JSON files, and embedding CSV files, and produces high-resolution plots suitable for journals, presentations, and posters.
+
+All actions in this module are read-only with respect to the training pipeline: they do not modify checkpoints, logs, or datasets. They read inputs from `input/` (or a user-specified log directory) and write outputs to `output/`.
+
+The module contains four actions:
+
+| # | Action | Purpose |
+|---|--------|---------|
+| 1 | Export Training Metrics to Excel | Convert TensorBoard logs to a multi-sheet Excel report |
+| 2 | Plot UMAP/t-SNE/PaCMAP | Generate publication-ready embedding scatter plots |
+| 3 | Plot Confusion Matrix | Generate publication-ready confusion matrix figures |
+| 4 | Plot Training Curves | Generate publication-ready training metric figures |
+
+---
+
+### 6.1 Export Training Metrics to Excel
+
+**Description**: Reads TensorBoard event files from a training run and writes all scalar metrics to a multi-sheet Excel workbook. Each training run becomes one Excel sheet containing per-epoch metrics, checkpoint markers, ROC curve data, PR curve data, and embedded charts. This is useful for archival, sharing with collaborators, and offline inspection of training dynamics.
+
+**Scope**: This exporter only works with TensorBoard logs produced by this program. The log directory structure, metric naming, and probability file layout follow the conventions established by `train.py` in the Single Training and Cross Validation modules. TensorBoard logs from other sources will not be parsed correctly! This is not a universal TensorBoard exporter.
+
+The exporter supports both **single training** runs (`output/train/[timestamp]/logs/`) and **cross-validation** runs (`output/cross_validation/dataset_XX/logs/`).
+
+#### Key Settings (from `settings.py`)
+
+| Setting | Type | Description | Example Value |
+|---------|------|-------------|---------------|
+| `export_mode` | str | `"auto"`, `"crossval"`, or `"single"` | `"auto"` |
+| `export_excel_roc_epoch` | str / int | Which epoch to use for ROC curves | `"balanced_accuracy"` |
+| `export_excel_pr_epoch` | str / int | Which epoch to use for PR curves | `"balanced_accuracy"` |
+
+#### Export Mode
+
+The `export_mode` setting controls how the exporter interprets the log directory you point it to. Three modes are supported:
+
+| Mode | Behavior |
+|------|----------|
+| `"auto"` | Detects the mode by inspecting folder names inside the log directory. Folders named `dsXX` (e.g., `ds01`, `ds02`) are treated as cross-validation runs; folders with a timestamp pattern (`YYYYMMDD-HHMMSS`) or direct event files are treated as single training runs. |
+| `"crossval"` | Forces cross-validation mode. Expects `dataset_XX/` or `dsXX/` folders, each containing its own TensorBoard log. One Excel sheet is generated per fold. |
+| `"single"` | Forces single training mode. Expects one training run with a `logs/` folder containing the event file. One Excel sheet is generated. |
+
+**When to override the auto-detection**: In most cases `"auto"` works correctly. Override it explicitly if:
+
+- The log directory contains a mix of cross-validation and single-training folders and you want to focus on one type
+- Your folder names do not match either convention and auto-detection fails
+- You want to force a specific interpretation for reproducibility
+
+The `export_excel_roc_epoch` and `export_excel_pr_epoch` settings accept:
+
+| Value | Meaning |
+|-------|---------|
+| `"balanced_accuracy"` | Epoch with the highest balanced accuracy |
+| `"composite_score"` | Epoch with the highest composite score |
+| `"last"` | Last available epoch |
+| Integer | Specific epoch number (1-indexed) |
+
+#### Required Input
+
+```plaintext
+logs/
+├── events.out.tfevents.<timestamp>.<hostname>.<id>
+└── probabilities/
+    ├── probabilities_epoch_000.npz
+    ├── probabilities_epoch_000_summary.json
+    └── ...
+```
+
+The events file and probability `.npz` files are both produced automatically by `train.py`. If the probability files are missing, the Excel report will still be generated but the ROC and PR charts will be omitted.
+
+#### Output
+
+```plaintext
+output/
+└── train_metrics.xlsx       # Multi-sheet Excel workbook
+```
+
+Each sheet contains:
+- **Scalar table** — per-epoch metrics (loss, accuracy, balanced accuracy, F1, AUC, AP, learning rate, composite score, class counts)
+- **Checkpoint column** — a column marking which epochs produced a saved checkpoint (`X` marker)
+- **Raw ROC data** — FPR and TPR values per class for the selected epoch
+- **Raw PR data** — recall and precision values per class for the selected epoch
+- **Embedded charts** — one chart per metric, plus a ROC chart and a PR chart
+
+#### Expected Outcome
+
+For a 40-epoch training run with 2 classes and probability data available:
+
+| Content | Typical Size |
+|---------|-------------|
+| Sheets | 1 (single training) or up to 20 (cross-validation) |
+| Metrics per sheet | 10–15 columns |
+| Epochs per sheet | 40–60 |
+| Embedded charts per sheet | 12–15 (10 metric charts + ROC + PR) |
+
+The file is typically in the range of **500 KB – 5 MB** per run, depending on the number of epochs and metrics.
+
+#### Example Workflow
+
+1. Ensure a trained model exists with logs and probability data in `output/train/[timestamp]/logs/` (single) or `output/cross_validation/dataset_XX/logs/` (cross-validation)
+2. Configure `settings.py`:
+   ```python
+   export_mode = "auto"
+   export_excel_roc_epoch = "balanced_accuracy"
+   export_excel_pr_epoch = "balanced_accuracy"
+   ```
+3. Run the program and select **6 → 1**:
+   ```plaintext
+   :EXPORT TRAINING METRICS TO EXCEL:
+     Mode: AUTO (will detect from folder structure)
+
+   Enter path to TensorBoard logs folder: output/train/20260910_143022/logs
+
+   ============================================================
+   TENSORBOARD EXPORTER – 3-COLUMN CHART GRID
+   ============================================================
+   Logdir: output/train/20260910_143022/logs
+   Output: output/train_metrics.xlsx
+   ROC epoch selection: balanced_accuracy
+   PR epoch selection: balanced_accuracy
+
+   ✓ Auto-detected: SINGLE TRAINING mode (direct event files)
+
+   Extracting scalar metrics from each run...
+     20260910_143022 -> sheet 'training_run'
+       -> 40 epochs, 14 metrics
+       -> Saved checkpoints at epochs: [5, 12, 18, 23, 29, 34]
+
+   Writing Excel file...
+   --- Run: 20260910_143022 -> sheet 'training_run'
+
+   ✅ Export complete! File saved to: .../output/train_metrics.xlsx
+   ```
+
+---
+
+### 6.2 Plot UMAP / t-SNE / PaCMAP
+
+**Description**: Generates publication-ready scatter plots from embedding CSV files produced by the Dimensionality Reduction action (section 3.5). Each CSV file becomes one figure, with points colored by group or class, and all figures share a consistent axes height. The method name is detected automatically from the CSV filename.
+
+This is the recommended way to produce final UMAP/t-SNE/TriMAP/PaCMAP figures for publication, presentations, or posters.
+
+#### Key Settings (from `settings.py`)
+
+| Setting | Type | Description | Example Value |
+|---------|------|-------------|---------------|
+| `export_umap_format` | str | Output format: `"png"`, `"tiff"`, `"svg"`, `"pdf"` | `"tiff"` |
+| `export_umap_dpi` | int | Resolution for raster formats | `600` |
+| `export_umap_palette` | str | Any matplotlib colormap name, `"colorblind"`, or `"jet"` | `"jet"` |
+| `export_umap_axes_height` | float | Height of the axes in inches (consistent across all plots) | `5.0` |
+| `export_umap_fixed_aspect` | bool | Preserve data aspect ratio (1:1) | `True` |
+| `export_umap_point_size` | int | Scatter point size in points | `30` |
+| `export_umap_point_alpha` | float | Point transparency (0–1) | `0.5` |
+| `export_umap_show_ellipses` | bool | Draw 95% confidence ellipses around groups | `False` |
+| `export_umap_show_legend` | bool | Show the legend | `True` |
+| `export_umap_legend_position` | str | `"inside"`, `"outside"`, or `"auto"` | `"outside"` |
+| `export_umap_font_family` | str | Font family for all text | `"Arial"` |
+| `export_umap_axis_label_size` | int | Font size for axis labels | `22` |
+| `export_umap_legend_font_size` | int | Font size for legend text | `22` |
+| `export_umap_tick_label_size` | int | Font size for tick labels | `22` |
+| `export_umap_show_grid` | bool | Show background grid | `True` |
+| `export_umap_grid_alpha` | float | Grid transparency | `0.3` |
+
+#### Required Folder Structure
+
+```plaintext
+input/
+├── umap_groups_ckpt_..._embedding.csv
+├── tsne_groups_ckpt_..._embedding.csv
+└── ...
+```
+
+The CSV files are produced by section 3.5 (Dimensionality Reduction). Each file must contain at least:
+
+| Column | Meaning |
+|--------|---------|
+| `dim1` (or a column containing `dim1`) | First embedding coordinate |
+| `dim2` (or a column containing `dim2`) | Second embedding coordinate |
+| `label_name` (or `label_numeric`) | Group or class label |
+
+#### Output
+
+```plaintext
+output/
+├── umap_groups_ckpt_..._embedding.tif
+├── tsne_groups_ckpt_..._embedding.tif
+└── ...
+```
+
+Each input CSV produces one output plot. The output format is controlled by `export_umap_format`.
+
+#### Expected Outcome
+
+The output is a high-resolution figure with:
+
+| Property | Typical Value |
+|----------|---------------|
+| Axes height | 5 inches (consistent across all plots) |
+| Axes width | Adjusted to preserve data aspect ratio |
+| Resolution | 600 DPI (for TIFF/PNG) |
+| Font sizes | 22 pt for axis labels, legend, and tick labels |
+| Point rendering | Rasterized for small file size even in vector formats |
+| Legend | Outside on the right by default |
+
+For datasets with more than 8 groups, the legend is automatically positioned outside to avoid overlap. For colorblind-friendly output, set `export_umap_palette = "colorblind"`.
+
+#### Example Workflow
+
+1. Place one or more embedding CSV files in `input/`
+2. Configure `settings.py`:
+   ```python
+   export_umap_format = "tiff"
+   export_umap_dpi = 600
+   export_umap_palette = "jet"
+   export_umap_axes_height = 5.0
+   export_umap_point_size = 30
+   export_umap_show_legend = True
+   export_umap_legend_position = "outside"
+   export_umap_font_family = "Arial"
+   ```
+3. Run the program and select **6 → 2**:
+   ```plaintext
+   :PLOT UMAP/t-SNE/PaCMAP:
+     Input: input/ (CSV files with embedding coordinates)
+     Output: output/ (publication-ready plots)
+
+   ============================================================
+   DIMENSIONALITY REDUCTION PLOTTER CONFIGURATION
+   ============================================================
+   Input folder:        .../input
+   Output folder:       .../output
+   Output format:       TIFF
+   Resolution:          600 DPI
+   Axes height:         5.0 inches (CONSISTENT across plots)
+   Fixed aspect ratio:  True
+   Point size:          30 points
+   Palette:             jet
+   ============================================================
+
+   Found 4 files to process
+
+   📁 umap_groups_ckpt_..._embedding.csv
+     Loaded 2,400 points
+     Groups: 4
+     Method: UMAP
+     Data ranges: X [-12.34, 15.67] (width=28.01), Y [-10.21, 11.42] (height=21.63)
+     Data aspect ratio (width/height): 1.295
+     Axes size: 6.47 inches wide × 5.00 inches tall
+     Estimated legend width: 1.20 inches
+     Figure size: 8.87 × 6.40 inches
+     ✓ Saved: output/umap_groups_ckpt_..._embedding.tif (2.1 MB)
+   ...
+   ✅ Completed: 4/4 files processed
+   ```
+
+---
+
+### 6.3 Plot Confusion Matrix
+
+**Description**: Generates publication-ready confusion matrix figures from JSON files produced during training or cross-validation. Each JSON file becomes one matrix figure. The plotter supports normalization modes, count annotations, and side-by-side raw/normalized views.
+
+This is the recommended way to produce final confusion matrix figures for publication.
+
+#### Key Settings (from `settings.py`)
+
+| Setting | Type | Description | Example Value |
+|---------|------|-------------|---------------|
+| `export_cm_format` | str | Output format: `"png"`, `"tiff"`, `"svg"`, `"pdf"` | `"tiff"` |
+| `export_cm_dpi` | int | Resolution for raster formats | `600` |
+| `export_cm_normalize` | str | `"rows"`, `"columns"`, or `"none"` | `"rows"` |
+| `export_cm_show_counts` | bool | Show raw counts in cell annotations | `True` |
+| `export_cm_combined` | bool | Show raw and normalized side-by-side | `False` |
+| `export_cm_cmap` | str | Colormap for the heatmap | `"Blues"` |
+| `export_cm_show_title` | bool | Show the plot title | `True` |
+| `export_cm_show_overall_acc` | bool | Include overall accuracy in the title | `True` |
+| `export_cm_show_per_class_acc` | bool | Include per-class accuracy in the y-axis labels | `False` |
+| `export_cm_show_colorbar` | bool | Show the colorbar | `True` |
+| `export_cm_use_fixed_height` | bool | Use consistent axes height across plots | `True` |
+| `export_cm_fixed_height` | float | Height of the matrix in inches | `6.0` |
+| `export_cm_font_family` | str | Font family for all text | `"Arial"` |
+| `export_cm_axis_label_size` | int | Font size for axis labels | `30` |
+| `export_cm_title_font_size` | int | Font size for the title | `30` |
+| `export_cm_tick_label_size` | int | Font size for tick labels | `25` |
+| `export_cm_annotation_font_size` | int | Font size for cell annotations | `16` |
+| `export_cm_xtick_rotation` | int | Rotation of x-axis labels in degrees | `45` |
+
+#### Required Folder Structure
+
+```plaintext
+input/
+├── ckpt_pretr_densenet121_e23_bal0.860_comp0.812_val_cm.json
+├── ckpt_pretr_densenet121_e23_bal0.860_comp0.812_test_cm.json
+└── ...
+```
+
+The JSON files are produced automatically during training and cross-validation. Each file must contain:
+
+| Field | Meaning |
+|-------|---------|
+| `confusion_matrix` | The matrix as a 2D list |
+| `classes` | List of class names |
+| `class_accuracy` (optional) | Per-class accuracy |
+| `overall_accuracy` (optional) | Overall accuracy |
+
+#### Output
+
+```plaintext
+output/
+├── ckpt_..._val_confusion_rows.tif       # Row-normalized (default)
+└── ckpt_..._val_confusion_rows.tif       # Same file
+```
+
+Each input JSON produces one output figure. When `export_cm_combined = True`, each figure contains two matrices side by side (raw + normalized).
+
+#### Expected Outcome
+
+The output is a high-resolution figure with:
+
+| Property | Typical Value |
+|----------|---------------|
+| Matrix height | 6 inches (for 2–10 classes) |
+| Resolution | 600 DPI (for TIFF/PNG) |
+| Cell annotations | Normalized value + raw count (e.g., `0.86\n(215)`) |
+| Title | `Confusion Matrix (Rows)\nOverall Accuracy: 86.0%` |
+| Colormap | Blues (default) |
+
+#### Example Workflow
+
+1. Place confusion matrix JSON files in `input/`
+2. Configure `settings.py`:
+   ```python
+   export_cm_format = "tiff"
+   export_cm_dpi = 600
+   export_cm_normalize = "rows"
+   export_cm_show_counts = True
+   export_cm_combined = False
+   export_cm_show_overall_acc = True
+   export_cm_fixed_height = 6.0
+   export_cm_font_family = "Arial"
+   ```
+3. Run the program and select **6 → 3**:
+   ```plaintext
+   :PLOT CONFUSION MATRIX:
+     Input: input/ (JSON files with confusion matrix data)
+     Output: output/ (publication-ready plots)
+
+   ============================================================
+   CONFUSION MATRIX PLOTTER CONFIGURATION
+   ============================================================
+   Input folder:        .../input
+   Output folder:       .../output
+   Output format:       TIFF
+   Resolution:          600 DPI
+   Normalization:       rows
+   Show counts:         True
+   Matrix height:       6.0 inches (fixed)
+   ============================================================
+
+   Found 4 files to process
+
+   📁 ckpt_pretr_densenet121_e23_bal0.860_comp0.812_val_cm.json
+     Loaded 2 classes (2×2 matrix)
+     Overall accuracy: 86.00%
+     ✓ Saved: output/ckpt_..._val_confusion_rows.tif (1.2 MB)
+     Physical size: 6.20 × 6.40 inches
+   ...
+   ✅ Completed: 4/4 files processed
+   ```
+
+---
+
+### 6.4 Plot Training Curves
+
+**Description**: Generates publication-ready training curves from TensorBoard event files. Each training run produces a set of separate figures for the selected metrics: loss, accuracy, balanced accuracy, F1, per-class accuracy, ROC curves, PR curves, and others. All figures share a consistent axes height and font size, and can be individually enabled or disabled.
+
+This is the recommended way to produce final training metric figures for publication.
+
+#### Key Settings (from `settings.py`)
+
+| Setting | Type | Description | Example Value |
+|---------|------|-------------|---------------|
+| `export_mode` | str | `"auto"`, `"crossval"`, or `"single"` | `"auto"` |
+| `export_train_format` | str | Output format: `"png"`, `"tiff"`, `"svg"`, `"pdf"` | `"tiff"` |
+| `export_train_dpi` | int | Resolution for raster formats | `300` |
+| `export_train_use_fixed_height` | bool | Use consistent axes height across all plots | `True` |
+| `export_train_fixed_height` | float | Height of the axes in inches | `5.0` |
+| `export_train_master_font_size` | int | Master font size (overrides all individual sizes) | `22` |
+| `export_train_line_width` | float | Line width for plot lines | `2.0` |
+| `export_train_show_markers` | bool | Show markers at data points | `True` |
+| `export_train_marker_size` | int | Marker size in points | `5` |
+| `export_train_show_grid` | bool | Show background grid | `True` |
+| `export_train_min_class_acc_threshold` | float | Draw a dashed red line at this threshold in per-class plots | `0.65` |
+| `export_train_roc_epoch` | str / int | Which epoch to use for ROC curves | `"balanced_accuracy"` |
+| `export_train_pr_epoch` | str / int | Which epoch to use for PR curves | `"balanced_accuracy"` |
+
+**Plot selection flags** (each controls whether the corresponding figure is generated):
+
+| Setting | Default | Figure |
+|---------|---------|--------|
+| `export_train_plot_loss` | `True` | Training and validation loss |
+| `export_train_plot_accuracy` | `True` | Training and validation accuracy |
+| `export_train_plot_f1` | `True` | Macro and weighted F1 |
+| `export_train_plot_per_class_acc` | `True` | Per-class accuracy curves |
+| `export_train_plot_balanced_acc` | `True` | Balanced accuracy over epochs |
+| `export_train_plot_roc` | `True` | ROC curves (requires probability data) |
+| `export_train_plot_pr` | `True` | PR curves (requires probability data) |
+| `export_train_plot_lr` | `False` | Learning rate schedule |
+| `export_train_plot_auc` | `False` | AUC over epochs |
+| `export_train_plot_ap` | `False` | Average precision over epochs |
+| `export_train_plot_composite` | `False` | Composite score over epochs |
+| `export_train_plot_class_std` | `False` | Standard deviation of class accuracies |
+| `export_train_plot_min_class_acc` | `False` | Minimum class accuracy over epochs |
+| `export_train_plot_gpu_memory` | `False` | GPU memory usage |
+| `export_train_plot_class_weights` | `False` | Bar chart of loss weights |
+| `export_train_plot_class_counts` | `False` | Bar chart of class distribution |
+
+#### Required Input
+
+```plaintext
+logs/
+├── events.out.tfevents.<timestamp>.<hostname>.<id>
+└── probabilities/
+    ├── probabilities_epoch_000.npz
+    └── ...
+```
+
+Both files are produced automatically by `train.py`. If probability files are missing, ROC and PR figures are skipped with a warning.
+
+#### Output
+
+```plaintext
+output/
+├── loss.tif
+├── accuracy.tif
+├── f1.tif
+├── per_class_accuracy.tif
+├── balanced_accuracy.tif
+├── roc_curves.tif
+└── pr_curves.tif
+```
+
+Each generated figure is a separate file. For cross-validation mode, results are written per fold into subfolders.
+
+#### Expected Outcome
+
+Each figure is a high-resolution plot with:
+
+| Property | Typical Value |
+|----------|---------------|
+| Axes height | 5 inches (consistent across all figures) |
+| Resolution | 300 DPI (for TIFF/PNG) |
+| Font size | 22 pt for all text |
+| Line width | 2.0 points |
+| Markers | Visible at each epoch (size 5) |
+| Grid | Enabled, semi-transparent |
+| Legend | Positioned inside by default, or outside for many classes |
+
+For per-class accuracy figures, a dashed red line is drawn at `export_train_min_class_acc_threshold` (default `0.65`) to visually indicate acceptable performance.
+
+#### Example Workflow
+
+1. Ensure a trained model exists with logs and probability data
+2. Configure `settings.py`:
+   ```python
+   export_mode = "auto"
+   export_train_format = "tiff"
+   export_train_dpi = 300
+   export_train_master_font_size = 22
+   export_train_plot_loss = True
+   export_train_plot_accuracy = True
+   export_train_plot_f1 = True
+   export_train_plot_per_class_acc = True
+   export_train_plot_balanced_acc = True
+   export_train_plot_roc = True
+   export_train_plot_pr = True
+   ```
+3. Run the program and select **6 → 4**:
+   ```plaintext
+   :PLOT TRAINING CURVES:
+     Mode: AUTO (will detect from folder structure)
+
+   Enter path to TensorBoard logs folder: output/train/20260910_143022/logs
+
+   Found 1 runs to process
+   Processing run: 20260910_143022
+
+   Generating plots:
+     ✓ loss.tif
+     ✓ accuracy.tif
+     ✓ f1.tif
+     ✓ per_class_accuracy.tif
+     ✓ balanced_accuracy.tif
+     ✓ roc_curves.tif
+     ✓ pr_curves.tif
+
+   ✅ Complete! 7 plots generated
+   ```
+
+---
