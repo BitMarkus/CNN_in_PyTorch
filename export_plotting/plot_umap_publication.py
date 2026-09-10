@@ -77,9 +77,6 @@ class UMAPPlotter:
         top_margin=0.5,
         legend_margin_extra=3.0
     ) -> None:
-        
-        # Get script directory
-        self.script_dir = Path(__file__).parent.absolute()
 
         # Folder settings
         self.input_folder = Path(input_folder) if input_folder else setting['pth_input']

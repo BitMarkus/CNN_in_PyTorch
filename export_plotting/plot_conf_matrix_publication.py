@@ -71,9 +71,6 @@ class ConfusionMatrixPlotter:
         ytick_rotation=0,
         annotation_decimal_places=3
     ) -> None:
-        
-        # Get script directory
-        self.script_dir = Path(__file__).parent.absolute()
 
         # Folder settings
         self.input_folder = Path(input_folder) if input_folder else setting['pth_input']

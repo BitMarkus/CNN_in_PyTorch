@@ -11,3 +11,9 @@
 /input
 /output
 /checkpoints
+/analysis/__pycache__
+/cross_validation/__pycache__
+/export_plotting/__pycache__
+/preprocessing/__pycache__
+/single_training/__pycache__
+/utilities/__pycache__

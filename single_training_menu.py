@@ -102,7 +102,7 @@ class SingleTrainingMenu:
         elif not ds.ds_loaded:
             print('No training data loaded yet!')
         else:
-            print("Start training...")
+            print("\nStart training...\n")
             train = Train(cnn_wrapper, ds, device)
             train.train()
             print("\nTraining finished!")

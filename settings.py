@@ -14,7 +14,7 @@ setting = {
     ############
 
     # Number of epochs
-    "train_num_epochs": 3, # 40
+    "train_num_epochs": 10, # 40
     # Batch size for training and validation datasets
     "ds_batch_size": 50,
 
@@ -68,9 +68,9 @@ setting = {
     "ds_num_workers": 3,
     # Validation split settings
     # Validation split from images in folder data/train/ (False or percentage 0.0-1.0)
-    "ds_val_from_train_split": False,
+    "ds_val_from_train_split": 0.25,    # False
     # Validation split from images in folder data/test/ (False or percentage 0.0-1.0)
-    "ds_val_from_test_split": 1.0,
+    "ds_val_from_test_split": False,    # 1.0
     # Export validation images to a folder
     "ds_save_val_images": False,
 
@@ -208,7 +208,7 @@ setting = {
     # EfficientNet: efficientnet_b0, efficientnet_b3, efficientnet_b4, efficientnet_b7
     # ConvNeXt: convnext_tiny, convnext_small
     # Custom CNN architecture: custom
-    "cnn_type": "densenet121",
+    "cnn_type": "densenet121", 
     # Pretrained or initialized weights
     "cnn_is_pretrained": True,
     # Initialization type for non-pretrained cnns

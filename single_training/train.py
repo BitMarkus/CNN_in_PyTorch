@@ -24,6 +24,7 @@ from sklearn.metrics import (
     balanced_accuracy_score
 )
 # ===== Own Modules =====
+import settings as settings_module
 from settings import setting
 import functions as fn
 
@@ -82,7 +83,7 @@ class Train():
             # Copy settings file for reproducibility
             self._copy_settings_file(self.train_output_dir)
 
-            print(f"\n📁 Training results will be saved to: {self.train_output_dir}")
+            print(f"📁 Training results will be saved to: {self.train_output_dir}")
 
         # Class names - MOVED HERE BEFORE TensorBoard setup
         self.classes = setting["classes"]
@@ -210,7 +211,7 @@ class Train():
         self.total_gpu_memory = torch.cuda.get_device_properties(device).total_memory if torch.cuda.is_available() else 0
 
         # Print checkpoint saving configuration
-        print(f"\n> Checkpoint saving: {self.chckpt_selection_method.upper()}")
+        print(f"> Checkpoint saving: {self.chckpt_selection_method.upper()}")
         if self.chckpt_selection_method in ["balanced_accuracy", "both"]:
             print(f"  - Balanced Accuracy: min={self.min_balanced_acc_threshold:.0%}, per-class={self.min_per_class_acc_balanced:.0%}")
         if self.chckpt_selection_method in ["composite_score", "both"]:
@@ -326,7 +327,7 @@ class Train():
     # Args:
     #   output_dir (Path): The training output directory
     def _copy_settings_file(self, output_dir: Path) -> None:
-        settings_src = Path(__file__).parent / "settings.py"
+        settings_src = Path(settings_module.__file__)
         settings_dst = output_dir / "settings_copy.py"
         if settings_src.exists():
             shutil.copy2(settings_src, settings_dst)
@@ -489,7 +490,7 @@ class Train():
     def _print_class_analysis(self, class_counts: torch.Tensor, class_weights: torch.Tensor) -> None:
         total = class_counts.sum().item()
 
-        print("\n" + "=" * 60)
+        print("" + "=" * 60)
         print("CLASS DISTRIBUTION ANALYSIS")
         print("=" * 60)
 

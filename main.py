@@ -3,7 +3,7 @@ import functions as fn
 from single_training import CNN_Model, Dataset
 from single_training_menu import SingleTrainingMenu
 from cross_validation_menu import CrossValidationMenu
-from analysis_menu import AnalysisMenu
+# from analysis_menu import AnalysisMenu
 from utilities_menu import Utilities
 from preprocessing_menu import PreprocessingMenu
 from export_plotting_menu import ExportPlottingMenu
@@ -67,8 +67,9 @@ def main() -> None:
         #########################
 
         elif menu1 == 3:
-            analysis_menu = AnalysisMenu()
-            analysis_menu.menu(device)
+            # analysis_menu = AnalysisMenu()
+            # analysis_menu.menu(device)
+            pass
 
         #########################
         # Utilities             #
