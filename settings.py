@@ -68,9 +68,9 @@ setting = {
     "ds_num_workers": 3,
     # Validation split settings
     # Validation split from images in folder data/train/ (False or percentage 0.0-1.0)
-    "ds_val_from_train_split": 0.25,    # False
+    "ds_val_from_train_split": False,    # False
     # Validation split from images in folder data/test/ (False or percentage 0.0-1.0)
-    "ds_val_from_test_split": False,    # 1.0
+    "ds_val_from_test_split": 1.0,    # 1.0
     # Export validation images to a folder
     "ds_save_val_images": False,
 

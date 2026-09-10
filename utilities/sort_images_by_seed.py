@@ -29,12 +29,21 @@ class ImageOrganizerBySeed:
     # METHODS
 
     # Extract seed from filename.
+    # Supports two naming conventions:
+    #   1. New Flux pattern: s{seed}_ckpt{checkpoint}_{frame}_r{ratio}_{number}_...
+    #   2. Old Flux pattern: s{seed}_{frame}_fib_morph
     def extract_seed(self, filename) -> Optional[str]:
         if isinstance(filename, Path):
             filename_str = filename.stem
         else:
             filename_str = str(Path(filename).stem)
 
+        # New Flux pattern: s{seed}_ckpt{checkpoint}_{frame}_r{ratio}_{number}_...
+        match = re.match(r"s(\d+)_ckpt\d+_\d+_r[\d\.\-]+_\d+_", filename_str)
+        if match:
+            return match.group(1)
+
+        # Old Flux pattern: s{seed}_{frame}_fib_morph
         match = re.match(r"s(\d+)_\d+_fib_morph", filename_str)
         if match:
             return match.group(1)

@@ -80,6 +80,6 @@ class CrossValidationMenu:
     def _run_confidence_analyzer(self, device) -> None:
         print("\n:CONFIDENCE ANALYZER:")
         print("  Input: output/cross_validation/")
-        print("  Output: output/conf_analyzer/")
+        print("  Output: output/conf_analyzer/\n")
         confa = ConfidenceAnalyzer(device)
         confa()

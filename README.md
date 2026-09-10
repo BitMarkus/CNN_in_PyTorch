@@ -398,7 +398,7 @@ The module contains three sequential actions:
 
 **Description**: Creates all possible leave-one-cell-line-out dataset combinations. For each combination, one WT and one KO cell line are held out for testing while the remaining cell lines are used for training. This generates `N_WT × N_KO` independent datasets (e.g., 5 WT × 4 KO = 20 datasets). Each dataset contains a `train/` and `test/` folder with the WT/KO class subdirectories.
 
-**Note on workflow**: The Dataset Generator is **not required** for running cross-validation. When you start Automatic Cross Validation (section 2.2), datasets are generated on the fly for each fold and cleaned up afterwards. This standalone generator is meant for cases where you want to **inspect, modify, or reuse a specific dataset combination** — for example, to experiment on a particular WT/KO pair, to compare against a different model, or to reproduce a previous result. It writes the datasets to `dataset_gen/output/` so they persist across sessions, unlike the automatic version which produces temporary datasets inside `output/cross_validation/`.
+**Note on workflow**: The Dataset Generator is **not required** for running cross-validation. When you start Automatic Cross Validation (section 2.2), datasets are generated on the fly for each fold. In this `acv` mode, the training and test images are copied into `data/train/` and `data/test/`, trained on, and then cleaned up before the next fold begins. This standalone generator (in `gen` mode) is meant for cases where you want to **inspect, modify, or reuse a specific dataset combination** — for example, to experiment on a particular WT/KO pair, to compare against a different model, or to reproduce a previous result. It writes the datasets to `dataset_gen/output/dataset_XX/train/` and `dataset_gen/output/dataset_XX/test/` so they persist across sessions.
 
 The dataset generator supports three training data source modes, controlled by `train_data_source`. In all modes, validation and test images are drawn from **real images only** — synthetic images are used exclusively for training.
 
@@ -413,8 +413,8 @@ The dataset generator supports three training data source modes, controlled by `
 | Setting | Type | Description | Example Value |
 |---------|------|-------------|---------------|
 | `train_data_source` | str | `"mixed"`, `"synthetic_only"`, or `"real_only"` | `"real_only"` |
-| `wt_lines` | list | Wild-type cell line folder names | `["WT_1618-02", "WT_JG", "WT_JT", "WT_KM", "WT_MS"]` |
-| `ko_lines` | list | Knockout cell line folder names | `["KO_1096-01", "KO_1618-01", "KO_BR2986", "KO_BR3075"]` |
+| `wt_lines` | list | Wild-type cell line folder names | `["line_1", "line_2", "line_3", "line_4", "line_5"]` |
+| `ko_lines` | list | Knockout cell line folder names | `["line_6", "line_7", "line_8", "line_9"]` |
 | `classes` | list | Class names matching folder structure | `["KO", "WT"]` |
 
 #### Required Folder Structure (Input)
@@ -422,19 +422,19 @@ The dataset generator supports three training data source modes, controlled by `
 ```plaintext
 dataset_gen/
 ├── input_synthetic/           # Synthetic images (for synthetic_only mode)
-│   ├── WT_1618-02/
-│   ├── WT_JG/
+│   ├── line_1/
+│   ├── line_2/
 │   ├── ...
-│   ├── KO_1096-01/
+│   ├── line_6/
 │   └── ...
 ├── input_real/                # Real images (for synthetic_only and real_only modes)
-│   ├── WT_1618-02/
-│   ├── WT_JG/
+│   ├── line_1/
+│   ├── line_2/
 │   ├── ...
-│   ├── KO_1096-01/
+│   ├── line_6/
 │   └── ...
 └── input_mixed/               # Mixed source (for mixed mode)
-    ├── WT_1618-02/
+    ├── line_1/
     └── ...
 ```
 
@@ -465,8 +465,8 @@ dataset_gen/output/
 2. Configure `settings.py`:
    ```python
    train_data_source = "real_only"
-   wt_lines = ["WT_1618-02", "WT_JG", "WT_JT", "WT_KM", "WT_MS"]
-   ko_lines = ["KO_1096-01", "KO_1618-01", "KO_BR2986", "KO_BR3075"]
+   wt_lines = ["line_1", "line_2", "line_3", "line_4", "line_5"]
+   ko_lines = ["line_6", "line_7", "line_8", "line_9"]
    ```
 
 3. Run the program and select **2 → 1**:
@@ -489,7 +489,7 @@ dataset_gen/output/
 
 ### 2.2 Automatic Cross Validation
 
-**Description**: This action generates datasets internally and does not require the standalone Dataset Generator to have been run first. Runs the complete cross-validation loop over all generated datasets. For each fold, it creates the dataset, trains a model on the training cell lines, evaluates all saved checkpoints on the held-out test cell lines, and saves confusion matrices and per-checkpoint test metrics.
+**Description**: This action generates datasets internally and does not require the standalone Dataset Generator to have been run first. Training and test images for each fold are placed temporarily in `data/train/` and `data/test/`, then removed before the next fold begins. Runs the complete cross-validation loop over all generated datasets. For each fold, it creates the dataset, trains a model on the training cell lines, evaluates all saved checkpoints on the held-out test cell lines, and saves confusion matrices and per-checkpoint test metrics.
 
 Since validation images are drawn from the test set (`ds_val_from_test_split`), test evaluation uses the **remaining** images in the test set that were not consumed by validation. If `ds_val_from_test_split` is `1.0`, all test images are used for validation and no test evaluation takes place.
 
@@ -596,8 +596,8 @@ The `metadata` block makes the filtering transparent: the user can see how many 
    Cleanup finished.
 
    >> PROCESSING DATASET 1 OF 20:
-   Cell line for testing WT group: WT_1618-02
-   Cell line for testing KO group: KO_1096-01
+   Cell line for testing WT group: line_1
+   Cell line for testing KO group: line_6
 
    > Create dataset 1...
    Dataset 1 successfully created.
@@ -628,9 +628,24 @@ The `metadata` block makes the filtering transparent: the user can see how many 
 
 **Description**: Analyzes predictions across all cross-validation folds to identify images that are consistently and reliably classified by multiple independently trained models. This is used to build a **high-confidence dataset** for downstream applications such as LoRA training on diffusion models or further analysis.
 
+The analyzer loads the top checkpoints from each fold (selected by a configurable metric), runs predictions on the corresponding held-out test images, aggregates the results per image, and copies images that meet the configured filter criteria into a categorized output folder.
+
+**Note on missing checkpoints**: If a fold does not produce a usable checkpoint (or its confusion matrix JSON is missing), the images from that fold are simply not evaluated and are excluded from the analysis. Images are only required to be **unanimously correct (or incorrect) across the folds that actually evaluated them**. An image seen by only 2 of 20 folds can still qualify if both predictions agree and meet the confidence threshold.
+
 Because synthetic images are used only for training, they are explicitly excluded from all confidence analysis. The analyzer filters them out using the `split_info.json` file generated during cross-validation, which records only real images for validation and test splits. This ensures that the high-confidence dataset used for downstream applications (e.g., LoRA training) consists exclusively of real cells.
 
-The analyzer loads the top checkpoints from each fold (selected by a configurable metric), runs predictions on the corresponding held-out test images, aggregates the results per image, and copies images that meet the configured filter criteria into a categorized output folder.
+#### Prerequisites
+
+For the Confidence Analyzer to run successfully, the following files must exist for each cross-validation fold. They are produced automatically by section 2.2 (Automatic Cross Validation):
+
+| Prerequisite | Location | Purpose |
+|--------------|----------|---------|
+| Saved checkpoints | `output/cross_validation/dataset_XX/checkpoints/*.pt` | Models to be evaluated |
+| Confusion matrix JSON | `output/cross_validation/dataset_XX/plots/*_val_cm.json` (or `*_test_cm.json`) | Checkpoint selection metrics |
+| Split info | `output/cross_validation/dataset_XX/split_info.json` | Which images were validation vs. test |
+| Source images | `dataset_gen/input_real/line_X/` (or per `train_data_source`) | Original images to copy from |
+
+If any of these are missing for a fold, that fold will be skipped and a warning will be printed. Folds are not re-generated by the analyzer — they must already exist.
 
 #### Key Settings (from `settings.py`)
 
@@ -658,7 +673,7 @@ The analyzer loads the top checkpoints from each fold (selected by a configurabl
 | Metric | Description |
 |--------|-------------|
 | `balanced_accuracy` | Average of WT and KO accuracy (recommended) |
-| `balanced_sum` | `(WT + KO) − |WT − KO|` (favors balanced performance) |
+| `balanced_sum` | `(WT + KO) − abs(WT − KO)` (favors balanced performance) |
 | `f1_score` | Harmonic mean of WT and KO accuracy |
 | `min_difference` | Minimum of WT and KO accuracy |
 | `composite_score` | `overall_accuracy − penalty_weight × std(class_accuracies)` |
@@ -695,7 +710,7 @@ Exact retention rates vary with the number of folds, the choice of cell lines, a
 
 #### Example Workflow
 
-1. Ensure the cross-validation has completed and produces `output/cross_validation/dataset_XX/` folders
+1. Ensure cross-validation has been run (section 2.2), so that `output/cross_validation/dataset_XX/` folders exist
 2. Configure `settings.py`:
    ```python
    ca_min_conf = 0.8
@@ -706,7 +721,6 @@ Exact retention rates vary with the number of folds, the choice of cell lines, a
    ca_use_test_cm = "validation"
    ca_split_to_use = "validation"
    ```
-
 3. Run the program and select **2 → 3**:
    ```plaintext
    :CONFIDENCE ANALYZER:
@@ -715,13 +729,1409 @@ Exact retention rates vary with the number of folds, the choice of cell lines, a
 
    Starting confidence analysis...
    Found 20 datasets to analyze
+   Training data source: real_only
    Using VALIDATION confusion matrices for checkpoint selection
    Using 'VALIDATION' split for analysis
-   ...
+   Checkpoint selection method: balanced_accuracy
+   Results will be saved to: .../output/conf_analyzer/confidence_analysis.csv
+   ```
+4. **Checkpoint selection (automatic)**: For each fold, the analyzer identifies all checkpoints, reads their corresponding confusion matrix JSON files, and ranks them by the metric defined in `ca_ckpt_select_method`. The top `ca_max_ckpts` per fold are selected for evaluation. Example console output during this step:
+   ```plaintext
+   Processing datasets:  10%|█         | 2/20 [00:15<02:15]
+   Selected top 1 checkpoints by 'balanced_accuracy':
+     1. ckpt_pretr_densenet121_e23_bal0.860_comp0.812_ds01.pt:
+        score=0.8600 (WT=86.2%, KO=85.8%, overall=86.0%)
+   ```
+5. After all folds are processed, the analyzer aggregates predictions per image across the selected checkpoints and applies the filter defined in `ca_filter_type`:
+   ```plaintext
    Found 3421 images matching criteria. Organizing...
    Filtered images saved to: .../output/conf_analyzer/high_confidence_correct
-   ...
+   ```
+6. The results are written to `output/conf_analyzer/`:
+   - `high_confidence_correct/` (or the folder matching your filter type) — the selected images, organized by class
+   - `confidence_analysis.csv` — per-fold, per-class statistics
+   - `used_checkpoints.csv` — which checkpoints were used per fold
+   - `README.txt` — description of the filter applied
+
+   ```plaintext
    Analysis complete!
+   ```
+
+---
+
+## 3. Analysis
+
+**Description**: The Analysis module provides tools for evaluating trained models and inspecting their behavior. It covers single-image prediction, gradient-based visualization for model interpretability, high-confidence image selection for downstream applications, FID-based image quality assessment, and dimensionality reduction for embedding visualization.
+
+The module contains five actions:
+
+| # | Action | Purpose |
+|---|--------|---------|
+| 1 | Predict Class from Input Folder | Classify images in `input/` using a trained checkpoint |
+| 2 | GradCAM Analyzer | Visualize which regions drive the model's decision |
+| 3 | Class Sorter | Select high-confidence images for downstream training |
+| 4 | FID Score Calculator | Measure distribution distance between image folders |
+| 5 | Dimensionality Reduction | Project CNN embeddings into 2D for visualization |
+
+All actions in this module read from `input/` and write to `output/` (or a subfolder thereof). Place the relevant images or folders in `input/` before starting an action.
+
+---
+
+### 3.1 Predict Class from Input Folder
+
+**Description**: Runs a trained CNN on all images in `input/` (including subfolders) and produces a per-folder classification report. Each folder in `input/` is treated as a group, and the model predicts the class for every image within it. Outputs include class distribution, average confidence, logit statistics, and optionally renamed filenames encoding the prediction.
+
+This is the primary way to evaluate a single checkpoint on new images outside of cross-validation — for example, to run a trained model on a held-out test set or on a new batch of samples.
+
+#### Key Settings (from `settings.py`)
+
+| Setting | Type | Description | Example Value |
+|---------|------|-------------|---------------|
+| `classes` | list | Class names matching the model's output | `["KO", "WT"]` |
+| `img_channels` | int | Input channels (1 = grayscale, 3 = RGB) | `1` |
+| `analyze_rename_with_confidence` | bool | Rename images with confidence in the filename | `False` |
+| `analyze_include_logits_in_rename` | bool | Also include max logit in the filename | `False` |
+
+#### Required Folder Structure
+
+```plaintext
+input/
+├── group_1/                 # Any folder name
+│   ├── img_0001.png
+│   └── img_0002.png
+├── group_2/
+│   └── img_0003.png
+└── ...
+```
+
+Each subfolder is treated as a group and processed independently. Images placed directly in `input/` are not processed — they must be inside subfolders.
+
+#### Output
+
+```plaintext
+output/
+├── results_[checkpoint].csv           # One row per input folder
+└── logit_statistics_[checkpoint].json # Detailed per-folder logit statistics
+```
+
+The CSV contains, for each folder: total images, per-class counts and percentages, most likely class, average confidence, max logit statistics (mean, std, min, max), and a logit health score (0–100).
+
+#### Expected Outcome
+
+| Metric | Range | Interpretation |
+|--------|-------|----------------|
+| Average confidence | 0.5–1.0 | >0.9 strong, 0.75–0.9 moderate, 0.5–0.75 weak |
+| Max logit (mean) | −5 to +15 | >5 confident, 0–5 positive, <0 uncertain |
+| Logit health score | 0–100 | >75 excellent, 50–75 acceptable, <50 concerning |
+| Uncertain images | 0–50% | Percentage with max logit < 0 |
+
+#### Example Workflow
+
+1. Place folders of images to classify in `input/`
+2. Configure `settings.py`:
+   ```python
+   classes = ["KO", "WT"]
+   analyze_rename_with_confidence = False
+   ```
+3. Ensure a checkpoint is present in `checkpoints/`
+4. Run the program and select **3 → 1**:
+   ```plaintext
+   :PREDICT CLASS FROM INPUT FOLDER:
+     Place images to classify in the input/ folder
+     Results will be saved to output/
+
+   Creating new densenet121 network...
+   New network was successfully created.
+   Successfully loaded weights from ckpt_pretr_densenet121_e23_bal0.860_comp0.812.pt
+
+   Analyzing 4 folders...
+   ============================================================
+   > Processing folder: group_1
+   ============================================================
+   Predicting group_1: 100%|████████| 240/240 [00:18<00:00]
+
+   RESULTS for group_1:
+     Total images: 240
+     Most likely class: WT
+     Avg confidence: 0.892
+     Logit statistics:
+       • Avg max logit: 4.21
+       • Logit range: 6.83
+       • Uncertain images: 12 (5.0%)
+       • Logit health score: 82.4/100
+
+   Saved results to: output/results_ckpt_pretr_densenet121_e23_bal0.860_comp0.812.csv
+   Analysis complete - Summary
+   Total folders analyzed: 4
+   Total images analyzed: 960
+   ```
+
+---
+
+### 3.2 GradCAM Analyzer
+
+**Description**: Applies Gradient-weighted Class Activation Mapping (Grad-CAM) to visualize which regions of each input image contributed most strongly to the model's prediction. Heatmaps are overlaid on the original DIC images using a jet colormap, revealing the morphological features the CNN relies on.
+
+A second-iteration mode blurs the most salient regions, then re-runs Grad-CAM to reveal secondary or compensatory features. This is useful for understanding whether the model's decision is driven by a single dominant feature or a distributed set of cues.
+
+**Important**: This implementation is **only compatible with DenseNet-121**. The Grad-CAM computation accesses the `.features` attribute that only exists on DenseNet models. Using any other architecture will fail. A trained checkpoint must be present in `checkpoints/` — the analyzer will prompt for selection if multiple files are found.
+
+#### Key Settings (from `settings.py`)
+
+| Setting | Type | Description | Example Value |
+|---------|------|-------------|---------------|
+| `classes` | list | Class names matching the model | `["KO", "WT"]` |
+| `gradcam_second_iteration` | bool | Enable the blur-and-rerun diagnostic mode | `False` |
+| `gradcam_threshold_percent` | float | Fraction of most salient pixels to blur | `0.40` |
+| `gradcam_blurr_sigma` | float | Gaussian blur strength for the second pass | `15` |
+| `gradcam_export_only_overlay` | bool | Export only the overlay image | `True` |
+| `captum_alpha_overlay` | float | Heatmap transparency (0–1) | `0.4` |
+
+#### Required Folder Structure
+
+```plaintext
+input/
+├── group_1/                 # Any folder name
+│   ├── img_0001.png
+│   └── img_0002.png
+└── ...
+```
+
+#### Output
+
+```plaintext
+output/
+└── group_1_gradcam_[class]/
+    ├── img_0001_gradcam-[class].png
+    └── ...
+```
+
+When `gradcam_export_only_overlay = True`, each output is a 512×512 image with the Grad-CAM heatmap overlaid on the original. Otherwise, a three-panel figure (original / heatmap / overlay) is produced.
+
+#### Expected Outcome
+
+| Heatmap Color | Meaning |
+|---------------|---------|
+| Red / warm | Strong positive evidence for the predicted class |
+| Yellow / green | Secondary supporting evidence |
+| Blue / cold | Regions that did not contribute to the prediction |
+
+If the model relies on meaningful morphology, heatmaps should concentrate on relevant cellular structures (cytoskeleton, protrusions, cell body) rather than on background or debris.
+
+#### Example Workflow
+
+1. Place images to analyze in a subfolder of `input/`
+2. Configure `settings.py`:
+   ```python
+   gradcam_second_iteration = False
+   gradcam_threshold_percent = 0.40
+   gradcam_export_only_overlay = True
+   ```
+
+3. Ensure a trained DenseNet-121 checkpoint is present in `checkpoints/`
+
+4. Run the program and select **3 → 2**:
+   ```plaintext
+   :GradCAM ANALYZER:
+     Input: input/ (place images to analyze)
+     Output: output/gradcam/
+
+   Found single checkpoint: ckpt_pretr_densenet121_e23_bal0.860_comp0.812.pt
+   Select class for GradCAM analysis (1-2): 1
+   ✓ Selected class: KO
+
+   Applying GradCAM for class: KO
+   Processing images...
+   Grad-CAM Analysis: 100%|████████| 120/120 [00:47<00:00]
+   Saved visualizations to: output/group_1_gradcam_KO/
+   ```
+
+---
+
+### 3.3 Class Sorter
+
+**Description**: Runs a trained CNN on all images in `input/` (any folder structure) and selects images based on configurable confidence and logit criteria. The selected images are copied into an output folder organized by predicted class.
+
+Although the tool is often used to curate **high-confidence examples** for downstream training (e.g., LoRA fine-tuning of diffusion models), it is more general: it can select images across the full confidence spectrum, including **low-confidence outliers**, **borderline cases within a specific confidence interval**, or **systematically misclassified images** depending on the chosen filter. This makes it useful for both data curation and diagnostic analysis of model behavior.
+
+The Class Sorter supports three selection modes and three filter modes:
+
+**Selection modes**:
+- `top_n`: Select the N highest-scoring images per class
+- `threshold`: Select all images above a threshold
+- `interval`: Select all images whose score falls within a range
+
+**Filter modes**:
+- `confidence_only`: Use softmax confidence only
+- `logits_only`: Use the raw max logit only (filters uncertain predictions)
+- `combined`: Require both criteria to pass
+
+The tool is flexible about input folder structure. If images are in folders named after the configured classes, ground-truth is used to require correctness. Otherwise, all predictions are accepted.
+
+**Note**: A trained checkpoint must be present in `checkpoints/`. The sorter will select one automatically if only one exists, or prompt for selection otherwise.
+
+#### Key Settings (from `settings.py`)
+
+| Setting | Type | Description | Example Value |
+|---------|------|-------------|---------------|
+| `sort_selection_mode` | str | `"top_n"`, `"threshold"`, or `"interval"` | `"interval"` |
+| `sort_selection_value` | varies | N (int), threshold (float), or [min, max] | `[0.5, 1.0]` |
+| `sort_filter_mode` | str | `"confidence_only"`, `"logits_only"`, or `"combined"` | `"confidence_only"` |
+| `sort_logit_threshold` | float | Minimum max logit to keep (for logit-based modes) | `0.0` |
+| `sort_rename_images` | bool | Rename images with confidence/logit in filename | `True` |
+| `sort_pred_batch_size` | int | Batch size for prediction | `50` |
+| `sort_conf_intervals` | list | Confidence intervals for the statistics report | `[10, 20, ..., 90]` |
+| `sort_logit_intervals` | list | Logit intervals for the statistics report | `[-10, -5, -2, 0, 2, 5, 10]` |
+
+#### Required Folder Structure
+
+The sorter accepts any folder structure:
+
+**Option A — Flat or arbitrary folders** (all predictions accepted):
+```plaintext
+input/
+├── anything/
+│   ├── img_0001.png
+│   └── img_0002.png
+└── ...
+```
+
+**Option B — Class-named folders** (accuracy-checked per image):
+```plaintext
+input/
+├── KO/
+│   └── img_0001.png
+└── WT/
+    └── img_0002.png
+```
+
+Only folder names that exactly match a value in `classes` are treated as ground truth.
+
+#### Output
+
+```plaintext
+output/[mode]_[filter]/[timestamp]/
+├── KO/                          # Selected KO images
+│   └── img_0001_conf95-logit3.2-KO.png
+├── WT/                          # Selected WT images
+│   └── img_0002_conf92-logit2.1-WT.png
+├── selection_statistics.csv     # Per-class yield and confidence stats
+├── selected_images_details.csv  # Full per-image metadata
+├── selection_config.json        # Reproduction config
+├── logit_statistics.json        # Detailed logit distribution
+├── statistics.txt               # Interval-based distribution report
+└── README.txt                   # Explanation of the filtering applied
+```
+
+#### Expected Outcome
+
+The retention rate depends heavily on the selection and filter modes:
+
+| Mode | Filter | Typical Yield |
+|------|--------|---------------|
+| `interval` | `confidence_only` | 20–40% of images per class |
+| `interval` | `combined` | 15–30% of images per class |
+| `threshold` (e.g., 0.9) | `confidence_only` | 30–60% of images per class |
+| `top_n` | any | N images per class (exact) |
+
+The `logit_statistics.json` and `statistics.txt` files provide a detailed breakdown of the confidence and logit distributions, which are useful for tuning thresholds.
+
+#### Example Workflow
+
+1. Place images in `input/` (optionally organized into class folders)
+2. Configure `settings.py`:
+   ```python
+   sort_selection_mode = "interval"
+   sort_selection_value = [0.5, 1.0]
+   sort_filter_mode = "confidence_only"
+   sort_rename_images = True
+   ```
+3. Ensure a trained checkpoint is present in `checkpoints/`
+
+4. Run the program and select **3 → 3**:
+   ```plaintext
+   :CLASS SORTER:
+     Input: input/ (place images to sort by confidence)
+     Output: output/class_sorter/ (organized by class and confidence)
+
+   Creating new densenet121 network...
+   New network was successfully created.
+   Successfully loaded weights from ckpt_pretr_densenet121_e23_bal0.860_comp0.812.pt
+
+   Analyzing all images (any folder structure)
+   Total images found: 1240
+   ...
+   Selected images:
+     KO: 312 images (top conf: 0.982, max_logit: 8.12)
+     WT: 348 images (top conf: 0.976, max_logit: 7.94)
+
+   ✅ Class Sorter complete! Output saved to: output/interval0.50-1.00_conf-only/20260910_143022
+   ```
+
+---
+
+### 3.4 FID Score Calculator
+
+**Description**: Computes the Fréchet Inception Distance (FID) between a reference folder and every other folder in `input/`. FID measures how similar two sets of images are in the feature space of a pretrained InceptionV3 network. It is commonly used to assess the quality and realism of synthetic or generated images relative to real images.
+
+Lower FID indicates more similar distributions. For microscopy, FID is useful for comparing synthetic image generation pipelines (e.g., LoRA outputs) against real DIC images.
+
+#### Key Settings (from `settings.py`)
+
+| Setting | Type | Description | Example Value |
+|---------|------|-------------|---------------|
+| `img_channels` | int | Input channels (1 = grayscale, 3 = RGB) | `1` |
+| `fid_batch_size` | int | Batch size for InceptionV3 feature extraction | `32` |
+| `fid_balance_samples` | bool | Use equal number of images per folder | `True` |
+| `fid_random_seed` | int | Seed for random image selection when balancing | `123` |
+
+#### Required Folder Structure
+
+At least two folders must be present in `input/`:
+
+```plaintext
+input/
+├── real/                    # Reference folder (or chosen interactively)
+│   └── *.png
+├── synthetic/
+│   └── *.png
+└── another_set/
+    └── *.png
+```
+
+- With **exactly 2 folders**: the reference is chosen automatically. **Note**: "automatically" means the first folder returned by the filesystem's `iterdir()` — this is usually alphabetical but not guaranteed. Always check the printed output to confirm which folder was selected as reference. To control the reference explicitly, either rename the folder so it sorts first alphabetically, or add a third folder to trigger the interactive selection prompt.
+- With **more than 2 folders**: an interactive prompt lets you choose the reference.
+
+If `fid_balance_samples = True`, the number of images used per folder is capped at the smallest folder's count, ensuring a fair comparison.
+
+#### Output
+
+```plaintext
+output/
+└── fid_results.txt          # FID scores per folder (sorted ascending)
+```
+
+#### Expected Outcome
+
+FID score scale for **microscopy images** (note: this differs from natural image benchmarks like CelebA or CIFAR):
+
+| FID Range | Interpretation |
+|-----------|----------------|
+| 0–50 | Excellent — synthetic images closely match real distribution |
+| 50–100 | Good — realistic but with noticeable distributional differences |
+| 100–200 | Moderate to poor — clear stylistic or structural mismatch |
+| 200+ | Poor — synthetic images deviate substantially from real images |
+
+For LoRA-generated microscopy images, FID scores in the **30–80** range are typically observed when the generative model has learned the target domain well.
+
+#### Example Workflow
+
+1. Place the reference folder and comparison folder(s) in `input/`
+2. Configure `settings.py`:
+   ```python
+   img_channels = 1
+   fid_balance_samples = True
+   fid_random_seed = 123
+   ```
+3. Run the program and select **3 → 4**:
+   ```plaintext
+   :FID SCORE CALCULATOR:
+     Input: input/ (place folders with images to compare)
+     Output: output/fid_results.txt
+
+   Exactly 2 folders found. Using 'real' as reference.
+   Folder configuration:
+     - 'real': 3420 images [REFERENCE]
+     - 'synthetic': 2980 images
+
+   Loading InceptionV3 model...
+   Balancing samples: using 2980 images from each folder
+
+   Calculating FID score between 'real' and 'synthetic'...
+   FID score: 47.31
+
+   FID SCORE RESULTS
+   ------------------------------------------------------------
+   Reference Folder: real (2980 images used)
+   FID Scores (compared to reference):
+     synthetic               :  47.3100  (2980 images)
+   ```
+
+---
+
+### 3.5 Dimensionality Reduction
+
+**Description**: Extracts CNN embeddings from images and projects them into a 2D space using one or more dimensionality reduction methods: UMAP, t-SNE, TriMAP, and PaCMAP. The resulting scatter plots visualize how the CNN represents the input data, revealing clustering, overlap, or separation between classes or groups.
+
+**Important**: This implementation uses the `.features` attribute of the loaded model, which is **only available on DenseNet-121**. Other architectures will fail. A trained checkpoint must be present in `checkpoints/` — the analyzer will prompt for selection if multiple files exist. If no checkpoint is loaded, the tool will warn that untrained weights are being used, and the resulting embeddings will not be meaningful.
+
+The tool supports three input modes:
+
+| Mode | Source | Description |
+|------|--------|-------------|
+| `train` | `data/train/` | Embeddings from the training set |
+| `test` | `data/test/` | Embeddings from the test set |
+| `groups` | `input/` | One or more arbitrary folders, each treated as a group |
+
+In `groups` mode, folder names are auto-detected and can optionally be remapped for display via `dimred_group_mapping`.
+
+#### Key Settings (from `settings.py`)
+
+| Setting | Type | Description | Example Value |
+|---------|------|-------------|---------------|
+| `dimred_mode` | str | `"train"`, `"test"`, or `"groups"` | `"groups"` |
+| `dimred_group_mode` | str | `"auto"` or `"manual"` (groups mode only) | `"auto"` |
+| `dimred_group_mapping` | dict | Manual folder → (display name, label) mapping | `{...}` |
+| `dimred_color_palette` | str | Any matplotlib colormap name | `"jet"` |
+| `dimred_use_umap` | bool | Enable UMAP | `True` |
+| `dimred_use_tsne` | bool | Enable t-SNE | `True` |
+| `dimred_use_trimap` | bool | Enable TriMAP | `True` |
+| `dimred_use_pacmap` | bool | Enable PaCMAP | `True` |
+| `dimred_export_format` | str | `"csv"` or `"json"` for embedding export | `"csv"` |
+| `dimred_umap_n_neighbors` | int | UMAP neighborhood size | `15` |
+| `dimred_umap_min_dist` | float | UMAP minimum distance | `0.1` |
+| `dimred_tsne_perplexity` | int | t-SNE perplexity | `30` |
+| `dimred_trimap_n_inliers` | int | TriMAP inliers | `10` |
+| `dimred_pacmap_n_neighbors` | int | PaCMAP neighborhood size | `15` |
+
+#### Required Folder Structure
+
+**`groups` mode**:
+```plaintext
+input/
+├── group_1/
+│   └── *.png
+├── group_2/
+│   └── *.png
+└── ...
+```
+
+**`train` or `test` mode**: uses `data/train/` or `data/test/` respectively.
+
+#### Output
+
+```plaintext
+output/dim_red/
+├── umap_groups_[checkpoint]_[palette].png
+├── umap_groups_[checkpoint]_embedding.csv
+├── umap_groups_[checkpoint]_params.json
+├── tsne_groups_[checkpoint]_[palette].png
+├── trimap_groups_[checkpoint]_[palette].png
+└── pacmap_groups_[checkpoint]_[palette].png
+```
+
+Each method produces:
+- A **scatter plot** colored by group or class
+- An **embedding CSV** with per-sample coordinates and labels
+- A **parameters JSON** recording the method settings
+
+#### Expected Outcome
+
+| Observation | Interpretation |
+|-------------|----------------|
+| Well-separated clusters per group | CNN discriminates the groups; meaningful features |
+| Overlapping clouds with partial separation | Groups share features; the CNN captures subtle differences |
+| Continuous trajectory across groups | Phenotypic continuum (e.g., morphing series) |
+| Complete overlap | No distinguishable features; possibly a failed model or wrong checkpoint |
+
+For a well-trained classifier, WT and KO groups typically show partial overlap with clear separation of centroids. In trained-on-synthetic-only settings, synthetic and real clusters often align parallel rather than overlapping, reflecting a stylistic offset between the two domains.
+
+#### Example Workflow
+
+1. Place group folders in `input/`
+2. Configure `settings.py`:
+   ```python
+   dimred_mode = "groups"
+   dimred_group_mode = "auto"
+   dimred_use_umap = True
+   dimred_use_tsne = True
+   dimred_use_trimap = False
+   dimred_use_pacmap = False
+   dimred_color_palette = "jet"
+   ```
+3. Ensure a trained DenseNet-121 checkpoint is present in `checkpoints/`
+4. Run the program and select **3 → 5**:
+   ```plaintext
+   :DIMENSIONALITY REDUCTION:
+     Input: input/ (images) or data/train/ / data/test/
+     Output: output/dim_red/ (embedding CSV/JSON and plots)
+
+   Creating new densenet121 network...
+   Successfully loaded weights from ckpt_pretr_densenet121_e23_bal0.860_comp0.812.pt
+
+   Auto-detected 4 groups in input folder: ['real_KO', 'real_WT', 'synth_KO', 'synth_WT']
+
+   Extracting features: 100%|████████| 2400/2400 [01:23<00:00]
+   Extracted features: (2400, 1024)
+   Labels: {0: 600, 1: 600, 2: 600, 3: 600}
+
+   Running UMAP...
+   UMAP completed in 45.21 seconds
+     ✓ Saved embedding CSV to output/dim_red/umap_groups_ckpt_..._embedding.csv
+     ✓ Saved UMAP plot to output/dim_red/umap_groups_ckpt_..._jet.png
+
+   Running t-SNE...
+   t-SNE completed in 128.14 seconds
+     ✓ Saved t-SNE plot to output/dim_red/tsne_groups_ckpt_..._jet.png
+
+   All reductions completed!
+   ```
+
+---
+
+## 4. Utilities
+
+**Description**: The Utilities module provides a collection of helper tools for dataset manipulation and file organization. These utilities are independent of the CNN training pipeline and are used to prepare, clean up, or reorganize image collections before or after training runs.
+
+All utilities read from `input/` and write to `output/` (or a subfolder thereof). Since they operate directly on files, it is recommended to work on a copy of your data when experimenting with unfamiliar utilities.
+
+The module contains seven actions:
+
+| # | Action | Purpose |
+|---|--------|---------|
+| 1 | Dataset Merger | Flatten a nested folder structure into a single folder |
+| 2 | Dataset Remover | Randomly reduce the number of images per folder |
+| 3 | Dataset Splitter | Split a folder of images into multiple sub-datasets |
+| 4 | Dataset Subtraction | Subtract one dataset from another by identifier |
+| 5 | Merge Images from Folders | Copy images with a folder-name prefix into one folder |
+| 6 | Sort Images by Frame | Organize morphing series by frame number |
+| 7 | Sort Images by Seed | Organize images by their generation seed to separate morphing series |
+
+---
+
+### 4.1 Dataset Merger
+
+**Description**: Recursively scans `input/` and copies all image files into `output/`, flattening any nested folder structure. The utility is useful when you have a hierarchical dataset (e.g., `input/group_A/subgroup_1/img.png`) and need a flat folder with all images (e.g., `output/img.png`) for training or prediction.
+
+Duplicate filenames are handled by a configurable policy: either skipped or renamed with a unique suffix derived from the source subfolder path.
+
+**Relationship to other utilities**: The Dataset Merger and "Merge Images from Folders" (section 4.5) both flatten nested folder structures, but serve different purposes. The Dataset Merger preserves original filenames and adds prefixes only when needed (with an optional policy for duplicates, plus a full audit log). The "Merge Images from Folders" tool always prepends the parent folder name to every file, making it easier to trace images back to their source. Use the Merger when you want a clean, minimal-name output; use "Merge Images from Folders" when the source folder is meaningful information that must be preserved in the filename.
+
+#### Key Settings (from `settings.py`)
+
+| Setting | Type | Description | Example Value |
+|---------|------|-------------|---------------|
+| `util_merger_recursive_depth` | int / None | Maximum folder depth to scan (`None` = unlimited) | `None` |
+| `util_merger_copy_duplicates` | bool | Copy duplicates with rename (`True`) or skip (`False`) | `False` |
+| `util_merger_verbose` | bool | Print progress messages | `True` |
+
+#### Required Folder Structure
+
+```plaintext
+input/
+├── group_A/
+│   ├── subgroup_1/
+│   │   └── img_0001.png
+│   └── img_0002.png
+├── group_B/
+│   └── img_0003.png
+└── img_0004.png
+```
+
+Any nesting depth is supported. All image files (`.png`, `.jpg`, `.jpeg`, `.bmp`, `.tiff`, `.tif`, `.gif`, `.webp`) are collected.
+
+#### Output
+
+```plaintext
+output/
+├── img_0001.png
+├── img_0002.png
+├── img_0003.png
+├── img_0004.png
+└── collection_log.json    # Records which source file became which output file
+```
+
+The `collection_log.json` records, for every copied (or skipped) file, the source path, destination, and whether it was renamed due to a duplicate.
+
+#### Expected Outcome
+
+- All image files from `input/` are copied to `output/` as a flat list
+- Duplicates are either skipped or renamed, depending on `util_merger_copy_duplicates`
+- `collection_log.json` documents the mapping for reproducibility
+
+#### Example Workflow
+
+1. Place a nested dataset in `input/`
+2. Configure `settings.py`:
+   ```python
+   util_merger_recursive_depth = None
+   util_merger_copy_duplicates = False
+   util_merger_verbose = True
+   ```
+3. Run the program and select **4 → 1**:
+   ```plaintext
+   :DATASET MERGER:
+     Input: input/ (images in nested subfolders)
+     Output: output/ (all images flattened)
+
+   Scanning for image files...
+   Found 1240 image files in 18 folders
+   Copying images to output folder...
+
+   Copy complete: 1240 images copied
+   Collection log saved to: output/collection_log.json
+   ```
+
+---
+
+### 4.2 Dataset Remover
+
+**Description**: Randomly selects a fixed number of images from each folder in `input/` and copies only those to `output/`. This is useful for balancing class sizes or reducing the size of an oversized dataset before training.
+
+The selection is reproducible when a random seed is set. Folders that already contain fewer than the target number of images are copied in full and flagged with a warning.
+
+#### Key Settings (from `settings.py`)
+
+| Setting | Type | Description | Example Value |
+|---------|------|-------------|---------------|
+| `util_remover_target_per_folder` | int | Target number of images per folder | `500` |
+| `util_remover_seed` | int | Random seed for reproducible selection | `42` |
+| `util_remover_verbose` | bool | Print progress messages | `True` |
+
+#### Required Folder Structure
+
+```plaintext
+input/
+├── class_A/
+│   ├── img_0001.png
+│   └── ...                   # More than target
+├── class_B/
+│   └── ...                   # More than target
+└── class_C/
+    └── ...                   # Fewer than target (warning)
+```
+
+Alternatively, images can be placed directly in `input/` (treated as a single folder).
+
+#### Output
+
+```plaintext
+output/
+├── class_A/                  # Exactly target images
+├── class_B/                  # Exactly target images
+├── class_C/                  # All images (fewer than target)
+└── selection_log.json        # Records selected and excluded files per folder
+```
+
+#### Expected Outcome
+
+- Every folder with `>= target` images is reduced to exactly `target` images
+- Folders with `< target` images are copied in full (with a warning)
+- The `selection_log.json` records which files were selected and which were excluded, enabling reproducibility via the seed
+
+#### Example Workflow
+
+1. Place images in `input/` organized by class or group
+2. Configure `settings.py`:
+   ```python
+   util_remover_target_per_folder = 500
+   util_remover_seed = 42
+   ```
+3. Run the program and select **4 → 2**:
+   ```plaintext
+   :DATASET REMOVER:
+     Input: input/ (images organized in folders)
+     Output: output/ (reduced dataset)
+     Target per folder: 500
+     Random seed: 42
+
+   Processing folder: class_A
+     Folder class_A: 1200 → 500 images (removed 700)
+   Processing folder: class_B
+     Folder class_B: 800 → 500 images (removed 300)
+   Processing folder: class_C
+     WARNING: Insufficient images: 320 < 500
+   ```
+
+---
+
+### 4.3 Dataset Splitter
+
+**Description**: Splits all images in `input/` into multiple non-overlapping sub-datasets according to configurable ratios. Each sub-dataset is written to a separate folder under `output/`. This is useful for creating train/validation splits, or for partitioning a large dataset into reproducible subsets.
+
+**Warning**: This utility does not scan subfolders. Any images inside subfolders of `input/` will be silently ignored. Move all images to be split directly into `input/` before running the utility.
+
+#### Key Settings (from `settings.py`)
+
+| Setting | Type | Description | Example Value |
+|---------|------|-------------|---------------|
+| `util_splitter_ratios` | list | Ratios for each split (sum ≤ 1.0) | `[0.3]` |
+| `util_splitter_random_seed` | int | Random seed for reproducible shuffling | `42` |
+
+The remaining fraction (1 − sum of ratios) is automatically assigned to a final split. For example, `ratios = [0.3]` produces one split with 30% of images and a second with 70%.
+
+#### Required Folder Structure
+
+```plaintext
+input/
+├── img_0001.png
+├── img_0002.png
+└── ...
+```
+
+Images must be directly in `input/` (no subfolders).
+
+#### Output
+
+```plaintext
+output/
+├── dataset_1_0.30/           # ~30% of images
+├── dataset_2_0.70/           # Remaining ~70%
+└── (no log file; stats printed to console)
+```
+
+#### Expected Outcome
+
+- All images are partitioned into `len(ratios) + 1` sub-datasets
+- No image appears in more than one sub-dataset
+- Counts are printed to the console, with the actual ratio per split
+- A verification step confirms no duplicates or missing images
+
+#### Example Workflow
+
+1. Place images directly in `input/`
+2. Configure `settings.py`:
+   ```python
+   util_splitter_ratios = [0.3]
+   util_splitter_random_seed = 42
+   ```
+3. Run the program and select **4 → 3**:
+   ```plaintext
+   :DATASET SPLITTER:
+     Input: input/ (images to split)
+     Output: output/ (split into dataset_X folders)
+     Ratios: [0.3]
+     Random seed: 42
+
+   Found 1200 unique images in input folder
+   Splitting into 2 datasets with counts: [360, 840]
+   Created dataset_1_0.30: 360 images (30%)
+   Created dataset_2_0.70: 840 images (70%)
+
+   Verification
+   ✓ No duplicates found across datasets
+   ✓ All input images are accounted for in the splits
+   ```
+
+---
+
+### 4.4 Dataset Subtraction
+
+**Description**: Compares two datasets (`input/dataset_a/` and `input/dataset_b/`) by their base identifiers and writes the set difference to `output/result_dataset/`. The subtraction direction is chosen interactively.
+
+Base identifiers are extracted from filenames by stripping everything after `_conf` in the filename stem. This matches the naming convention produced by the Class Sorter and similar utilities, where files may be renamed with confidence or correctness suffixes.
+
+This utility is useful for removing overlapping images from one dataset when building complementary sets.
+
+#### Key Settings (from `settings.py`)
+
+| Setting | Type | Description | Example Value |
+|---------|------|-------------|---------------|
+| `util_subtraction_dataset_a` | str | Name of the first dataset folder inside `input/` | `"dataset_a"` |
+| `util_subtraction_dataset_b` | str | Name of the second dataset folder inside `input/` | `"dataset_b"` |
+| `util_subtraction_result` | str | Name of the result folder inside `output/` | `"result_dataset"` |
+| `util_subtraction_verbose` | bool | Print progress messages | `True` |
+
+#### Required Folder Structure
+
+```plaintext
+input/
+├── dataset_a/
+│   ├── img_0001_conf95-KO.png
+│   └── ...
+└── dataset_b/
+    ├── img_0001_conf92-KO.png     # Same base identifier as in dataset_a
+    └── ...
+```
+
+Base identifier for both files is `img_0001`, so `img_0001` will be removed from the minuend side.
+
+#### Output
+
+```plaintext
+output/
+└── result_dataset/           # Contains images unique to the minuend dataset
+```
+
+#### Expected Outcome
+
+- The subtraction direction is prompted interactively (A − B or B − A)
+- Images whose base identifier appears in both datasets are removed from the result
+- Files with matching base identifiers but different suffixes (e.g., different confidence values) are both removed
+- Integrity verification confirms that no common identifier appears in the result
+- Total files copied and per-folder statistics are printed to the console
+
+#### Example Workflow
+
+1. Place `dataset_a/` and `dataset_b/` in `input/`
+2. Configure `settings.py`:
+   ```python
+   util_subtraction_dataset_a = "dataset_a"
+   util_subtraction_dataset_b = "dataset_b"
+   util_subtraction_result = "result_dataset"
+   ```
+3. Run the program and select **4 → 4**:
+   ```plaintext
+   :DATASET SUBTRACTION:
+     Input: input/dataset_a/ and input/dataset_b/
+     Output: output/result_dataset/
+
+   Scanning dataset_a folder...
+     Found 1240 unique base identifiers
+
+   Scanning dataset_b folder...
+     Found 980 unique base identifiers
+
+   Choose subtraction direction:
+     1) dataset_a - dataset_b
+     2) dataset_b - dataset_a
+   Enter 1 or 2: 1
+
+   Set Operations:
+     Common identifiers (present in both): 420
+     Result identifiers (dataset_a - common): 820
+   Total files copied: 820
+   ✅ SUCCESS: No common identifiers found in result!
+   ```
+
+---
+
+### 4.5 Merge Images from Folders
+
+**Description**: Recursively collects all image files from `input/` and copies them into a single flat folder in `output/`, adding the parent folder name as a prefix to each filename. Unlike the Dataset Merger, this utility preserves the folder-of-origin information in the filename itself, which is useful for tracing images back to their source group.
+
+**Relationship to other utilities**: See section 4.1 for a detailed comparison with the Dataset Merger, which offers similar but differently-focused functionality. In short: the Dataset Merger keeps original filenames and adds prefixes only on collision, while this tool always prefixes with the parent folder name to preserve the source group in the filename.
+
+#### Key Settings (from `settings.py`)
+
+| Setting | Type | Description | Example Value |
+|---------|------|-------------|---------------|
+| `util_merge_extensions` | list | Image file extensions to include | `['.png', '.jpg', ...]` |
+| `util_merge_verbose` | bool | Print progress messages | `True` |
+
+#### Required Folder Structure
+
+```plaintext
+input/
+├── group_A/
+│   └── img_0001.png
+└── group_B/
+    └── img_0002.png
+```
+
+#### Output
+
+```plaintext
+output/
+├── group_A_img_0001.png     # Parent folder prefix added
+└── group_B_img_0002.png
+```
+
+#### Expected Outcome
+
+- Every image file in `input/` (at any depth) is copied to `output/`
+- New filename = `<parent_folder>_<original_filename>`
+- If a filename collision occurs, a numeric suffix is appended (`_1`, `_2`, ...)
+- Statistics are printed to the console before and after copying
+
+#### Example Workflow
+
+1. Place grouped image folders in `input/`
+2. Configure `settings.py`:
+   ```python
+   util_merge_extensions = ['.png', '.jpg', '.jpeg', '.bmp', '.tiff', '.tif']
+   util_merge_verbose = True
+   ```
+3. Run the program and select **4 → 5**:
+   ```plaintext
+   :MERGE IMAGES FROM FOLDERS:
+     Input: input/ (images in subfolders)
+     Output: output/ (images renamed as folder_original)
+
+   Found images by folder:
+     group_A: 320 images
+     group_B: 480 images
+     group_C: 210 images
+   Total images found: 1010
+
+   Copy 1010 images to output/? (yes/no): yes
+
+   ✓ Copied: img_0001.png -> group_A_img_0001.png
+   ...
+   COLLECTION COMPLETE!
+   Successfully copied: 1010 images
+   ```
+
+---
+
+### 4.6 Sort Images by Frame
+
+**Description**: Reorganizes morphing series images into folders named by frame number. This utility is tailored for outputs from diffusion-based morphing series generation, where each series consists of multiple frames representing a phenotypic gradient.
+
+The utility identifies frames by parsing the **image filename** with a regular expression. Which pattern is used depends on the `util_sort_frame_format` setting, which must be either `"flux"` or `"stylegan"`.
+
+#### Supported Filename Formats
+
+**When `util_sort_frame_format = "flux"`** (default), two Flux patterns are tried in order:
+
+| Pattern | Format | Example | Seed sorter support |
+|---------|--------|---------|---------------------|
+| Flux (new) | `s{seed}_ckpt{checkpoint}_{frame}_r{ratio}_{number}_...` | `s12345_ckpt01_05_r0.5_0001_fib_morph.png` | ✅ Yes (after update) |
+| Flux (old) | `s{seed}_{frame}_fib_morph` | `s12345_05_fib_morph.png` | ✅ Yes (after update) |
+
+**When `util_sort_frame_format = "stylegan"`**, one StyleGAN pattern is used:
+
+| Pattern | Format | Example | Seed sorter support |
+|---------|--------|---------|---------------------|
+| StyleGAN | `{series}_{frame}` | `0001_05.png` | ❌ No (no seed in name) |
+
+Files that match none of the active patterns are skipped and reported in the summary.
+
+#### Key Settings (from `settings.py`)
+
+| Setting | Type | Description | Example Value |
+|---------|------|-------------|---------------|
+| `util_sort_frame_format` | str | `"flux"` or `"stylegan"` | `"flux"` |
+| `util_sort_frame_verbose` | bool | Print progress messages | `True` |
+
+#### Required Folder Structure
+
+```plaintext
+input/
+├── s12345_ckpt01_01_r0.1_0001_fib_morph.png
+├── s12345_ckpt01_02_r0.2_0001_fib_morph.png
+├── s12345_ckpt01_03_r0.3_0001_fib_morph.png
+└── ...
+```
+
+#### Output
+
+```plaintext
+output/
+├── frame_01/
+│   └── s12345_ckpt01_01_r0.1_0001_fib_morph.png
+├── frame_02/
+│   └── s12345_ckpt01_02_r0.2_0001_fib_morph.png
+├── frame_03/
+│   └── s12345_ckpt01_03_r0.3_0001_fib_morph.png
+└── ...
+```
+
+#### Expected Outcome
+
+- Each image is copied to a folder named `frame_XX` according to its frame number
+- Files that do not match the naming pattern are skipped and reported
+- Total count per frame is printed after sorting
+
+#### Example Workflow
+
+1. Place morphing series images directly in `input/`
+2. Configure `settings.py`:
+   ```python
+   util_sort_frame_format = "flux"
+   ```
+3. Run the program and select **4 → 6**:
+   ```plaintext
+   :SORT IMAGES BY FRAME:
+     Input: input/ (morphing series images)
+     Output: output/ (organized into frame_X folders)
+     Format: flux
+
+   IMAGE STATISTICS (FLUX FORMAT)
+   Total matching images: 20000
+   Frame distribution:
+     Frame 01:  2000 images
+     Frame 02:  2000 images
+     ...
+     Frame 10:  2000 images
+
+   Organize images? (yes/no): yes
+   Created 10 frame folders:
+     frame_01: 2000 images
+     ...
+   ```
+
+---
+
+### 4.7 Sort Images by Seed
+
+**Description**: Organizes images by their generation seed, extracting the seed value from filenames. The pattern expected is `s{seed}_{frame}_fib_morph`, and images are grouped into folders named `seed_{seed}`. This utility is useful for analyzing morphing series generated with multiple seeds, where each seed produces one independent series.
+
+**Important — filename format**: This utility parses the **image filename** with a regular expression to extract the seed value. Two naming conventions are supported:
+
+| Format | Pattern | Example |
+|--------|---------|---------|
+| New Flux | `s{seed}_ckpt{checkpoint}_{frame}_r{ratio}_{number}_...` | `s12345_ckpt01_05_r0.5_0001_fib_morph.png` |
+| Old Flux | `s{seed}_{frame}_fib_morph` | `s12345_05_fib_morph.png` |
+
+Files that match neither pattern are skipped and reported. These two utilities (Sort by Frame and Sort by Seed) are designed for handling synthetic images produced by a ComfyUI morphing-series workflow. To reproduce results or reuse these utilities with your own generated images, your naming logic must follow one of these conventions.
+
+#### Key Settings (from `settings.py`)
+
+| Setting | Type | Description | Example Value |
+|---------|------|-------------|---------------|
+| `util_sort_seed_verbose` | bool | Print progress messages | `True` |
+
+#### Required Folder Structure
+
+```plaintext
+input/
+├── s12345_01_fib_morph.png
+├── s12345_02_fib_morph.png
+├── s67890_01_fib_morph.png
+└── s67890_02_fib_morph.png
+```
+
+#### Output
+
+```plaintext
+output/
+├── seed_12345/
+│   ├── s12345_01_fib_morph.png
+│   └── s12345_02_fib_morph.png
+└── seed_67890/
+    ├── s67890_01_fib_morph.png
+    └── s67890_02_fib_morph.png
+```
+
+#### Expected Outcome
+
+- Images are grouped by the seed value extracted from the filename
+- Files that do not match the pattern are skipped (with verbose reporting if enabled)
+- Total count per seed is printed after sorting
+
+#### Example Workflow
+
+1. Place morphing series images directly in `input/`
+2. Configure `settings.py`:
+   ```python
+   util_sort_seed_verbose = True
+   ```
+3. Run the program and select **4 → 7**:
+   ```plaintext
+   :SORT IMAGES BY SEED:
+     Input: input/ (images with s{seed}_ pattern in filename)
+     Output: output/ (organized into seed_X folders)
+
+   Found images by seed:
+     Seed 12345: 10 images
+     Seed 67890: 10 images
+     ...
+   Total images: 20000
+
+   Organize images? (yes/no): yes
+   Created 2000 seed folders
+   ```
+
+---
+
+## 5. Preprocessing
+
+**Description**: The Preprocessing module prepares raw microscopy data for use with the CNN training and analysis pipeline. It covers two actions: converting proprietary microscope formats (Zeiss `.czi` mosaic files) into individual training images, and generating text captions for diffusion-model (LoRA) training.
+
+The module contains two actions:
+
+| # | Action | Purpose |
+|---|--------|---------|
+| 1 | Export CZI Mosaic Files | Convert `.czi` files to individual PNG training images |
+| 2 | Generate Captions | Create text captions for LoRA training |
+
+---
+
+### 5.1 Export CZI Mosaic Files
+
+**Description**: Converts Zeiss `.czi` files into individual PNG images suitable for CNN training. For **mosaic files** — which are the primary use case of this utility — each tile is extracted as a separate image. For each tile, a central square region is cut out, the sharpest z-plane is selected (or a user-defined one is used), noise reduction and percentile normalization are applied, and the result is saved as a grayscale PNG.
+
+#### Scope and Limitations
+
+This utility is specifically designed for the imaging setup used in this project and has several important constraints:
+
+- **One channel (grayscale)**: The script assumes a single-channel input. Multi-channel CZI files are not supported by the current implementation.
+- **Mosaic files with known tile count**: The tile count (`preproc_num_tiles`) must be configured manually. It is not detected automatically from the file.
+- **Camera-resolution dependency**: The slice size (`preproc_slice_size`) is a fixed value that must match the resolution of the microscope camera. If the camera or magnification changes, this value must be adjusted to avoid cutting off parts of a tile or including overlap regions.
+- **Untested for single images**: The script has not been validated for single-image CZI files (i.e., not mosaics). Setting `preproc_num_tiles = {'x': 1, 'y': 1}` may work if the image is at least as large as `preproc_slice_size`, but this has not been tested.
+- **Single z-plane handling**: If a file contains only one z-plane, the sharpness selection trivially returns that plane. The pipeline runs without error, but the sharpness-selection step has no effect.
+
+#### Why a Central Square?
+
+The utility does **not** merge all tiles into one large image and slice it. This would yield more training images, but it is deliberately avoided for two reasons:
+
+1. **Brightness gradients at tile edges**: Each tile has a slight brightness gradient that intensifies toward its edges. Stitching tiles together would produce visible seam lines in the merged image, which would introduce artificial features that the CNN could learn as shortcuts.
+2. **Overlap handling**: Mosaic tiles overlap by roughly 10% in every direction. To avoid including overlapping regions in the output, the maximum extractable square from each tile is used. Tiles at the mosaic border have the same overlap because the acquisition includes it uniformly.
+
+By cutting a central square from each tile, the utility:
+- Avoids edge gradients entirely
+- Uses the same region of interest (the center) across all tiles
+- Keeps output images uniform in size regardless of tile position
+
+This means a **smaller number of training images per CZI file** compared to a stitching approach, but each image is free of stitching artifacts and edge gradients.
+
+#### Key Settings (from `settings.py`)
+
+| Setting | Type | Description | Example Value |
+|---------|------|-------------|---------------|
+| `preproc_num_tiles` | dict | Number of tiles in the mosaic (x, y) | `{'x': 20, 'y': 26}` |
+| `preproc_sharpest_z_plane` | int / None | Fixed z-plane, or `None` for auto-detection | `None` |
+| `preproc_czi_import_scale` | float | Scale factor when importing the mosaic | `1.0` |
+| `preproc_czi_img_ext` | str | File extension of the input files | `'.czi'` |
+| `preproc_slice_size` | dict | Size of the extracted square per tile (pixels) | `{'x': 1766, 'y': 1766}` |
+| `preproc_slice_resize` | dict | Final image size after resizing | `{'x': 512, 'y': 512}` |
+| `preproc_perc_min` | float | Lower percentile for normalization | `5.0` |
+| `preproc_perc_max` | float | Upper percentile for normalization | `97.0` |
+
+#### Required Folder Structure
+
+```plaintext
+input/
+├── line_1.czi
+├── line_2.czi
+└── ...
+```
+
+All `.czi` files should be placed directly in `input/`. Subfolders are not scanned.
+
+#### Output
+
+```plaintext
+output/
+├── line_1/                     # One folder per .czi file
+│   ├── line_1_y0_x0_z3.png
+│   ├── line_1_y0_x1_z3.png
+│   ├── ...
+│   └── line_1_y25_x19_z3.png
+├── line_2/
+│   └── ...
+```
+
+#### Filename Convention
+
+Each exported PNG follows this pattern:
+
+```plaintext
+{czi_filename}_y{tile_y}_x{tile_x}_z{sharpest_z}.png
+```
+
+| Component | Meaning | Example |
+|-----------|---------|---------|
+| `{czi_filename}` | Original `.czi` filename without extension | `line_1` |
+| `y{tile_y}` | Tile row index in the mosaic grid (0 to `preproc_num_tiles['y'] - 1`) | `y10` |
+| `x{tile_x}` | Tile column index in the mosaic grid (0 to `preproc_num_tiles['x'] - 1`) | `x15` |
+| `z{sharpest_z}` | Selected z-plane index (or fixed value from settings) | `z3` |
+
+**Example**: `line_1_y10_x15_z3.png` is the tile at row 10, column 15, from the third z-plane of the file `line_1.czi`.
+
+This naming is **not arbitrary** — it uniquely identifies each tile and the z-plane it came from, which is important for:
+
+- **Reproducibility**: You can trace any exported image back to its exact position in the original mosaic
+- **Debugging**: If a specific tile fails or looks wrong, the coordinates point directly to the source
+- **Downstream tools**: Utilities such as the Dataset Subtractor and the Class Sorter rely on the filename stem as a **base identifier** to match images across different folders (see below)
+
+#### Base Identifiers
+
+Several utilities in this project operate on the **base identifier** of a filename, which is defined as:
+
+> Everything in the filename stem **before the first** `_conf` substring.
+
+For a raw exported image, the base identifier is simply the full stem:
+
+```plaintext
+line_1_y10_x15_z3.png           → base identifier: line_1_y10_x15_z3
+```
+
+After the Class Sorter renames images with confidence and class information, the base identifier stays the same:
+
+```plaintext
+line_1_y10_x15_z3_conf95-logit3.2-KO.png   → base identifier: line_1_y10_x15_z3
+line_1_y10_x15_z3_conf88-logit1.5-WT.png   → base identifier: line_1_y10_x15_z3
+```
+
+This means utilities like **Dataset Subtraction** can match images across folders even if they have been renamed with different confidence scores. The base identifier is the stable anchor.
+
+#### Filename Evolution Through the Pipeline
+
+The following table traces a single image from acquisition to downstream analysis:
+
+| Stage | Example Filename | Notes |
+|-------|-----------------|-------|
+| Raw CZI export | `line_1_y10_x15_z3.png` | Produced by this utility |
+| After Class Sorter | `line_1_y10_x15_z3_conf95-logit3.2-KO.png` | Confidence and logit appended |
+| Base identifier (used for matching) | `line_1_y10_x15_z3` | Everything before `_conf` |
+
+This convention is consistent across the pipeline and allows images to be cross-referenced even after multiple renaming steps.
+
+#### Expected Outcome
+
+For a single `.czi` file with 20 × 26 tiles and 8 z-planes, the utility produces **520 PNG images** (one per tile). The selected z-plane is either the user-defined plane (`preproc_sharpest_z_plane`) or the sharpest one determined by the Tenengrad metric.
+
+| Parameter | Typical Value |
+|-----------|---------------|
+| Tiles per `.czi` file | 520 |
+| Z-planes per tile | 8 |
+| Output images per `.czi` file | 520 |
+| Output image size | 512 × 512 pixels |
+| Output format | 8-bit grayscale PNG |
+
+#### Sharpness Detection
+
+When `preproc_sharpest_z_plane` is `None`, the utility computes the **Tenengrad sharpness** for each z-plane of each tile and selects the plane with the highest score. This is motivated by the finding that fibroblasts from patients exhibit reduced adhesion to the substrate and migrate more slowly than healthy controls; the sharpest plane typically corresponds to the basal cell surface where these differences are most pronounced.
+
+If you want to force a specific z-plane for all tiles, set `preproc_sharpest_z_plane` to that index (e.g., `3`). This is useful when you already know which plane is best for your experimental setup. With only one z-plane, the sharpness step trivially selects that plane.
+
+#### Example Workflow
+
+1. Place `.czi` files directly in `input/`
+2. Configure `settings.py`:
+   ```python
+   preproc_num_tiles = {'x': 20, 'y': 26}
+   preproc_sharpest_z_plane = None
+   preproc_slice_size = {'x': 1766, 'y': 1766}
+   preproc_slice_resize = {'x': 512, 'y': 512}
+   preproc_perc_min = 5.0
+   preproc_perc_max = 97.0
+   ```
+3. Run the program and select **5 → 1**:
+   ```plaintext
+   :CZI MOSAIC EXPORT:
+     Input: input/ (place .czi files here)
+     Output: output/[czi_filename]/ (PNG images)
+
+   >> PROCESSING IMAGE line_1:
+   Loading of mosaic .czi image line_1.czi successful.
+   Folder output/line_1 for exported images was successfully created.
+   Prepare image for slicing. Please wait...
+   Image is ready for slicing.
+   > Processing image slice 0_0...
+   Sharpest image of z-stack is from plane 3.
+   > Processing image slice 0_1...
+   Sharpest image of z-stack is from plane 3.
+   ...
+   >> PROCESSING OF IMAGE line_1 FINISHED!
+   ```
+
+---
+
+### 5.2 Generate Captions
+
+**Description**: Creates text caption files (`.txt`) for each image, one caption per image, used for fine-tuning diffusion models with LoRA. The caption text depends on the chosen mode and is derived from the cell-line name embedded in the image filename.
+
+Three caption modes are supported:
+
+| Mode | Example Output | Use case |
+|------|---------------|----------|
+| `cell_line_only` | `"line_1 cells, grayscale"` | Model learns cell-line identity |
+| `phenotype_only` | `"wildtype cells, grayscale"` | Model learns broad phenotype only |
+| `both` | `"line_1 wildtype cells, grayscale"` | Model learns both |
+
+The utility scans `input/` recursively, extracts cell-line and phenotype information from each filename, and writes a `.txt` file next to the corresponding image (using the same stem and directory structure). Output can be written to `output/` mirroring the input structure.
+
+#### Key Settings (from `settings.py`)
+
+| Setting | Type | Description | Example Value |
+|---------|------|-------------|---------------|
+| `preproc_caption_mode` | str | `"cell_line_only"`, `"phenotype_only"`, or `"both"` | `"phenotype_only"` |
+| `preproc_caption_overwrite` | bool | Overwrite existing caption files | `True` |
+| `preproc_caption_wt_lines` | list | Wild-type cell line prefixes | `["line_1", "line_2", ...]` |
+| `preproc_caption_ko_lines` | list | Knockout cell line prefixes | `["line_6", "line_7", ...]` |
+| `preproc_caption_image_extensions` | list | Image extensions to process | `['.png', '.jpg', ...]` |
+
+The cell-line lists are used to **parse** each filename. A filename is associated with a cell line if its stem **starts with** one of the configured prefixes. Longer prefixes are matched first, so `line_10` would be matched before `line_1` if both were configured.
+
+#### Required Folder Structure
+
+```plaintext
+input/
+├── line_1/
+│   ├── line_1_y0_x0_z3.png
+│   └── ...
+├── line_6/
+│   ├── line_6_y0_x0_z3.png
+│   └── ...
+└── ...
+```
+
+Images can be organized in subfolders (recommended) or placed directly in `input/`.
+
+#### Output
+
+Captions are written to a mirror of the input structure under `output/`:
+
+```plaintext
+output/
+├── line_1/
+│   ├── line_1_y0_x0_z3.txt       # Contains: "wildtype cells, grayscale"
+│   └── ...
+├── line_6/
+│   ├── line_6_y0_x0_z3.txt       # Contains: "knockout cells, grayscale"
+│   └── ...
+└── ...
+```
+
+If images are directly in `input/`, captions are written to `output/captions/`.
+
+#### Expected Outcome
+
+For each image in `input/`, one `.txt` file is created with a single-line caption. The output mirrors the input structure, so the resulting folder tree is directly usable by LoRA training frameworks such as Kohya_ss.
+
+| Mode | Sample Caption |
+|------|----------------|
+| `cell_line_only` | `line_1 cells, grayscale` |
+| `phenotype_only` | `wildtype cells, grayscale` |
+| `both` | `line_1 wildtype cells, grayscale` |
+
+The utility prints a summary at the end:
+
+| Metric | Description |
+|--------|-------------|
+| Total images found | All images detected in `input/` |
+| Created | New caption files written |
+| Overwritten | Existing caption files that were replaced |
+| Skipped | Existing caption files that were left unchanged (if `overwrite = False`) |
+| Token errors | Files whose names could not be parsed (no matching cell-line prefix) |
+
+#### Example Workflow
+
+1. Place images (with cell-line prefixes in filenames) in `input/`
+2. Configure `settings.py`:
+   ```python
+   preproc_caption_mode = "phenotype_only"
+   preproc_caption_overwrite = True
+   preproc_caption_wt_lines = ["line_1", "line_2", "line_3", "line_4", "line_5"]
+   preproc_caption_ko_lines = ["line_6", "line_7", "line_8", "line_9"]
+   ```
+3. Run the program and select **5 → 2**:
+   ```plaintext
+   :CAPTION GENERATOR:
+     Input: input/ (images in subfolders or directly)
+     Output: output/[folder_name]/ or output/captions/
+     Mode: phenotype_only
+
+   ======================================================================
+   CAPTION FILE GENERATOR
+   ======================================================================
+   Image folder: .../input
+   Output folder: .../output
+   Caption mode: phenotype_only
+   Overwrite existing: True
+   ======================================================================
+   Total images found: 1240 (recursive search)
+   Known cell lines: 9
+   ----------------------------------------------------------------------
+     Creating: 'line_1/line_1_y0_x0_z3.png' -> 'output/line_1/line_1_y0_x0_z3.txt'
+     ...
+
+   Summary:
+     Total images found: 1240
+     Created: 1240 new caption files
+     Overwritten: 0 existing files
+     Skipped: 0 files (already existed)
+     Token extraction errors: 0 files
+     Successfully processed: 1240 images
+     Output folder: .../output
+
+   Cell Line Distribution:
+     line_1: 320 images
+     line_2: 260 images
+     ...
    ```
 
 ---
