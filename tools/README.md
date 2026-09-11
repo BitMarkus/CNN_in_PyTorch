@@ -32,3 +32,19 @@ Adds or removes SPDX license headers on all Python source files in the repositor
 # Diffusion-Based Phenotypic Extrapolation
 # Copyright (C) 2026 Markus Reichold <markus.reichold@ur.de>
 # SPDX-License-Identifier: MIT
+```
+
+The `remove` action only strips the header if all three lines are present at
+the top of the file, preventing accidental removal of unrelated content.
+
+### Configuration Reference
+
+| Variable | Purpose |
+|----------|---------|
+| `ACTION` | `"add"` or `"remove"` |
+| `DRY_RUN` | `True` to preview, `False` to apply |
+| `HEADER_LINES` | The three comment lines to prepend |
+| `HEADER_MARKER` | String used to detect existing headers |
+| `TARGET_FOLDERS` | Folders scanned for `.py` files |
+| `SKIP_FOLDERS` | Folders to ignore during scanning |
+| `SKIP_FILENAMES` | Files to ignore by name |
