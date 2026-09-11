@@ -1,7 +1,7 @@
 # ===== Own Modules =====
 import functions as fn
 from settings import setting
-from cross_validation import DatasetGenerator, AutoCrossValidation, ConfidenceAnalyzer
+from . import DatasetGenerator, AutoCrossValidation, ConfidenceAnalyzer
 
 class CrossValidationMenu:
 

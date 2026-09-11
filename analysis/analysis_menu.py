@@ -1,6 +1,6 @@
 # ===== Own Modules =====
 import functions as fn
-from analysis import ClassAnalyzer, GradCAMAnalyzer, ClassSorter, FIDCalculator, DimRed
+from . import ClassAnalyzer, GradCAMAnalyzer, ClassSorter, FIDCalculator, DimRed
 
 class AnalysisMenu:
 

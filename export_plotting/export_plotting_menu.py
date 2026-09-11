@@ -1,13 +1,12 @@
 # ===== Own Modules =====
 import functions as fn
 from settings import setting
-from export_plotting import (
+from . import (
     TensorBoardExporter,
     UMAPPlotter,
     ConfusionMatrixPlotter,
     TensorBoardPlotter
 )
-
 
 class ExportPlottingMenu:
 
@@ -148,7 +147,6 @@ class ExportPlottingMenu:
             print(f"Error during execution: {e}")
             import traceback
             traceback.print_exc()
-
 
     # Run the Confusion Matrix Plotter.
     def _run_confusion_matrix_plotter(self) -> None:

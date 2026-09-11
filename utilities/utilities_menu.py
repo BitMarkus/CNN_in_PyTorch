@@ -1,7 +1,7 @@
 # ===== Own Modules =====
 import functions as fn
 from settings import setting
-from utilities import (
+from . import (
     DatasetMerger,
     RandomDSRemover,
     ImageDatasetSplitter,

@@ -180,6 +180,31 @@ The pipeline is configured for:
 - **Grayscale images** (1 channel)
 - **512 × 512 pixels**
 
+#### No Defensive Error Handling
+
+The scripts in this repository assume that the user provides correctly configured inputs and follows the documented folder structures. There is **no systematic error handling** in most cases. Common user mistakes will cause the program to crash with a Python traceback rather than printing a friendly message.
+
+Examples of situations that will cause a crash instead of a guided error message:
+
+- A required folder (`input/`, `data/train/`, `checkpoints/`, etc.) is missing or empty
+- A checkpoint file is corrupted, truncated, or incompatible with the current model architecture
+- An image has an unexpected number of channels or dimensions
+- A filename does not match the expected naming convention
+- A settings value is invalid (e.g., a path that does not exist, a probability outside `[0, 1]`)
+- The GPU runs out of memory during training or inference
+- A `.czi` file is malformed or does not match the expected mosaic structure
+
+When the program crashes, the Python traceback usually points to the failing line and is often sufficient to diagnose the problem. However, tracing an error back to its source may require familiarity with the codebase.
+
+**Recommendation**: Before running a module for the first time, verify that:
+
+1. All required input folders exist and contain the expected files
+2. All paths in `settings.py` point to existing locations
+3. Any required checkpoints are present and loadable
+4. The Python environment includes all dependencies from `requirements.txt`
+
+If you encounter a crash, reading the traceback from the bottom up usually reveals which assumption was violated.
+
 Other configurations may work in some scripts but will fail in others, particularly in the diffusion-based pipeline and the Class Sorter.
 
 #### Why these limitations exist

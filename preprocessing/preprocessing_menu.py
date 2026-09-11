@@ -1,7 +1,7 @@
 # ===== Own Modules =====
 import functions as fn
 from settings import setting
-from preprocessing import czi_export_main, CaptionGenerator, CaptionMode
+from . import czi_export_main, CaptionGenerator, CaptionMode
 
 class PreprocessingMenu:
     # Preprocessing Menu - Collection of data preparation tools.

@@ -1,7 +1,7 @@
 # ===== Own Modules =====
 import functions as fn
 from settings import setting
-from single_training import Train, CNN_Model, Dataset
+from . import Train
 
 class SingleTrainingMenu:
 
