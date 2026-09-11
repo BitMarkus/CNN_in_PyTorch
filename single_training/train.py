@@ -1,3 +1,7 @@
+# Diffusion-Based Phenotypic Extrapolation
+# Copyright (C) 2026 Markus Reichold <markus.reichold@ur.de>
+# SPDX-License-Identifier: MIT
+
 # TENSORBOARD USAGE INSTRUCTIONS:
 # Navigate to project folder in explorer, type cmd in the address bar to open terminal
 # Activate virtual environment: conda activate {env_name}

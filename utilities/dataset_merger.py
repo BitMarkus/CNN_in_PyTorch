@@ -1,3 +1,7 @@
+# Diffusion-Based Phenotypic Extrapolation
+# Copyright (C) 2026 Markus Reichold <markus.reichold@ur.de>
+# SPDX-License-Identifier: MIT
+
 # ===== Standard Library Imports =====
 import shutil
 import json

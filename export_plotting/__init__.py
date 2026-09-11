@@ -1,3 +1,7 @@
+# Diffusion-Based Phenotypic Extrapolation
+# Copyright (C) 2026 Markus Reichold <markus.reichold@ur.de>
+# SPDX-License-Identifier: MIT
+
 # ===== Own Modules =====
 from export_plotting.extract_metrics_to_excel import TensorBoardExporter
 from export_plotting.plot_umap_publication import UMAPPlotter

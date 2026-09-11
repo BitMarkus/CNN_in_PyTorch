@@ -1,3 +1,7 @@
+# Diffusion-Based Phenotypic Extrapolation
+# Copyright (C) 2026 Markus Reichold <markus.reichold@ur.de>
+# SPDX-License-Identifier: MIT
+
 # FID Score Scale Reference:
 # 0-50: Excellent quality (images are very similar)
 # 50-100: Good quality

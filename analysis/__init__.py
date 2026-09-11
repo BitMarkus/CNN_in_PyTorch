@@ -1,3 +1,7 @@
+# Diffusion-Based Phenotypic Extrapolation
+# Copyright (C) 2026 Markus Reichold <markus.reichold@ur.de>
+# SPDX-License-Identifier: MIT
+
 # ===== Own Modules =====
 from analysis.class_analyzer import ClassAnalyzer
 from analysis.gradcam_analyzer import GradCAMAnalyzer
