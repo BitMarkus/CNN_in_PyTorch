@@ -1,5 +1,206 @@
-# CNN_in_PyTorch
-A CNN (convolutional neural network, different architectures) for classification and analysis of microscopic images (in python, pytorch)
+# Diffusion-Based-Phenotypic-Extrapolation
+
+A dual-pipeline framework for label-free fibroblast classification and diffusion-based phenotypic extrapolation. The repository combines a convolutional neural network (CNN) pipeline for classification and analysis of DIC microscopy images with a generative diffusion pipeline that produces synthetic images and morphing series by interpolating between wild-type and knockout phenotypes in the latent space of a FLUX.1 model.
+
+---
+
+## Index
+
+0. [Introduction](#0-introduction)
+1. [Single CNN Training](#1-single-cnn-training)
+   - [1.1 Create CNN Network](#11-create-cnn-network)
+   - [1.2 Show Network Summary](#12-show-network-summary)
+   - [1.3 Load Training Data](#13-load-training-data)
+   - [1.4 Train Network](#14-train-network)
+   - [1.5 Load Weights](#15-load-weights)
+2. [Cross Validation](#2-cross-validation)
+   - [2.1 Dataset Generator](#21-dataset-generator)
+   - [2.2 Automatic Cross Validation](#22-automatic-cross-validation)
+   - [2.3 Confidence Analyzer](#23-confidence-analyzer)
+3. [Analysis](#3-analysis)
+   - [3.1 Predict Class from Input Folder](#31-predict-class-from-input-folder)
+   - [3.2 GradCAM Analyzer](#32-gradcam-analyzer)
+   - [3.3 Class Sorter](#33-class-sorter)
+   - [3.4 FID Score Calculator](#34-fid-score-calculator)
+   - [3.5 Dimensionality Reduction](#35-dimensionality-reduction)
+4. [Utilities](#4-utilities)
+   - [4.1 Dataset Merger](#41-dataset-merger)
+   - [4.2 Dataset Remover](#42-dataset-remover)
+   - [4.3 Dataset Splitter](#43-dataset-splitter)
+   - [4.4 Dataset Subtraction](#44-dataset-subtraction)
+   - [4.5 Merge Images from Folders](#45-merge-images-from-folders)
+   - [4.6 Sort Images by Frame](#46-sort-images-by-frame)
+   - [4.7 Sort Images by Seed](#47-sort-images-by-seed)
+5. [Preprocessing](#5-preprocessing)
+   - [5.1 Export CZI Mosaic Files](#51-export-czi-mosaic-files)
+   - [5.2 Generate Captions](#52-generate-captions)
+6. [Export & Plotting](#6-export--plotting)
+   - [6.1 Export Training Metrics to Excel](#61-export-training-metrics-to-excel)
+   - [6.2 Plot UMAP / t-SNE / PaCMAP](#62-plot-umap--tsne--pacmap)
+   - [6.3 Plot Confusion Matrix](#63-plot-confusion-matrix)
+   - [6.4 Plot Training Curves](#64-plot-training-curves)
+7. [Diffusion-Based Morphing Series Generation](#7-diffusion-based-morphing-series-generation)
+   - [7.1 Prerequisites](#71-prerequisites)
+   - [7.2 Workflow Selection](#72-workflow-selection)
+   - [7.3 Configuration](#73-configuration)
+   - [7.4 Running the Generation](#74-running-the-generation)
+   - [7.5 Output Naming Convention](#75-output-naming-convention)
+   - [7.6 Example Workflow](#76-example-workflow)
+   - [7.7 Expected Outcome](#77-expected-outcome)
+8. [Complete Workflow Through the Project](#8-complete-workflow-through-the-project)
+
+## Index
+
+0. [Introduction](#0-introduction)
+1. [Single CNN Training](#1-single-cnn-training)
+   - [1.1 Create CNN Network](#11-create-cnn-network)
+   - [1.2 Show Network Summary](#12-show-network-summary)
+   - [1.3 Load Training Data](#13-load-training-data)
+   - [1.4 Train Network](#14-train-network)
+   - [1.5 Load Weights](#15-load-weights)
+2. [Cross Validation](#2-cross-validation)
+   - [2.1 Dataset Generator](#21-dataset-generator)
+   - [2.2 Automatic Cross Validation](#22-automatic-cross-validation)
+   - [2.3 Confidence Analyzer](#23-confidence-analyzer)
+3. [Analysis](#3-analysis)
+   - [3.1 Predict Class from Input Folder](#31-predict-class-from-input-folder)
+   - [3.2 GradCAM Analyzer](#32-gradcam-analyzer)
+   - [3.3 Class Sorter](#33-class-sorter)
+   - [3.4 FID Score Calculator](#34-fid-score-calculator)
+   - [3.5 Dimensionality Reduction](#35-dimensionality-reduction)
+4. [Utilities](#4-utilities)
+   - [4.1 Dataset Merger](#41-dataset-merger)
+   - [4.2 Dataset Remover](#42-dataset-remover)
+   - [4.3 Dataset Splitter](#43-dataset-splitter)
+   - [4.4 Dataset Subtraction](#44-dataset-subtraction)
+   - [4.5 Merge Images from Folders](#45-merge-images-from-folders)
+   - [4.6 Sort Images by Frame](#46-sort-images-by-frame)
+   - [4.7 Sort Images by Seed](#47-sort-images-by-seed)
+5. [Preprocessing](#5-preprocessing)
+   - [5.1 Export CZI Mosaic Files](#51-export-czi-mosaic-files)
+   - [5.2 Generate Captions](#52-generate-captions)
+6. [Export & Plotting](#6-export--plotting)
+   - [6.1 Export Training Metrics to Excel](#61-export-training-metrics-to-excel)
+   - [6.2 Plot UMAP / t-SNE / PaCMAP](#62-plot-umap--tsne--pacmap)
+   - [6.3 Plot Confusion Matrix](#63-plot-confusion-matrix)
+   - [6.4 Plot Training Curves](#64-plot-training-curves)
+7. [Diffusion-Based Morphing Series Generation](#7-diffusion-based-morphing-series-generation)
+   - [7.1 Prerequisites](#71-prerequisites)
+   - [7.2 Workflow Selection](#72-workflow-selection)
+   - [7.3 Configuration](#73-configuration)
+   - [7.4 Running the Generation](#74-running-the-generation)
+   - [7.5 Output Naming Convention](#75-output-naming-convention)
+   - [7.6 Example Workflow](#76-example-workflow)
+   - [7.7 Expected Outcome](#77-expected-outcome)
+8. [Complete Workflow Through the Project](#8-complete-workflow-through-the-project)
+
+---
+
+## 0. Introduction
+
+### Project Overview
+
+This repository contains the code used to produce the results in the accompanying publication on **diffusion-based phenotypic extrapolation**. It combines two pipelines:
+
+- A **CNN-based classification and analysis pipeline** for label-free DIC microscopy images of primary fibroblasts from patients and healthy controls
+- A **diffusion-based generation pipeline** that produces synthetic images and morphing series by interpolating between wild-type and knockout phenotypes in the latent space of a FLUX.1 model adapted via LoRA
+
+Together, these pipelines support the main scientific contributions of the paper: (1) that disease-associated morphological differences are detectable in label-free DIC images despite biological variability, and (2) that diffusion-based phenotypic extrapolation provides a tool for visualizing and quantifying these differences.
+
+### Intended Use
+
+This repository is a **companion to the publication**, not a general-purpose software package. It is published to:
+
+- **Document the exact code** used to generate every figure and number in the paper
+- **Enable reproduction** of the published results by reviewers and interested readers
+- **Provide a starting point** for researchers who want to adapt similar methods to their own data
+
+It is **not** intended as:
+
+- A plug-and-play tool for arbitrary microscopy datasets
+- A general-purpose image classification framework
+- A production-ready software distribution
+
+### Relationship to the Larger Workflow
+
+This code is **one component of a broader experimental and computational workflow**. The full pipeline includes:
+
+1. **Sample preparation** — skin biopsies, fibroblast culture, and imaging on a microscope (not part of this repository)
+2. **Data generation** — DIC microscopy acquisition, CZI mosaic export (partially covered in Chapter 5)
+3. **Model training** — CNN training and cross-validation (Chapters 1 and 2)
+4. **Synthetic data generation** — LoRA training and diffusion-based morphing series generation (Chapter 7)
+5. **Analysis and interpretation** — predictions, interpretability, dimensionality reduction, and publication figures (Chapters 3 and 6)
+6. **Statistical evaluation and biological interpretation** (not part of this repository)
+
+Chapter 8 provides a complete walkthrough that ties these steps together.
+
+### Naming Conventions Are Critical
+
+Throughout the pipeline, several utilities and scripts rely on **filename parsing** to link data across stages. Examples include:
+
+- The **CZI export** (Chapter 5.1) produces files with tile and z-plane coordinates encoded in the filename
+- The **Class Sorter** (Chapter 3.3) optionally appends confidence and class information to filenames, using a `_conf` separator
+- The **Dataset Subtractor** (Chapter 4.4) matches files across folders by their **base identifier** (everything before the first `_conf`)
+- The **Sort Images by Frame** and **Sort Images by Seed** utilities (Chapters 4.6 and 4.7) parse the ComfyUI output filenames to reconstruct series
+
+Changing the naming convention at any stage will break downstream steps. If you adapt this code for your own data, either follow the conventions described in each chapter or update the regex patterns in the relevant utilities accordingly.
+
+### Scope and Limitations
+
+The scripts in this repository were developed iteratively over the course of a specific project. As the project progressed, the code became increasingly specialized — driven by the concrete requirements of the dataset, the disease model, and the imaging setup. This has consequences for reuse.
+
+#### What works broadly
+
+The following modules are relatively flexible and should work for other projects with minimal changes:
+
+- **Single CNN Training** (Chapter 1) — supports many torchvision architectures, arbitrary class counts, and either grayscale or RGB input
+- **Cross Validation** (Chapter 2) — generalizes to any dataset that is organized by cell line, as long as the naming conventions are followed
+- **Utilities** (Chapter 4) — most utilities are generic file operations
+
+#### What is project-specific
+
+Several scripts were written with the specific network architecture, class structure, or data layout of this project in mind and **will not work out of the box** for other setups:
+
+| Module | Limitation |
+|--------|-----------|
+| **GradCAM Analyzer** (Chapter 3.2) | Currently only works with **DenseNet-121**; other architectures will fail because the implementation accesses the `.features` attribute |
+| **Dimensionality Reduction** (Chapter 3.5) | Also accesses DenseNet-specific attributes and requires a **DenseNet-121** checkpoint |
+| **Class Sorter** (Chapter 3.3) | Supports arbitrary class counts, but assumes a binary WT/KO structure for the confidence analysis |
+| **Confidence Analyzer** (Chapter 2.3) | Assumes **exactly two classes** (`WT` and `KO`) |
+| **Export & Plotting** (Chapter 6) | Some figures (ROC, PR) are optimized for binary classification |
+
+#### Hardcoded class names
+
+The terms **`WT (wild-type)`** and **`KO (knockout)`** appear throughout the code — as folder names, as string constants in filtering logic, and as class labels in exported reports. Supporting an arbitrary number of classes (e.g., 3-way classification or multi-class disease subtypes) would require systematic changes across nearly every script.
+
+#### Fixed input dimensions
+
+The pipeline is configured for:
+
+- **Grayscale images** (1 channel)
+- **512 × 512 pixels**
+
+Other configurations may work in some scripts but will fail in others, particularly in the diffusion-based pipeline and the Class Sorter.
+
+#### Why these limitations exist
+
+Adapting every script to be fully general would require substantial additional development that is outside the scope of this repository. The goal here is **reproducibility of the published results**, not maximal reusability. We document the limitations so that readers can:
+
+- Understand what will and will not work with minimal changes
+- Decide whether adapting the code is feasible for their use case
+- Identify the specific scripts that require modification if their setup differs
+
+### How to Read This Document
+
+The chapters that follow are organized by the menu structure of the main program. Each chapter includes:
+
+- A **description** of what the module does
+- **Key settings** from `settings.py` that control its behavior
+- The **required folder structure** and expected **output** layout
+- **Expected outcomes** with typical ranges or quantities
+- A worked **example**
+
+For a step-by-step walkthrough that shows how the pieces fit together, see Chapter 8.
 
 ---
 
@@ -406,7 +607,7 @@ The dataset generator supports three training data source modes, controlled by `
 |------|--------------|------------------------|-------------|
 | `real_only` | Real images | Real images | ✅ Baseline |
 | `synthetic_only` | Synthetic images | Real images | ✅ For synthetic-augmented training |
-| `mixed` | Real + synthetic images (pooled) | Real images | ⚠️ Not recommended (see note above) |
+| `mixed` | Real + synthetic images (pooled) | Real images | ⚠️ Synthetic images are filtered from val/test |
 
 #### Key Settings (from `settings.py`)
 
@@ -1666,69 +1867,85 @@ output/
 
 ### 4.6 Sort Images by Frame
 
-**Description**: Reorganizes morphing series images into folders named by frame number. This utility is tailored for outputs from diffusion-based morphing series generation, where each series consists of multiple frames representing a phenotypic gradient.
+**Description**: Reorganizes a flat folder of morphing series images into per-frame subfolders. Each folder then contains all images that occupy the same position within their series.
 
-The utility identifies frames by parsing the **image filename** with a regular expression. Which pattern is used depends on the `util_sort_frame_format` setting, which must be either `"flux"` or `"stylegan"`.
+This utility is useful when analyzing the **progression** of the morphing series rather than individual series. Examples include:
 
-#### Supported Filename Formats
+- Computing the fraction of KO-classified images at each frame (to characterize the WT-to-KO transition curve)
+- Projecting all images of the same frame into a dimensionality reduction plot (to check whether the series traces a consistent trajectory in latent space)
+- Comparing frame-to-frame changes in morphological features across many series
 
-**When `util_sort_frame_format = "flux"`** (default), two Flux patterns are tried in order:
+For example, if `input/` contains 100 morphing series with 10 frames each, this utility produces 10 output folders — one per frame — with 100 images in each.
 
-| Pattern | Format | Example | Seed sorter support |
-|---------|--------|---------|---------------------|
-| Flux (new) | `s{seed}_ckpt{checkpoint}_{frame}_r{ratio}_{number}_...` | `s12345_ckpt01_05_r0.5_0001_fib_morph.png` | ✅ Yes (after update) |
-| Flux (old) | `s{seed}_{frame}_fib_morph` | `s12345_05_fib_morph.png` | ✅ Yes (after update) |
+#### Important — Filename Format
 
-**When `util_sort_frame_format = "stylegan"`**, one StyleGAN pattern is used:
+This utility parses the **image filename** with a regular expression to extract the frame number. Two naming conventions are supported:
 
-| Pattern | Format | Example | Seed sorter support |
-|---------|--------|---------|---------------------|
-| StyleGAN | `{series}_{frame}` | `0001_05.png` | ❌ No (no seed in name) |
+| Format | Pattern | Example |
+|--------|---------|---------|
+| New Flux | `s{seed}_ckpt{checkpoint}_{frame}_r{ratio}_{number}_...` | `s12345_ckpt9_05_r0.45_00005_.png` |
+| Old Flux | `s{seed}_{frame}_fib_morph` | `s12345_05_fib_morph.png` |
 
-Files that match none of the active patterns are skipped and reported in the summary.
+Files that match neither pattern are skipped and reported. This utility is designed for the synthetic images produced by the ComfyUI-based morphing series workflow documented in Chapter 7. To reproduce results with your own generated images, your naming logic must follow one of these conventions.
 
 #### Key Settings (from `settings.py`)
 
 | Setting | Type | Description | Example Value |
 |---------|------|-------------|---------------|
-| `util_sort_frame_format` | str | `"flux"` or `"stylegan"` | `"flux"` |
+| `util_sort_frame_format` | str | Naming format: `"flux"` | `"flux"` |
 | `util_sort_frame_verbose` | bool | Print progress messages | `True` |
 
 #### Required Folder Structure
 
 ```plaintext
 input/
-├── s12345_ckpt01_01_r0.1_0001_fib_morph.png
-├── s12345_ckpt01_02_r0.2_0001_fib_morph.png
-├── s12345_ckpt01_03_r0.3_0001_fib_morph.png
+├── s12345_ckpt9_01_r0.80_00001_.png
+├── s12345_ckpt9_02_r0.72_00002_.png
+├── s12345_ckpt9_03_r0.65_00003_.png
+├── s67890_ckpt9_01_r0.80_00004_.png
+├── s67890_ckpt9_02_r0.72_00005_.png
+├── s67890_ckpt9_03_r0.65_00006_.png
 └── ...
 ```
+
+All images must be directly in `input/` (no subfolders).
 
 #### Output
 
 ```plaintext
 output/
 ├── frame_01/
-│   └── s12345_ckpt01_01_r0.1_0001_fib_morph.png
+│   ├── s12345_ckpt9_01_r0.80_00001_.png
+│   └── s67890_ckpt9_01_r0.80_00004_.png
 ├── frame_02/
-│   └── s12345_ckpt01_02_r0.2_0001_fib_morph.png
-├── frame_03/
-│   └── s12345_ckpt01_03_r0.3_0001_fib_morph.png
-└── ...
+│   ├── s12345_ckpt9_02_r0.72_00002_.png
+│   └── s67890_ckpt9_02_r0.72_00005_.png
+└── frame_03/
+    ├── s12345_ckpt9_03_r0.65_00003_.png
+    └── s67890_ckpt9_03_r0.65_00006_.png
 ```
+
+Each output folder contains all images that occupy the same frame position across every series.
 
 #### Expected Outcome
 
-- Each image is copied to a folder named `frame_XX` according to its frame number
-- Files that do not match the naming pattern are skipped and reported
-- Total count per frame is printed after sorting
+For a flat folder of N series with F frames per series:
+
+| Parameter | Typical Value |
+|-----------|---------------|
+| Input images | N × F |
+| Output folders | F |
+| Images per folder | N |
+
+Files that do not match either pattern are reported and skipped. The utility prints a summary listing each frame and its image count.
 
 #### Example Workflow
 
-1. Place morphing series images directly in `input/`
+1. Place ComfyUI output images directly in `input/`
 2. Configure `settings.py`:
    ```python
    util_sort_frame_format = "flux"
+   util_sort_frame_verbose = True
    ```
 3. Run the program and select **4 → 6**:
    ```plaintext
@@ -1742,29 +1959,38 @@ output/
    Frame distribution:
      Frame 01:  2000 images
      Frame 02:  2000 images
+     Frame 03:  2000 images
      ...
      Frame 10:  2000 images
 
    Organize images? (yes/no): yes
    Created 10 frame folders:
      frame_01: 2000 images
+     frame_02: 2000 images
      ...
+     frame_10: 2000 images
    ```
 
 ---
 
 ### 4.7 Sort Images by Seed
 
-**Description**: Organizes images by their generation seed, extracting the seed value from filenames. The pattern expected is `s{seed}_{frame}_fib_morph`, and images are grouped into folders named `seed_{seed}`. This utility is useful for analyzing morphing series generated with multiple seeds, where each seed produces one independent series.
+**Description**: Reorganizes a flat folder of morphing series images into per-series subfolders based on their generation seed.
 
-**Important — filename format**: This utility parses the **image filename** with a regular expression to extract the seed value. Two naming conventions are supported:
+The primary use case for this utility is **separating morphing series** produced by the ComfyUI-based generation pipeline (Chapter 7). By default, ComfyUI writes every generated image into a single flat output folder, regardless of which series it belongs to. Since all frames of one series share the same seed (in the default `fixed_per_series` mode), grouping by seed reconstructs the individual series.
+
+This utility is not needed if the images are already organized into per-series subfolders by the ComfyUI workflow itself.
+
+#### Important — Filename Format
+
+This utility parses the **image filename** with a regular expression to extract the seed value. Two naming conventions are supported:
 
 | Format | Pattern | Example |
 |--------|---------|---------|
-| New Flux | `s{seed}_ckpt{checkpoint}_{frame}_r{ratio}_{number}_...` | `s12345_ckpt01_05_r0.5_0001_fib_morph.png` |
+| New Flux | `s{seed}_ckpt{checkpoint}_{frame}_r{ratio}_{number}_...` | `s12345_ckpt9_01_r0.80_00001_.png` |
 | Old Flux | `s{seed}_{frame}_fib_morph` | `s12345_05_fib_morph.png` |
 
-Files that match neither pattern are skipped and reported. These two utilities (Sort by Frame and Sort by Seed) are designed for handling synthetic images produced by a ComfyUI morphing-series workflow. To reproduce results or reuse these utilities with your own generated images, your naming logic must follow one of these conventions.
+Files that match neither pattern are skipped and reported. This utility is designed for the synthetic images produced by the ComfyUI-based morphing series workflow documented in Chapter 7. To reproduce results with your own generated images, your naming logic must follow one of these conventions.
 
 #### Key Settings (from `settings.py`)
 
@@ -1776,33 +2002,46 @@ Files that match neither pattern are skipped and reported. These two utilities (
 
 ```plaintext
 input/
-├── s12345_01_fib_morph.png
-├── s12345_02_fib_morph.png
-├── s67890_01_fib_morph.png
-└── s67890_02_fib_morph.png
+├── s12345_ckpt9_01_r0.80_00001_.png
+├── s12345_ckpt9_02_r0.72_00002_.png
+├── s12345_ckpt9_03_r0.65_00003_.png
+├── s67890_ckpt9_01_r0.80_00004_.png
+├── s67890_ckpt9_02_r0.72_00005_.png
+└── ...
 ```
+
+All images must be directly in `input/` (no subfolders).
 
 #### Output
 
 ```plaintext
 output/
 ├── seed_12345/
-│   ├── s12345_01_fib_morph.png
-│   └── s12345_02_fib_morph.png
+│   ├── s12345_ckpt9_01_r0.80_00001_.png
+│   ├── s12345_ckpt9_02_r0.72_00002_.png
+│   └── s12345_ckpt9_03_r0.65_00003_.png
 └── seed_67890/
-    ├── s67890_01_fib_morph.png
-    └── s67890_02_fib_morph.png
+    ├── s67890_ckpt9_01_r0.80_00004_.png
+    └── s67890_ckpt9_02_r0.72_00005_.png
 ```
+
+Each distinct seed produces one output folder. Since all frames of a series share the same seed, each folder contains exactly one series.
 
 #### Expected Outcome
 
-- Images are grouped by the seed value extracted from the filename
-- Files that do not match the pattern are skipped (with verbose reporting if enabled)
-- Total count per seed is printed after sorting
+For a typical ComfyUI output with N series and F frames per series:
+
+| Parameter | Typical Value |
+|-----------|---------------|
+| Input images | N × F |
+| Output folders | N |
+| Images per folder | F |
+
+Files that do not match either pattern are reported and skipped. The utility prints a summary listing each seed and its image count.
 
 #### Example Workflow
 
-1. Place morphing series images directly in `input/`
+1. Place ComfyUI output images directly in `input/`
 2. Configure `settings.py`:
    ```python
    util_sort_seed_verbose = True
@@ -1816,6 +2055,7 @@ output/
    Found images by seed:
      Seed 12345: 10 images
      Seed 67890: 10 images
+     Seed 24680: 10 images
      ...
    Total images: 20000
 
@@ -2460,7 +2700,7 @@ The output is a high-resolution figure with:
 | Matrix height | 6 inches (for 2–10 classes) |
 | Resolution | 600 DPI (for TIFF/PNG) |
 | Cell annotations | Normalized value + raw count (e.g., `0.86\n(215)`) |
-| Title | `Confusion Matrix (Rows)\nOverall Accuracy: 86.0%` |
+| Title | `Confusion Matrix (Rows)`<br>`Overall Accuracy: 86.0%` |
 | Colormap | Blues (default) |
 
 #### Example Workflow
@@ -2634,5 +2874,310 @@ For per-class accuracy figures, a dashed red line is drawn at `export_train_min_
 
    ✅ Complete! 7 plots generated
    ```
+
+---
+
+## 7. Diffusion-Based Morphing Series Generation
+
+**Description**: The `diffusion/` folder contains a self-contained pipeline for generating synthetic fibroblast images using a FLUX.1 diffusion model fine-tuned with LoRA. It produces **morphing series** (a continuous phenotypic transition from WT to KO) and **endpoint series** (pure WT and pure KO extremes only), which are used as synthetic training data for the CNN classifier in this repository.
+
+Unlike the rest of the CNN pipeline, the diffusion scripts are **standalone**: they are not imported by any module in the main project and have no dependency on `settings.py`. They only require a running instance of ComfyUI and the workflow JSON files that ship with this repository.
+
+The folder contains three files:
+
+| File | Purpose |
+|------|---------|
+| `workflow_double_lora.json` | ComfyUI workflow used for **reproducing published results** |
+| `workflow_single_lora.json` | ComfyUI workflow **recommended for new work** |
+| `generate_morphing_series.py` | Python script that drives ComfyUI via its API |
+
+---
+
+### 7.1 Prerequisites
+
+Before running the generation script, ensure the following are in place:
+
+#### ComfyUI installation
+
+A working ComfyUI installation is required. If you do not have one, follow the official setup instructions at <https://github.com/comfyanonymous/ComfyUI>.
+
+The following custom nodes must be installed in `ComfyUI/custom_nodes/`:
+
+| Node | Purpose | Source |
+|------|---------|--------|
+| `ComfyUI-Manager` | Convenience for installing other nodes | <https://github.com/ltdrdata/ComfyUI-Manager> |
+| `PrimitiveFloat` | Provides the morph ratio input node | Bundled with recent ComfyUI versions |
+| `ConditioningAverage` | Merges the WT and KO text conditionings | Bundled with ComfyUI |
+
+If the workflow fails to load with a missing-node error, install the missing nodes via ComfyUI Manager.
+
+#### Model files
+
+The following files must be placed in the corresponding ComfyUI `models/` subfolders:
+
+| File | Location | Purpose |
+|------|----------|---------|
+| `flux1_dev_model_fp16.safetensors` | `models/unet/` | FLUX.1 Dev base model |
+| `flux1_dev_t5xxl_fp16.safetensors` | `models/text_encoders/` | T5-XXL text encoder |
+| `flux1_dev_clip_l_fp16.safetensors` | `models/text_encoders/` | CLIP-L text encoder |
+| `flux1_dev_vae_bf16.safetensors` | `models/vae/` | VAE decoder |
+| The trained LoRA `.safetensors` file | `models/loras/` | The conditional LoRA that learned WT and KO phenotypes |
+
+The FLUX.1 Dev files are distributed by Black Forest Labs. See <https://github.com/black-forest-labs/flux> for download instructions. The LoRA is trained as described in the paper and is not included with this repository.
+
+#### Python dependencies
+
+The controller script requires only one third-party package:
+
+```bash
+pip install requests
+```
+
+#### ComfyUI running in API mode
+
+ComfyUI must be started with the `--listen` flag so that the script can queue jobs via its HTTP API:
+
+```bash
+python main.py --listen
+```
+
+By default, the ComfyUI API listens on `http://127.0.0.1:8188`.
+
+---
+
+### 7.2 Workflow Selection
+
+Two workflow variants are provided. They differ in how the LoRA is loaded:
+
+| Workflow | LoRA loaders | Purpose |
+|----------|--------------|---------|
+| `workflow_double_lora.json` | Two (`LoraLoader` nodes 5 and 6) | **Used for all synthetic images reported in the paper.** Loads the same LoRA twice — a remnant of an earlier design in which two separate LoRAs were trained, one for WT and one for KO. |
+| `workflow_single_lora.json` | One (`LoraLoader` node 5) | **Recommended for new work.** Cleaner and easier to reason about. Produces slightly different images than the double-LoRA workflow. |
+
+**Important note on LoRA architecture**: The current LoRA used in this project is a **conditional LoRA** — a single adapter trained on both WT and KO images simultaneously, with the two classes distinguished only by their text prompts (`wildtype cells, grayscale` and `knockout cells, grayscale`). This is different from the earlier design, where two separate LoRAs were trained, one for each class, and then merged at inference time.
+
+The `workflow_double_lora.json` workflow still loads the LoRA into two separate `LoraLoader` nodes and merges them with a `ModelMergeSimple` node. Because both slots hold the *same* conditional LoRA, this merge has a subtle amplification effect on phenotype-specific features rather than combining two different adapters. It is retained here only to reproduce the exact conditions under which the published images were generated.
+
+For new work, `workflow_single_lora.json` is the correct choice — it reflects the conditional LoRA design faithfully and is simpler to reason about.
+
+**To reproduce published results**, set `WORKFLOW_TYPE = "double_lora"`.
+**To generate new synthetic data**, set `WORKFLOW_TYPE = "single_lora"`.
+
+---
+
+### 7.3 Configuration
+
+All configuration is contained in a **CONFIGURATION** block at the top of `generate_morphing_series.py`. No other file needs to be edited.
+
+#### Key Settings
+
+| Setting | Type | Description | Example Value |
+|---------|------|-------------|---------------|
+| `WORKFLOW_TYPE` | str | `"double_lora"` or `"single_lora"` | `"double_lora"` |
+| `CHECKPOINTS_DIR` | Path | Folder containing the LoRA `.safetensors` checkpoints | `Path("C:/ComfyUI/models/loras")` |
+| `OUTPUT_DIR` | Path | ComfyUI output folder (must match ComfyUI's own output path) | `Path("C:/ComfyUI/output")` |
+| `COMFYUI_SERVER_URL` | str | ComfyUI HTTP API endpoint | `"http://127.0.0.1:8188"` |
+| `CHECKPOINT_FORMAT` | str | `"kohya"` (6-digit step numbers) or `"comfyui"` (`-stepXXXXX`) | `"kohya"` |
+| `NUM_IMAGES` | int | Number of frames per series | `10` |
+| `NUM_SERIES` | int | Number of series to generate per checkpoint | `2000` |
+| `MORPH_START` | float | Starting morph ratio (1.0 = WT, 0.0 = KO) | `0.8` |
+| `MORPH_END` | float | Ending morph ratio | `0.1` |
+| `SEED_MODE` | str | `"fixed_per_series"` or `"random_per_image"` | `"fixed_per_series"` |
+| `LORA_STRENGTH_MODEL` | float | LoRA strength applied to the model | `1.0` |
+| `LORA_STRENGTH_CLIP` | float | LoRA strength applied to the CLIP encoder | `1.0` |
+
+#### Morph Range
+
+The morph ratio interpolates between the two phenotypes:
+
+| Morph Ratio | Result |
+|-------------|--------|
+| `1.0` | Pure wild-type (WT) |
+| `0.0` | Pure knockout (KO) |
+| `0.0 < r < 1.0` | Interpolated phenotype |
+| `r > 1.0` | Extrapolated WT caricature |
+| `r < 0.0` | Extrapolated KO caricature |
+
+To generate a **morphing series** with a smooth phenotypic gradient, use a range such as `MORPH_START = 1.0` to `MORPH_END = 0.0` and `NUM_IMAGES = 10`.
+
+To generate an **endpoint series** with only the two extreme phenotypes, set:
+
+```python
+NUM_IMAGES = 2
+MORPH_START = 1.0
+MORPH_END = 0.0
+```
+
+This produces two images per series (pure WT and pure KO), with no interpolated frames in between.
+
+#### Seed Mode
+
+| Mode | Behavior |
+|------|----------|
+| `"fixed_per_series"` | All frames in a series share the same random seed, so the series is coherent (only the morph ratio changes between frames) |
+| `"random_per_image"` | Each frame has its own random seed, so the series is more diverse but less structurally coherent |
+
+#### Checkpoint Format
+
+| Format | Filename pattern | Typical tool |
+|--------|------------------|--------------|
+| `"kohya"` | `name-XXXXXX.safetensors` (6 digits) | Kohya_ss |
+| `"comfyui"` | `name-stepXXXXX.safetensors` | ComfyUI's built-in trainer |
+
+The script scans the checkpoints folder and extracts the step number from each filename. All matching files are used as separate training states.
+
+---
+
+### 7.4 Running the Generation
+
+#### Step 1 — Prepare the checkpoint directory
+
+Place all LoRA checkpoints you want to use in `CHECKPOINTS_DIR`. The script will iterate over all `.safetensors` files that match the configured naming pattern.
+
+#### Step 2 — Start ComfyUI in API mode
+
+```bash
+cd /path/to/ComfyUI
+python main.py --listen
+```
+
+Leave this terminal running.
+
+#### Step 3 — Configure the script
+
+Open `generate_morphing_series.py` and edit the CONFIGURATION block. At minimum, set `CHECKPOINTS_DIR` and `OUTPUT_DIR` to your local paths, and choose `WORKFLOW_TYPE`.
+
+#### Step 4 — Run the script
+
+```bash
+python diffusion/generate_morphing_series.py
+```
+
+Or from inside the `diffusion/` folder:
+
+```bash
+cd diffusion
+python generate_morphing_series.py
+```
+
+#### Step 5 — Monitor progress
+
+The script prints progress per checkpoint:
+
+```plaintext
+Scanning for checkpoints in: C:/ComfyUI/models/loras
+  Format:  KOHYA
+  Pattern: -(\d{6})\.safetensors$
+  Found: lora_name-000009.safetensors (step 9)
+Found 1 checkpoints total
+  Order: ascending - step 9 -> 9
+
+Multi-Checkpoint Morph Series Generator (INTERLEAVED MODE)
+Workflow type: DOUBLE_LORA
+======================================================================
+  Checkpoints folder:           C:/ComfyUI/models/loras
+  Checkpoints found:            1
+  Target series per checkpoint: 2000
+  Total series to generate:     2000
+  Total images:                 20000
+  Morph range:                  0.8 -> 0.1
+  Seed mode:                    FIXED_PER_SERIES
+======================================================================
+
+Checking ComfyUI connection...
+ComfyUI is running and accessible
+
+[14:23:01] Checkpoint 9 - Series 1/2000
+   Series seed: 1837462912
+   Series queued (series seed: 1837462912)
+   Progress: 1/2000 series (0.1%)
+...
+```
+
+Press **Ctrl+C** at any time to stop gracefully. Progress is preserved across checkpoints, so you can resume later.
+
+---
+
+### 7.5 Output Naming Convention
+
+Generated images are saved by ComfyUI under `OUTPUT_DIR` with the following structure:
+
+```plaintext
+OUTPUT_DIR/
+├── checkpoint_9/
+│   ├── s1837462912_ckpt9_01_r0.80_00001_.png
+│   ├── s1837462912_ckpt9_02_r0.72_00002_.png
+│   ├── ...
+│   └── s1837462912_ckpt9_10_r0.10_00010_.png
+├── checkpoint_12/
+│   └── ...
+```
+
+The filename encodes all the information needed for downstream analysis:
+
+```plaintext
+s{seed}_ckpt{step}_{frame:02d}_r{ratio}_{counter}_.png
+```
+
+| Component | Meaning | Example |
+|-----------|---------|---------|
+| `s{seed}` | Random seed used for this series | `s1837462912` |
+| `ckpt{step}` | LoRA checkpoint step number | `ckpt9` |
+| `{frame:02d}` | Frame index within the series (01-based) | `05` |
+| `r{ratio}` | Morph ratio at this frame | `r0.45` |
+| `{counter}` | ComfyUI's internal file counter | `00005` |
+
+**For endpoint series** (with `NUM_IMAGES = 2`), the same naming is used, but each series has only two frames:
+
+```plaintext
+checkpoint_9/
+├── s1837462912_ckpt9_01_r1.00_00001_.png    # Pure WT
+└── s1837462912_ckpt9_02_r0.00_00002_.png    # Pure KO
+```
+
+#### Relationship to the CNN Pipeline
+
+The generated filenames are designed to be compatible with the sorting utilities in the CNN pipeline:
+
+| Utility | Compatibility |
+|---------|--------------|
+| **Sort Images by Frame** (section 4.6) | ✅ Parses both new and old Flux patterns |
+| **Sort Images by Seed** (section 4.7) | ✅ Parses both new and old Flux patterns |
+
+After generation, move the images into the CNN pipeline's input folders and use the sorting utilities to organize them by frame or by seed before training.
+
+**Important**: The filename format is fixed. If you customize the workflow's `SaveImage` filename prefix, the sorting utilities will no longer recognize the images. To use a custom naming scheme, either update the regex patterns in the sorting utilities or post-process the filenames.
+
+---
+
+### 7.6 Example Workflow
+
+A complete example from real training images to synthetic morphing series:
+
+1. **Prepare the LoRA training data** — use the CNN pipeline's **Class Sorter** (section 3.3) to select high-confidence real images for each class, and the **Caption Generator** (section 5.2) to produce the corresponding `.txt` captions
+2. **Train the LoRA** — use your preferred trainer (e.g., Kohya_ss or the ComfyUI trainer). The trigger phrases used in this project are `wildtype cells, grayscale` and `knockout cells, grayscale`
+3. **Place the LoRA checkpoints** — copy the resulting `.safetensors` files into `CHECKPOINTS_DIR`
+4. **Start ComfyUI** — `python main.py --listen`
+5. **Configure** — set `WORKFLOW_TYPE`, `CHECKPOINTS_DIR`, and `OUTPUT_DIR` in `generate_morphing_series.py`
+6. **Run generation** — `python diffusion/generate_morphing_series.py`
+7. **Organize outputs** — use the **Sort Images by Frame** utility (section 4.6) to group images by frame, or by seed (section 4.7) to group by series
+8. **Feed into the CNN pipeline** — place the organized images into `dataset_gen/input_synthetic/line_X/` or `data/train/KO/` and `data/train/WT/`, then proceed with training or cross-validation
+
+---
+
+### 7.7 Expected Outcome
+
+For a typical run with 1 LoRA checkpoint, 2000 morphing series, 10 frames per series:
+
+| Metric | Typical Value |
+|--------|---------------|
+| Series generated | 2000 |
+| Images generated | 20,000 |
+| Disk space per image | ~150–250 KB (PNG) |
+| Total disk space | ~3–5 GB |
+| Generation time per image | ~2–5 seconds (RTX 4090, 25 steps) |
+| Total generation time | ~11–28 hours |
+
+For endpoint series with `NUM_IMAGES = 2`, the same series count produces 4000 images instead of 20,000, and the run completes roughly 5× faster.
 
 ---
