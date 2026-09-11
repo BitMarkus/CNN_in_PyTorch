@@ -12,52 +12,7 @@ A dual-pipeline framework for label-free fibroblast classification and diffusion
    - [1.2 Show Network Summary](#12-show-network-summary)
    - [1.3 Load Training Data](#13-load-training-data)
    - [1.4 Train Network](#14-train-network)
-   - [1.5 Load Weights](#15-load-weights)
-2. [Cross Validation](#2-cross-validation)
-   - [2.1 Dataset Generator](#21-dataset-generator)
-   - [2.2 Automatic Cross Validation](#22-automatic-cross-validation)
-   - [2.3 Confidence Analyzer](#23-confidence-analyzer)
-3. [Analysis](#3-analysis)
-   - [3.1 Predict Class from Input Folder](#31-predict-class-from-input-folder)
-   - [3.2 GradCAM Analyzer](#32-gradcam-analyzer)
-   - [3.3 Class Sorter](#33-class-sorter)
-   - [3.4 FID Score Calculator](#34-fid-score-calculator)
-   - [3.5 Dimensionality Reduction](#35-dimensionality-reduction)
-4. [Utilities](#4-utilities)
-   - [4.1 Dataset Merger](#41-dataset-merger)
-   - [4.2 Dataset Remover](#42-dataset-remover)
-   - [4.3 Dataset Splitter](#43-dataset-splitter)
-   - [4.4 Dataset Subtraction](#44-dataset-subtraction)
-   - [4.5 Merge Images from Folders](#45-merge-images-from-folders)
-   - [4.6 Sort Images by Frame](#46-sort-images-by-frame)
-   - [4.7 Sort Images by Seed](#47-sort-images-by-seed)
-5. [Preprocessing](#5-preprocessing)
-   - [5.1 Export CZI Mosaic Files](#51-export-czi-mosaic-files)
-   - [5.2 Generate Captions](#52-generate-captions)
-6. [Export & Plotting](#6-export--plotting)
-   - [6.1 Export Training Metrics to Excel](#61-export-training-metrics-to-excel)
-   - [6.2 Plot UMAP / t-SNE / PaCMAP](#62-plot-umap--tsne--pacmap)
-   - [6.3 Plot Confusion Matrix](#63-plot-confusion-matrix)
-   - [6.4 Plot Training Curves](#64-plot-training-curves)
-7. [Diffusion-Based Morphing Series Generation](#7-diffusion-based-morphing-series-generation)
-   - [7.1 Prerequisites](#71-prerequisites)
-   - [7.2 Workflow Selection](#72-workflow-selection)
-   - [7.3 Configuration](#73-configuration)
-   - [7.4 Running the Generation](#74-running-the-generation)
-   - [7.5 Output Naming Convention](#75-output-naming-convention)
-   - [7.6 Example Workflow](#76-example-workflow)
-   - [7.7 Expected Outcome](#77-expected-outcome)
-8. [Complete Workflow Through the Project](#8-complete-workflow-through-the-project)
-
-## Index
-
-0. [Introduction](#0-introduction)
-1. [Single CNN Training](#1-single-cnn-training)
-   - [1.1 Create CNN Network](#11-create-cnn-network)
-   - [1.2 Show Network Summary](#12-show-network-summary)
-   - [1.3 Load Training Data](#13-load-training-data)
-   - [1.4 Train Network](#14-train-network)
-   - [1.5 Load Weights](#15-load-weights)
+   - [1.5 Load Weights](#15-load-weights)                                                                                                                                                                                                                                
 2. [Cross Validation](#2-cross-validation)
    - [2.1 Dataset Generator](#21-dataset-generator)
    - [2.2 Automatic Cross Validation](#22-automatic-cross-validation)
@@ -180,6 +135,8 @@ The pipeline is configured for:
 - **Grayscale images** (1 channel)
 - **512 × 512 pixels**
 
+Other configurations may work in some scripts but will fail in others, particularly in the diffusion-based pipeline and the Class Sorter.
+
 #### No Defensive Error Handling
 
 The scripts in this repository assume that the user provides correctly configured inputs and follows the documented folder structures. There is **no systematic error handling** in most cases. Common user mistakes will cause the program to crash with a Python traceback rather than printing a friendly message.
@@ -204,8 +161,6 @@ When the program crashes, the Python traceback usually points to the failing lin
 4. The Python environment includes all dependencies from `requirements.txt`
 
 If you encounter a crash, reading the traceback from the bottom up usually reveals which assumption was violated.
-
-Other configurations may work in some scripts but will fail in others, particularly in the diffusion-based pipeline and the Class Sorter.
 
 #### Why these limitations exist
 
@@ -350,7 +305,7 @@ Non-trainable params: 0
 
 **Description**: Loads training and validation images from the `data/` folders. Validation images are obtained by splitting **either** the training set **or** the test set — there is **no dedicated validation folder**. The choice is controlled by two settings in `settings.py`.
 
-During training, only the training set is used for gradient updates, while the validation set is used to monitor performance after each epoch. After training completes, the test set (which may have been partially used for validation) is evaluated separately.
+During training, only the training set is used for gradient updates, while the validation set is used to monitor performance after each epoch. Note: The single training workflow does not perform a separate test evaluation after training. To evaluate on the full test set, use the Analysis → Predict Class from Input Folder action (section 3.1) or run cross-validation (Chapter 2).
 
 #### Key Settings (from `settings.py`)
 
@@ -2430,7 +2385,7 @@ The exporter supports both **single training** runs (`output/train/[timestamp]/l
 
 | Setting | Type | Description | Example Value |
 |---------|------|-------------|---------------|
-| `export_mode` | str | `"auto"`, `"crossval"`, or `"single"` | `"auto"` |
+| `export_mode` | str | `"auto"`, `"crossval"`, or `"single"`. See `"Export Mode`" below. | `"auto"` |
 | `export_excel_roc_epoch` | str / int | Which epoch to use for ROC curves | `"balanced_accuracy"` |
 | `export_excel_pr_epoch` | str / int | Which epoch to use for PR curves | `"balanced_accuracy"` |
 
@@ -3023,15 +2978,22 @@ The morph ratio interpolates between the two phenotypes:
 | `r > 1.0` | Extrapolated WT caricature |
 | `r < 0.0` | Extrapolated KO caricature |
 
+Two generation modes are supported:
+
+| Mode | Frames per series | Purpose |
+|------|-------------------|---------|
+| **Morphing series** | 10 (default) | Continuous transition from WT to KO, used for CNN training |
+| **Endpoint series** | 2 | Only the extreme WT and KO phenotypes, used for direct comparison |
+
 To generate a **morphing series** with a smooth phenotypic gradient, use a range such as `MORPH_START = 1.0` to `MORPH_END = 0.0` and `NUM_IMAGES = 10`.
 
 To generate an **endpoint series** with only the two extreme phenotypes, set:
 
-```python
+\`\`\`python
 NUM_IMAGES = 2
 MORPH_START = 1.0
 MORPH_END = 0.0
-```
+\`\`\`
 
 This produces two images per series (pure WT and pure KO), with no interpolated frames in between.
 
@@ -3204,5 +3166,216 @@ For a typical run with 1 LoRA checkpoint, 2000 morphing series, 10 frames per se
 | Total generation time | ~11–28 hours |
 
 For endpoint series with `NUM_IMAGES = 2`, the same series count produces 4000 images instead of 20,000, and the run completes roughly 5× faster.
+
+---
+
+## 8. Complete Workflow Through the Project
+
+**Description**: This chapter ties together the modules documented in the previous chapters into a single conceptual workflow. It shows how the components interact, which steps are mandatory and which are optional, and where the diffusion-based generation pipeline intersects with the CNN classification and analysis pipeline.
+
+The workflow is presented as two flowcharts:
+
+1. **Validation of the diffusion-based generation pipeline** — from LoRA training to morphing series generation
+2. **Training the CNN on synthetic images** — from mixing synthetic images to final evaluation on real validation data
+
+The output of the first flowchart feeds directly into the second.
+
+---
+
+### 8.1 Sanity Check: Is the Dataset Learnable?
+
+Before committing significant time to training and cross-validation, a quick sanity check can indicate whether the dataset contains a detectable signal at all.
+
+The recommended procedure is:
+
+1. Assemble a preliminary dataset with all available images (real or synthetic)
+2. Train a CNN on all images without cross-validation (Chapter 1)
+3. Evaluate the model on the same data (or on a random subset)
+
+If the model cannot learn a separation between the classes even when trained and evaluated on the same data, the dataset is unlikely to be learnable in a more rigorous evaluation setting. In that case, the pipeline will not produce meaningful results regardless of how much additional data or training time is invested.
+
+If the initial training succeeds, the next step is **leave-one-cell-line-out cross-validation** (Chapter 2). This provides a realistic estimate of how well the model generalizes to cell lines it has never seen during training.
+
+---
+
+### 8.2 Flowchart 1: Validating the Diffusion-Based Generation Pipeline
+
+This flowchart describes how to train a conditional LoRA and verify that it has learned the WT/KO phenotype distinction before investing in large-scale synthetic data generation.
+
+```mermaid
+flowchart TD
+    A["Train conditional LoRA<br>(leave-one-cell-line-out)"]
+    B["Generate synthetic training images<br>using conditional prompts"]
+    C["Classify synthetic images<br>with best CNN checkpoint"]
+    D{"Images<br>separable?"}
+    E["Generate morphing<br>series"]
+    F["Something is wrong:<br>LoRA settings or features<br>cannot be learned"]
+    G["Small ratio interval<br>(e.g. 0.0 - 1.0)<br>for CNN training"]
+    H["Large ratio interval<br>(e.g. -1.0 - 2.0)<br>for visual inspection"]
+
+    A --> B
+    B --> C
+    C --> D
+    D -->|Yes| E
+    D -->|No| F
+    E --> G
+    E --> H
+```
+
+**Steps:**
+
+1. **Train a conditional LoRA** using the same leave-one-cell-line-out strategy that is used for CNN cross-validation (Chapter 2). One cell line is held out at a time, so that the LoRA can later be evaluated on cell lines it has never seen during training.
+
+2. **Generate synthetic training images** using conditional prompts such as `wildtype cells, grayscale` and `knockout cells, grayscale` (Chapter 7). These images are intended as training data for the CNN — not as validation data.
+
+3. **Classify the synthetic images** using the best CNN checkpoint selected during real-data cross-validation (Chapter 2.3). This uses the CNN as an independent judge of whether the LoRA has learned the phenotype distinction.
+
+4. **Check separability** — if the CNN can reliably distinguish the synthetic WT images from the synthetic KO images, the LoRA has captured the phenotype distinction. If not, the LoRA has not learned the relevant features, and its training settings or training data should be revisited.
+
+5. **Generate morphing series** at two distinct ratio ranges, each with a different purpose:
+   - **Small ratio interval** (e.g., `0.0` to `1.0`) produces images close to the decision boundary. These are used as **synthetic training data** for the CNN (Section 8.3), because they provide the most informative examples for learning the boundary.
+   - **Large ratio interval** (e.g., `-1.0` to `2.0`) produces **caricatures** — exaggerated extrapolations toward WT and KO. These are used for **visual inspection** of phenotypic changes. Caricatures help reveal morphological differences that are subtle and difficult to perceive in real images. They are not suitable for training, because they lie too far from the decision boundary.
+
+**Important distinction on image roles:**
+
+| Image type | Source | Role |
+|------------|--------|------|
+| Real images (training cell lines) | Microscopy of real cells | Real training data |
+| Real images (held-out cell lines) | Microscopy of real cells | **Validation** — used to test the final CNN |
+| Synthetic images (small ratio) | LoRA generation | Synthetic **training** data |
+| Synthetic images (large ratio) | LoRA generation | Visual inspection only |
+
+The synthetic images never serve as validation data. Validation is always performed on real images from cell lines that were excluded from both LoRA and CNN training (Chapter 2.2, `split_info.json`).
+
+---
+
+### 8.3 Flowchart 2: Training the CNN on Synthetic Images
+
+This flowchart describes how to train and evaluate a final CNN classifier on synthetic images produced by the small ratio interval (Section 8.2).
+
+```mermaid
+flowchart TD
+    A["Train CNN on<br>synthetic training images<br>(small ratio interval)"]
+    B["Validate and test on<br>held-out real images<br>(never used for LoRA or CNN training)"]
+    C{"Real data<br>separable?"}
+    D["<b>Workflow complete</b><br>Compare accuracy to<br>real-data cross-validation<br>baseline"]
+    E["LoRA cannot capture<br>biologically relevant<br>features"]
+
+    A --> B
+    B --> C
+    C -->|Yes| D
+    C -->|No| E
+```
+
+**Steps:**
+
+1. **Train the CNN on synthetic training images** produced with the small ratio interval (Section 8.2). These images lie close to the decision boundary and are therefore the most informative examples for training. Increasing the number of such synthetic images generally improves performance, as long as they remain biologically plausible.
+
+2. **Validate and test on held-out real images.** The validation images come exclusively from real microscopy, using cell lines that were held out from both LoRA and CNN training (Chapter 2.2, `split_info.json` mechanism). This is the decisive test: the CNN, trained entirely on synthetic images, must classify real images it has never seen.
+
+3. **Check separability on real images.** If the CNN trained on synthetic images can reliably classify real images, the LoRA has captured biologically relevant features, and the synthetic data can substitute for or augment real data.
+
+4. **If successful**: The workflow is complete. Compare the resulting accuracy against the cross-validation baseline on real data (Chapter 2.2) to quantify how much performance the synthetic pipeline recovers.
+
+   **If unsuccessful**: The LoRA has not captured the biological features that distinguish the phenotypes, and additional synthetic data will not help. The LoRA training procedure should be revisited.
+
+---
+
+### 8.4 Complete Workflow Overview
+
+The two flowcharts connect as follows:
+
+| Output of Flowchart 1 | Role in the pipeline |
+|------------------------|----------------------|
+| Small ratio interval (0.0–1.0) | **Synthetic training data** for the CNN (input to Flowchart 2) |
+| Large ratio interval (−1.0–2.0) | **Visual inspection** of phenotypic changes (not used for training) |
+
+The complete pipeline is therefore:
+
+```plaintext
+Real images
+    │
+    ├──▶ CNN classification pipeline (Chapters 1–2)
+    │       │
+    │       ├──▶ Best CNN checkpoint (used as judge in Flowchart 1)
+    │       │
+    │       └──▶ Real held-out images (used for validation in Flowchart 2)
+    │
+    └──▶ LoRA training (Chapter 7)
+            │
+            └──▶ Flowchart 1: LoRA validation and morphing series generation
+                    │
+                    ├──▶ Small ratio interval ──▶ Flowchart 2:
+                    │    (synthetic training data)     CNN training on
+                    │                                  synthetic data
+                    │                                       │
+                    │                                       └──▶ Validation on
+                    │                                            real held-out
+                    │                                            images
+                    │
+                    └──▶ Large ratio interval ──▶ Visual inspection of
+                         (caricatures)              morphological changes
+```
+
+**Key roles at a glance:**
+
+| Role | Data source | Where it is used |
+|------|-------------|------------------|
+| Real training data | Microscopy | CNN training (Chapters 1–2) |
+| Real validation data | Microscopy (held-out cell lines) | CNN validation (Chapter 2.2) and final evaluation in Flowchart 2 |
+| Synthetic training data | LoRA generation (small ratio) | CNN training in Flowchart 2 |
+| Visual inspection | LoRA generation (large ratio) | Not used for training |
+| CNN as judge | Best checkpoint from real-data cross-validation | Evaluating synthetic images in Flowchart 1 |
+
+---
+
+### 8.5 Summary of Chapter References
+
+| Step | Chapter |
+|------|---------|
+| Dataset assembly and CZI export | 5.1 |
+| Caption generation for LoRA | 5.2 |
+| CNN training (single) | 1.4 |
+| Cross-validation | 2.2 |
+| Best checkpoint selection | 2.3 |
+| Diffusion-based morphing series generation | 7 |
+| Result visualization and publication figures | 6 |
+
+The analysis tools in Chapter 3 are **optional** and can be applied at various points in the pipeline. They are not required steps in the core workflow described in this chapter, but they are particularly well-suited for investigating the morphing series generated with the **large ratio interval** (the caricatures produced in Flowchart 1):
+
+| Tool | Chapter | Application to morphing series |
+|------|---------|-------------------------------|
+| **Class Analyzer** | 3.1 | Quantify how WT-like or KO-like each frame is, across an entire series |
+| **GradCAM Analyzer** | 3.2 | Visualize which morphological regions drive the classifier's decision at different points along the morphing trajectory |
+| **Class Sorter** | 3.3 | Select high-confidence synthetic frames for CNN training |
+| **FID Score Calculator** | 3.4 | Compare the distribution of synthetic morphing frames against real images |
+| **Dimensionality Reduction** | 3.5 | Project morphing frames into 2D to verify that the series forms a continuous trajectory in latent space |
+
+The **dimensionality reduction** tool (Chapter 3.5) and the **Class Analyzer** (Chapter 3.1) are especially useful for the large-ratio series: they make the phenotypic progression visible as a smooth trajectory and allow quantitative inspection of intermediate phenotypes that are difficult to assess in individual images.
+
+---
+
+### 8.6 Decision Points and Their Consequences
+
+The workflow contains several decision points. Their consequences are:
+
+| Decision | Yes | No |
+|----------|-----|-----|
+| **Dataset learnable when trained on all images?** | Proceed to leave-one-cell-line-out cross-validation | The dataset is not separable; additional training will not help |
+| **All cross-validation combinations separable?** | Select best checkpoints and proceed | Investigate which combinations fail; clean the dataset and retry |
+| **Synthetic images separable by CNN (Flowchart 1)?** | Generate morphing series at both ratio ranges | Adjust LoRA settings or training data; the LoRA has not captured the phenotype |
+| **CNN trained on synthetic data classifies real images (Flowchart 2)?** | Workflow complete; compare to real-data baseline | The LoRA does not capture biologically relevant features |
+
+#### Why a Random Train/Validation Split Is Not Sufficient
+
+A common shortcut when evaluating a cell-based classification model is to use a **random train/validation split**: images are randomly assigned to training and validation sets, and the model's accuracy on the validation set is taken as an estimate of performance.
+
+For the type of data used in this project, this approach produces **misleadingly optimistic results**. Fibroblasts from different individuals have distinct morphological signatures — a kind of cellular fingerprint — that are unrelated to the disease phenotype. When a random split is used, images from the **same cell line** end up in both training and validation sets. The model can then learn to recognize the cell line identity of each image rather than the disease-associated morphology.
+
+As a result, the model performs well on validation images from cell lines it has already seen, but this performance does not reflect its ability to classify cell lines it has never encountered. The reported accuracy is inflated by the model's capacity to memorize line-specific features.
+
+**Leave-one-cell-line-out cross-validation avoids this problem** by holding out entire cell lines from training. Under this scheme, the model can only succeed by learning features that generalize across individuals, which is exactly the ability that a diagnostic tool would need.
+
+This is why the workflow in this chapter emphasizes cross-validation (Chapter 2.2) rather than a random split, and why the final evaluation in Flowchart 2 is performed on **real images from held-out cell lines** — the most stringent test of whether the model has learned disease-associated features rather than cell-line-specific artifacts.
 
 ---

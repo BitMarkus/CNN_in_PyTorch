@@ -1,19 +1,31 @@
-/__pycache__
-/.vscode
-/info&tools
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Project-specific data and outputs
 /data/train
 /data/test
+/data/info.txt
 /dataset_gen/input_mixed
 /dataset_gen/input_real
 /dataset_gen/input_synthetic
 /dataset_gen/output
-/data/info.txt
 /input
 /output
 /checkpoints
-/analysis/__pycache__
-/cross_validation/__pycache__
-/export_plotting/__pycache__
-/preprocessing/__pycache__
-/single_training/__pycache__
-/utilities/__pycache__
+
+# Local tools
+/info&tools
